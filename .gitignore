@@ -19,3 +19,9 @@
 
 # Go workspace file
 go.work
+
+tssh
+dist/
+vendor/
+*.swp
+*.swo
