@@ -34,6 +34,16 @@ import (
 	"golang.org/x/term"
 )
 
+type terminalMode struct {
+}
+
+func setupTerminalMode() (*terminalMode, error) {
+	return &terminalMode{}, nil
+}
+
+func resetTerminalMode(*terminalMode) {
+}
+
 func getTerminalSize() (int, int, error) {
 	width, height, err := term.GetSize(int(os.Stdin.Fd()))
 	if err != nil {

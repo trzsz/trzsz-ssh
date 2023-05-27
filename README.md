@@ -5,9 +5,7 @@
 ## 安装方法
 
 ```sh
-git clone https://github.com/trzsz/trzsz-ssh.git
-cd trzsz-ssh
-go install ./cmd/tssh
+go install github.com/trzsz/trzsz-ssh/cmd/tssh@latest
 ```
 
 安装后，`tssh` 程序一般位于 `~/go/bin/` 目录下（ Windows 一般在 `C:\Users\your_name\go\bin\` ）。
@@ -16,9 +14,8 @@ go install ./cmd/tssh
 
 _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\Users\your_name\`。_
 
-- 在客户端生成密钥对，一般存放在 `~/.ssh/` 下（ 只要一种就可以了 ）。
+- 在客户端生成密钥对，一般存放在 `~/.ssh/` 下：
 
-  - `ssh-keygen -t ed25519` 生成 ED25519 的，私钥 `~/.ssh/id_ed25519`，公钥 `~/.ssh/id_ed25519.pub`。
   - `ssh-keygen -t rsa -b 4096` 生成 RSA 的，私钥 `~/.ssh/id_rsa`，公钥 `~/.ssh/id_rsa.pub`。
 
 - 登录服务器，将公钥（ 即前面生成密钥对时 `*.pub` 后缀的文件内容 ）追加写入服务器上的 `~/.ssh/authorized_keys` 文件中。
@@ -48,4 +45,9 @@ Host alias2
 
 ## 联系方式
 
-有什么问题可以发邮件给我 <lonnywong@qq.com>，也可以提 [Issues](https://github.com/trzsz/trzsz-ssh/issues) 。欢迎加入 QQ 群：318578930。
+有什么问题可以发邮件给作者 <lonnywong@qq.com>，也可以提 [Issues](https://github.com/trzsz/trzsz/issues) 。欢迎加入 QQ 群：318578930。
+
+请作者喝一杯咖啡☕?
+
+![sponsor wechat qrcode](https://trzsz.github.io/images/sponsor_wechat.jpg)
+![sponsor alipay qrcode](https://trzsz.github.io/images/sponsor_alipay.jpg)
