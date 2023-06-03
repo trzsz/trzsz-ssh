@@ -1,14 +1,22 @@
 # trzsz-ssh
 
-支持 [trzsz](https://trzsz.github.io/) ( trz / tsz ) 的 ssh 客户端，解决了 Windows Terminal 中使用 `trzsz ssh` 上传速度慢的问题。
+你是否曾经因为服务器太多记不住，而喜欢的 ssh 终端又没有服务器管理功能而苦恼？
+
+tssh 支持搜索选择 `~/.ssh/config` 中配置的服务器进行登录，支持酷炫的 vim 操作习惯。
+
+tssh 内置支持 [trzsz](https://trzsz.github.io/) ( trz / tsz ) ，一并解决了 Windows 中使用 `trzsz ssh` 上传速度慢的问题。
 
 ## 安装方法
 
-```sh
-go install github.com/trzsz/trzsz-ssh/cmd/tssh@latest
-```
+- 用 go 直接安装（ 要求 go 1.20 以上 ）
 
-安装后，`tssh` 程序一般位于 `~/go/bin/` 目录下（ Windows 一般在 `C:\Users\your_name\go\bin\` ）。
+  ```sh
+  go install github.com/trzsz/trzsz-ssh/cmd/tssh@latest
+  ```
+
+  安装后，`tssh` 程序一般位于 `~/go/bin/` 目录下（ Windows 一般在 `C:\Users\your_name\go\bin\` ）。
+
+- 从 [Releases](https://github.com/trzsz/trzsz-ssh/releases) 中直接下载适用的版本。
 
 ## 使用方法
 
@@ -47,7 +55,7 @@ Host alias2
 
 有什么问题可以发邮件给作者 <lonnywong@qq.com>，也可以提 [Issues](https://github.com/trzsz/trzsz/issues) 。欢迎加入 QQ 群：318578930。
 
-请作者喝一杯咖啡☕?
+请作者喝一杯咖啡 ☕ ?
 
 ![sponsor wechat qrcode](https://trzsz.github.io/images/sponsor_wechat.jpg)
 ![sponsor alipay qrcode](https://trzsz.github.io/images/sponsor_alipay.jpg)

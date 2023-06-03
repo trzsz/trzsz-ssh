@@ -1,0 +1,59 @@
+project_name: tssh
+before:
+  hooks:
+    - go mod tidy
+builds:
+  - id: tssh
+    main: ./cmd/tssh
+    binary: tssh
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+archives:
+  - id: tssh
+    rlcp: true
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- if eq .Os "darwin" }}macos_
+      {{- else }}{{ .Os }}_{{ end }}
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else if eq .Arch "arm64" }}aarch64
+      {{- else }}{{ .Arch }}{{ end }}
+    wrap_in_directory: true
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - none*
+nfpms:
+  - id: tssh
+    builds:
+      - tssh
+    file_name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- if eq .Os "darwin" }}macos_
+      {{- else }}{{ .Os }}_{{ end }}
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else if eq .Arch "arm64" }}aarch64
+      {{- else }}{{ .Arch }}{{ end }}
+    homepage: https://trzsz.github.io/
+    maintainer: Lonny Wong <lonnywong@qq.com>
+    description: |-
+      tssh is a simple ssh client with trzsz ( trz / tsz ) support.
+    license: MIT
+    formats:
+      - rpm
+    bindir: /usr/bin
+    rpm:
+      group: Unspecified
+snapshot:
+  name_template: "{{ .Version }}.next"
+checksum:
+  name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
