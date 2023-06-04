@@ -579,6 +579,13 @@ func keepAlive(client *ssh.Client, args *sshArgs) {
 	}
 }
 
+func getRemoteCommand(args *sshArgs) string {
+	if args.Command != "" {
+		return args.Command
+	}
+	return ssh_config.Get(args.Destination, "RemoteCommand")
+}
+
 func sshLogin(args *sshArgs) (*ssh.Session, error) {
 	// init user home
 	var err error
@@ -642,9 +649,10 @@ func sshLogin(args *sshArgs) (*ssh.Session, error) {
 	go keepAlive(client, args)
 
 	// start shell
-	if args.Command != "" {
-		if err := session.Start(args.Command); err != nil {
-			return nil, fmt.Errorf("start command failed: %v", err)
+	command := getRemoteCommand(args)
+	if command != "" {
+		if err := session.Start(command); err != nil {
+			return nil, fmt.Errorf("start command [%s] failed: %v", command, err)
 		}
 	} else {
 		if err := session.Shell(); err != nil {
