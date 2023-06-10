@@ -65,7 +65,7 @@ func getAllHosts() ([]*sshHost, error) {
 	hosts := []*sshHost{}
 	for _, host := range cfg.Hosts {
 		alias := host.Patterns[0].String()
-		if alias == "*" {
+		if strings.ContainsRune(alias, '*') || strings.ContainsRune(alias, '?') {
 			continue
 		}
 		hosts = append(hosts, &sshHost{
