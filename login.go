@@ -263,8 +263,12 @@ func getSigner(path string) (ssh.Signer, error) {
 	return signer, nil
 }
 
-func getPasswordAuthMethod(host, user string) ssh.AuthMethod {
-	return ssh.PasswordCallback(func() (secret string, err error) {
+func getPasswordAuthMethod(args *sshArgs, host, user string) ssh.AuthMethod {
+	password := ssh_config.Get(args.Destination, "Password")
+	if password != "" {
+		return ssh.Password(password)
+	}
+	return ssh.RetryableAuthMethod(ssh.PasswordCallback(func() (secret string, err error) {
 		fmt.Printf("%s@%s's password: ", user, host)
 		defer fmt.Print("\r\n")
 		errch := make(chan error, 1)
@@ -290,42 +294,43 @@ func getPasswordAuthMethod(host, user string) ssh.AuthMethod {
 		}()
 		err = <-errch
 		return
-	})
+	}), 3)
 }
 
 func getKeyboardInteractiveAuthMethod(host, user string) ssh.AuthMethod {
-	return ssh.KeyboardInteractive(func(name, instruction string, questions []string, echos []bool) ([]string, error) {
-		defer fmt.Print("\r\n")
-		var answers []string
-		errch := make(chan error, 1)
-		defer close(errch)
+	return ssh.RetryableAuthMethod(ssh.KeyboardInteractive(
+		func(name, instruction string, questions []string, echos []bool) ([]string, error) {
+			defer fmt.Print("\r\n")
+			var answers []string
+			errch := make(chan error, 1)
+			defer close(errch)
 
-		sigch := make(chan os.Signal, 1)
-		signal.Notify(sigch, os.Interrupt)
-		go func() {
-			for range sigch {
-				errch <- fmt.Errorf("interrupt")
-			}
-		}()
-		defer func() { signal.Stop(sigch); close(sigch) }()
+			sigch := make(chan os.Signal, 1)
+			signal.Notify(sigch, os.Interrupt)
+			go func() {
+				for range sigch {
+					errch <- fmt.Errorf("interrupt")
+				}
+			}()
+			defer func() { signal.Stop(sigch); close(sigch) }()
 
-		go func() {
-			for i, question := range questions {
-				if i > 0 {
-					fmt.Print("\r\n")
+			go func() {
+				for i, question := range questions {
+					if i > 0 {
+						fmt.Print("\r\n")
+					}
+					fmt.Printf("(%s@%s) %s", user, host, strings.ReplaceAll(question, "\n", "\r\n"))
+					pw, err := term.ReadPassword(int(syscall.Stdin))
+					if err != nil {
+						errch <- err
+						return
+					}
+					answers = append(answers, string(pw))
 				}
-				fmt.Printf("(%s@%s) %s", user, host, question)
-				pw, err := term.ReadPassword(int(syscall.Stdin))
-				if err != nil {
-					errch <- err
-					return
-				}
-				answers = append(answers, string(pw))
-			}
-			errch <- nil
-		}()
-		return answers, <-errch
-	})
+				errch <- nil
+			}()
+			return answers, <-errch
+		}), 3)
 }
 
 var getDefaultSigners = func() func() ([]ssh.Signer, error) {
@@ -381,7 +386,11 @@ func getAuthMethods(args *sshArgs, host, user string) ([]ssh.AuthMethod, error) 
 	if len(signers) > 0 {
 		authMethods = append(authMethods, ssh.PublicKeys(signers...))
 	}
-	authMethods = append(authMethods, getPasswordAuthMethod(host, user), getKeyboardInteractiveAuthMethod(host, user))
+
+	authMethods = append(authMethods,
+		getPasswordAuthMethod(args, host, user),
+		getKeyboardInteractiveAuthMethod(host, user))
+
 	return authMethods, nil
 }
 
