@@ -96,7 +96,9 @@ func parseRemoteCommand(args *sshArgs) string {
 	return ssh_config.Get(args.Destination, "RemoteCommand")
 }
 
-func parseCmdAndTTY(args *sshArgs, terminal bool) (cmd string, tty bool, err error) {
+var isTerminal bool = term.IsTerminal(int(os.Stdin.Fd()))
+
+func parseCmdAndTTY(args *sshArgs) (cmd string, tty bool, err error) {
 	cmd = parseRemoteCommand(args)
 
 	if args.DisableTTY && args.ForceTTY {
@@ -115,13 +117,13 @@ func parseCmdAndTTY(args *sshArgs, terminal bool) (cmd string, tty bool, err err
 	requestTTY := strings.ToLower(ssh_config.Get(args.Destination, "RequestTTY"))
 	switch requestTTY {
 	case "", "auto":
-		tty = cmd == ""
+		tty = isTerminal && (cmd == "")
 	case "no":
 		tty = false
 	case "force":
 		tty = true
 	case "yes":
-		tty = terminal
+		tty = isTerminal
 	default:
 		err = fmt.Errorf("unknown RequestTTY option: %s", ssh_config.Get(args.Destination, "RequestTTY"))
 	}
@@ -148,8 +150,7 @@ func TsshMain() int {
 
 	// setup terminal
 	var mode *terminalMode
-	terminal := term.IsTerminal(int(os.Stdin.Fd()))
-	if terminal {
+	if isTerminal {
 		mode, err = setupTerminalMode()
 		if err != nil {
 			return 1
@@ -159,8 +160,8 @@ func TsshMain() int {
 
 	// choose ssh alias
 	if args.Destination == "" {
-		if !terminal {
-			parser.WriteHelp(os.Stdout)
+		if !isTerminal {
+			parser.WriteHelp(os.Stderr)
 			return 2
 		}
 		var quit bool
@@ -175,7 +176,7 @@ func TsshMain() int {
 	}
 
 	// parse cmd and tty
-	command, tty, err := parseCmdAndTTY(&args, terminal)
+	command, tty, err := parseCmdAndTTY(&args)
 	if err != nil {
 		return 4
 	}

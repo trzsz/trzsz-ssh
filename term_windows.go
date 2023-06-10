@@ -177,9 +177,10 @@ func onTerminalResize(setTerminalSize func(int, int)) {
 }
 
 func getKeyboardInput() (*os.File, func(), error) {
-	if term.IsTerminal(int(os.Stdin.Fd())) {
+	if isTerminal {
 		return os.Stdin, func() {}, nil
 	}
+
 	path, err := syscall.UTF16PtrFromString("CONIN$")
 	if err != nil {
 		return nil, nil, err
@@ -190,5 +191,12 @@ func getKeyboardInput() (*os.File, func(), error) {
 		return nil, nil, err
 	}
 	file := os.NewFile(uintptr(handle), "CONIN$")
-	return file, func() { file.Close() }, nil
+
+	state, err := term.MakeRaw(int(file.Fd()))
+	if err != nil {
+		_ = file.Close()
+		return nil, nil, fmt.Errorf("CONIN$ make raw failed: %#v", err)
+	}
+
+	return file, func() { _ = term.Restore(int(file.Fd()), state); _ = file.Close() }, nil
 }

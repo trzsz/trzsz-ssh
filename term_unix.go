@@ -76,12 +76,21 @@ func onTerminalResize(setTerminalSize func(int, int)) {
 }
 
 func getKeyboardInput() (*os.File, func(), error) {
-	if term.IsTerminal(int(os.Stdin.Fd())) {
+	if isTerminal {
 		return os.Stdin, func() {}, nil
 	}
-	file, err := os.Open("/dev/tty")
+
+	path := "/dev/tty"
+	file, err := os.Open(path)
 	if err != nil {
 		return nil, nil, err
 	}
-	return file, func() { file.Close() }, nil
+
+	state, err := term.MakeRaw(int(file.Fd()))
+	if err != nil {
+		_ = file.Close()
+		return nil, nil, fmt.Errorf("%s make raw failed: %#v", path, err)
+	}
+
+	return file, func() { _ = term.Restore(int(file.Fd()), state); _ = file.Close() }, nil
 }

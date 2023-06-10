@@ -25,7 +25,7 @@ SOFTWARE.
 package tssh
 
 import (
-	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -167,6 +167,28 @@ func createKnownHosts(path string) error {
 	return nil
 }
 
+func readLineFromRawIO(stdin *os.File) (string, error) {
+	buffer := new(bytes.Buffer)
+	buf := make([]byte, 100)
+	for {
+		n, err := stdin.Read(buf)
+		if err != nil {
+			return "", nil
+		}
+		data := buf[:n]
+		if bytes.ContainsRune(data, '\x03') {
+			return "", fmt.Errorf("interrupt")
+		}
+		buffer.Write(data)
+		if bytes.ContainsAny(data, "\r\n") {
+			fmt.Fprintf(os.Stderr, "\r\n")
+			break
+		}
+		fmt.Fprintf(os.Stderr, "%s", string(data))
+	}
+	return string(bytes.TrimSpace(buffer.Bytes())), nil
+}
+
 func addHostKey(path, host string, remote net.Addr, key ssh.PublicKey) error {
 	fingerprint := ssh.FingerprintSHA256(key)
 	fmt.Fprintf(os.Stderr, "The authenticity of host '%s' can't be established.\r\n"+
@@ -179,10 +201,12 @@ func addHostKey(path, host string, remote net.Addr, key ssh.PublicKey) error {
 	}
 	defer closer()
 
-	scanner := bufio.NewScanner(stdin)
 	fmt.Fprintf(os.Stderr, "Are you sure you want to continue connecting (yes/no/[fingerprint])? ")
-	for scanner.Scan() {
-		input := strings.TrimSpace(scanner.Text())
+	for {
+		input, err := readLineFromRawIO(stdin)
+		if err != nil {
+			return err
+		}
 		if input == fingerprint {
 			break
 		}
@@ -193,9 +217,6 @@ func addHostKey(path, host string, remote net.Addr, key ssh.PublicKey) error {
 			return fmt.Errorf("host key not trusted")
 		}
 		fmt.Fprintf(os.Stderr, "Please type 'yes', 'no' or the fingerprint: ")
-	}
-	if err := scanner.Err(); err != nil {
-		return err
 	}
 
 	fmt.Fprintf(os.Stderr, "\r\033[0;33mWarning: Permanently added '%s' (%s) to the list of known hosts.\033[0m\r\n", host, key.Type())
