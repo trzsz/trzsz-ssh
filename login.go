@@ -252,6 +252,11 @@ var getHostKeyCallback = func() func() (ssh.HostKeyCallback, error) {
 }()
 
 func getSigner(path string) (ssh.Signer, error) {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		if strings.HasPrefix(path, "~/") || strings.HasPrefix(path, "~\\") {
+			path = filepath.Join(userHomeDir, path[2:])
+		}
+	}
 	privateKey, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read private key [%s] failed: %v", path, err)
@@ -342,7 +347,7 @@ var getDefaultSigners = func() func() ([]ssh.Signer, error) {
 			for _, name := range []string{ssh_config.Default("IdentityFile"), "id_rsa", "id_ecdsa",
 				"id_ecdsa_sk", "id_ed25519", "id_ed25519_sk", "id_dsa"} {
 				path := filepath.Join(userHomeDir, ".ssh", name)
-				if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+				if _, err := os.Stat(path); os.IsNotExist(err) {
 					continue
 				}
 				var signer ssh.Signer
