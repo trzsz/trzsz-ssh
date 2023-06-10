@@ -29,6 +29,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/kevinburke/ssh_config"
 	"github.com/trzsz/go-arg"
 	"golang.org/x/term"
 )
@@ -41,9 +42,11 @@ type sshOption struct {
 
 type sshArgs struct {
 	Ver         bool      `arg:"-V,--" help:"show program's version number and exit"`
-	Terminal    bool      `arg:"-t,--" help:"force pseudo-terminal allocation (default)"`
 	Destination string    `arg:"positional" help:"alias in ~/.ssh/config, or [user@]hostname[:port]"`
-	Command     string    `arg:"positional" help:"command with arguments, instead of a login shell.\ne.g., tssh destination \"tmux -CC\""`
+	Command     string    `arg:"positional" help:"command to execute instead of a login shell"`
+	Argument    []string  `arg:"positional" help:"command arguments separated by spaces"`
+	DisableTTY  bool      `arg:"-T,--" help:"disable pseudo-terminal allocation"`
+	ForceTTY    bool      `arg:"-t,--" help:"force pseudo-terminal allocation"`
 	Port        int       `arg:"-p,--" help:"port to connect to on the remote host"`
 	Identity    string    `arg:"-i,--" help:"identity (private key) for public key auth"`
 	ProxyJump   string    `arg:"-J,--" help:"jump hosts separated by comma characters"`
@@ -83,9 +86,51 @@ func (o *sshOption) get(option string) string {
 	return o.options[strings.ToLower(option)]
 }
 
+func parseRemoteCommand(args *sshArgs) string {
+	if args.Command != "" {
+		if len(args.Argument) == 0 {
+			return args.Command
+		}
+		return fmt.Sprintf("%s %s", args.Command, strings.Join(args.Argument, " "))
+	}
+	return ssh_config.Get(args.Destination, "RemoteCommand")
+}
+
+func parseCmdAndTTY(args *sshArgs, terminal bool) (cmd string, tty bool, err error) {
+	cmd = parseRemoteCommand(args)
+
+	if args.DisableTTY && args.ForceTTY {
+		err = fmt.Errorf("cannot specify -t with -T")
+		return
+	}
+	if args.DisableTTY {
+		tty = false
+		return
+	}
+	if args.ForceTTY {
+		tty = true
+		return
+	}
+
+	requestTTY := strings.ToLower(ssh_config.Get(args.Destination, "RequestTTY"))
+	switch requestTTY {
+	case "", "auto":
+		tty = cmd == ""
+	case "no":
+		tty = false
+	case "force":
+		tty = true
+	case "yes":
+		tty = terminal
+	default:
+		err = fmt.Errorf("unknown RequestTTY option: %s", ssh_config.Get(args.Destination, "RequestTTY"))
+	}
+	return
+}
+
 func TsshMain() int {
 	var args sshArgs
-	arg.MustParse(&args)
+	parser := arg.MustParse(&args)
 
 	// compatible with -V option
 	if args.Ver {
@@ -101,23 +146,23 @@ func TsshMain() int {
 		}
 	}()
 
-	// setup terminal for Windows
-	mode, err := setupTerminalMode()
-	if err != nil {
-		return -1
+	// setup terminal
+	var mode *terminalMode
+	terminal := term.IsTerminal(int(os.Stdin.Fd()))
+	if terminal {
+		mode, err = setupTerminalMode()
+		if err != nil {
+			return 1
+		}
+		defer resetTerminalMode(mode)
 	}
-	defer resetTerminalMode(mode)
-
-	// make stdin to raw
-	fd := int(os.Stdin.Fd())
-	state, err := term.MakeRaw(fd)
-	if err != nil {
-		return -2
-	}
-	defer term.Restore(fd, state) // nolint:all
 
 	// choose ssh alias
 	if args.Destination == "" {
+		if !terminal {
+			parser.WriteHelp(os.Stdout)
+			return 2
+		}
 		var quit bool
 		args.Destination, quit, err = chooseAlias()
 		if quit {
@@ -125,19 +170,53 @@ func TsshMain() int {
 			return 0
 		}
 		if err != nil {
-			return -3
+			return 3
 		}
 	}
 
-	// ssh login
-	session, err := sshLogin(&args)
+	// parse cmd and tty
+	command, tty, err := parseCmdAndTTY(&args, terminal)
 	if err != nil {
-		return -4
+		return 4
+	}
+
+	// ssh login
+	client, session, err := sshLogin(&args, tty)
+	if err != nil {
+		return 5
+	}
+	defer client.Close()
+	defer session.Close()
+
+	// reset terminal if no tty
+	if !tty && mode != nil {
+		resetTerminalMode(mode)
+	}
+
+	// run command or start shell
+	if command != "" {
+		if !tty {
+			err = session.Run(command)
+			if err != nil {
+				return 6
+			}
+			return 0
+		}
+		if err = session.Start(command); err != nil {
+			err = fmt.Errorf("start command [%s] failed: %v", command, err)
+			return 7
+		}
+	} else {
+		if err = session.Shell(); err != nil {
+			err = fmt.Errorf("start shell failed: %v", err)
+			return 8
+		}
 	}
 
 	// wait for exit
-	if err := session.Wait(); err != nil {
-		return -5
+	if err = session.Wait(); err != nil {
+		err = nil // ignore wait error
+		return 9
 	}
 	return 0
 }

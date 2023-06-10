@@ -215,7 +215,7 @@ func chooseAlias() (string, bool, error) {
 
 	i, _, err := prompt.Run()
 	if err != nil {
-		return "", quit, err
+		return "", quit, fmt.Errorf("prompt choose alias failed: %#v", err)
 	}
 	return hosts[i].Alias, quit, nil
 }

@@ -27,6 +27,7 @@ SOFTWARE.
 package tssh
 
 import (
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -35,13 +36,22 @@ import (
 )
 
 type terminalMode struct {
+	state *term.State
 }
 
 func setupTerminalMode() (*terminalMode, error) {
-	return &terminalMode{}, nil
+	state, err := term.MakeRaw(int(os.Stdin.Fd()))
+	if err != nil {
+		return nil, fmt.Errorf("terminal make raw failed: %#v", err)
+	}
+	return &terminalMode{state}, nil
 }
 
-func resetTerminalMode(*terminalMode) {
+func resetTerminalMode(tm *terminalMode) {
+	if tm.state != nil {
+		_ = term.Restore(int(os.Stdin.Fd()), tm.state)
+		tm.state = nil
+	}
 }
 
 func getTerminalSize() (int, int, error) {
@@ -63,4 +73,15 @@ func onTerminalResize(setTerminalSize func(int, int)) {
 		}
 	}()
 	ch <- syscall.SIGWINCH
+}
+
+func getKeyboardInput() (*os.File, func(), error) {
+	if term.IsTerminal(int(os.Stdin.Fd())) {
+		return os.Stdin, func() {}, nil
+	}
+	file, err := os.Open("/dev/tty")
+	if err != nil {
+		return nil, nil, err
+	}
+	return file, func() { file.Close() }, nil
 }

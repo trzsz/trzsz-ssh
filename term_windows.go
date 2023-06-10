@@ -25,10 +25,13 @@ SOFTWARE.
 package tssh
 
 import (
+	"fmt"
+	"os"
 	"syscall"
 	"time"
 
 	"golang.org/x/sys/windows"
+	"golang.org/x/term"
 )
 
 type terminalMode struct {
@@ -36,6 +39,7 @@ type terminalMode struct {
 	outCP   uint32
 	inMode  uint32
 	outMode uint32
+	state   *term.State
 }
 
 const CP_UTF8 uint32 = 65001
@@ -112,7 +116,7 @@ func setupTerminalMode() (*terminalMode, error) {
 	// enable virtual terminal
 	inMode, outMode, err := enableVirtualTerminal()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("enable virtual terminal failed: %#v", err)
 	}
 
 	// set code page to UTF8
@@ -121,13 +125,25 @@ func setupTerminalMode() (*terminalMode, error) {
 	setConsoleCP(CP_UTF8)
 	setConsoleOutputCP(CP_UTF8)
 
-	return &terminalMode{inCP, outCP, inMode, outMode}, nil
+	state, err := term.MakeRaw(int(os.Stdin.Fd()))
+	if err != nil {
+		return nil, fmt.Errorf("terminal make raw failed: %#v", err)
+	}
+
+	return &terminalMode{inCP, outCP, inMode, outMode, state}, nil
 }
 
-func resetTerminalMode(t *terminalMode) {
-	setConsoleCP(t.inCP)
-	setConsoleOutputCP(t.outCP)
-	resetVirtualTerminal(t.inMode, t.outMode)
+func resetTerminalMode(tm *terminalMode) {
+	if tm.state == nil {
+		return
+	}
+
+	_ = term.Restore(int(os.Stdin.Fd()), tm.state)
+	tm.state = nil
+
+	setConsoleCP(tm.inCP)
+	setConsoleOutputCP(tm.outCP)
+	resetVirtualTerminal(tm.inMode, tm.outMode)
 }
 
 func getTerminalSize() (int, int, error) {
@@ -158,4 +174,21 @@ func onTerminalResize(setTerminalSize func(int, int)) {
 			}
 		}
 	}()
+}
+
+func getKeyboardInput() (*os.File, func(), error) {
+	if term.IsTerminal(int(os.Stdin.Fd())) {
+		return os.Stdin, func() {}, nil
+	}
+	path, err := syscall.UTF16PtrFromString("CONIN$")
+	if err != nil {
+		return nil, nil, err
+	}
+	handle, err := syscall.CreateFile(path, syscall.GENERIC_READ|syscall.GENERIC_WRITE,
+		syscall.FILE_SHARE_READ, nil, syscall.OPEN_EXISTING, 0, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+	file := os.NewFile(uintptr(handle), "CONIN$")
+	return file, func() { file.Close() }, nil
 }

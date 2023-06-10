@@ -25,6 +25,7 @@ SOFTWARE.
 package tssh
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -39,10 +40,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
-	"github.com/chzyer/readline"
 	"github.com/kevinburke/ssh_config"
 	"github.com/trzsz/trzsz-go/trzsz"
 	"golang.org/x/crypto/ssh"
@@ -97,7 +96,7 @@ func getLoginParamFromArgs(args *sshArgs) (*loginParam, error) {
 	// login proxy
 	command := args.Option.get("ProxyCommand")
 	if command != "" && args.ProxyJump != "" {
-		return nil, fmt.Errorf("Cannot specify -J with ProxyCommand")
+		return nil, fmt.Errorf("cannot specify -J with ProxyCommand")
 	}
 	if command != "" {
 		param.command = command
@@ -170,20 +169,20 @@ func createKnownHosts(path string) error {
 
 func addHostKey(path, host string, remote net.Addr, key ssh.PublicKey) error {
 	fingerprint := ssh.FingerprintSHA256(key)
-	fmt.Printf("The authenticity of host '%s' can't be established.\r\n"+
+	fmt.Fprintf(os.Stderr, "The authenticity of host '%s' can't be established.\r\n"+
 		"%s key fingerprint is %s.\r\n", host, key.Type(), fingerprint)
+	defer fmt.Fprintf(os.Stderr, "\r")
 
-	defer fmt.Print("\r")
-	rl, err := readline.New("Are you sure you want to continue connecting (yes/no/[fingerprint])? ")
+	stdin, closer, err := getKeyboardInput()
 	if err != nil {
 		return err
 	}
-	for {
-		input, err := rl.Readline()
-		if err != nil {
-			return err
-		}
-		input = strings.TrimSpace(input)
+	defer closer()
+
+	scanner := bufio.NewScanner(stdin)
+	fmt.Fprintf(os.Stderr, "Are you sure you want to continue connecting (yes/no/[fingerprint])? ")
+	for scanner.Scan() {
+		input := strings.TrimSpace(scanner.Text())
 		if input == fingerprint {
 			break
 		}
@@ -192,12 +191,14 @@ func addHostKey(path, host string, remote net.Addr, key ssh.PublicKey) error {
 			break
 		} else if input == "no" {
 			return fmt.Errorf("host key not trusted")
-		} else {
-			rl.SetPrompt("Please type 'yes', 'no' or the fingerprint: ")
 		}
+		fmt.Fprintf(os.Stderr, "Please type 'yes', 'no' or the fingerprint: ")
+	}
+	if err := scanner.Err(); err != nil {
+		return err
 	}
 
-	fmt.Printf("\r\033[0;33mWarning: Permanently added '%s' (%s) to the list of known hosts.\033[0m\r\n", host, key.Type())
+	fmt.Fprintf(os.Stderr, "\r\033[0;33mWarning: Permanently added '%s' (%s) to the list of known hosts.\033[0m\r\n", host, key.Type())
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 	if err != nil {
 		return err
@@ -229,7 +230,7 @@ var getHostKeyCallback = func() func() (ssh.HostKeyCallback, error) {
 				var keyErr *knownhosts.KeyError
 				err := cb(host, remote, key)
 				if errors.As(err, &keyErr) && len(keyErr.Want) > 0 {
-					fmt.Printf("\033[0;31m@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\r\n"+
+					fmt.Fprintf(os.Stderr, "\033[0;31m@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\r\n"+
 						"@    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @\r\n"+
 						"@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\r\n"+
 						"IT IS POSSIBLE THAT SOMEONE IS DOING SOMETHING NASTY!\r\n"+
@@ -274,8 +275,8 @@ func getPasswordAuthMethod(args *sshArgs, host, user string) ssh.AuthMethod {
 		return ssh.Password(password)
 	}
 	return ssh.RetryableAuthMethod(ssh.PasswordCallback(func() (secret string, err error) {
-		fmt.Printf("%s@%s's password: ", user, host)
-		defer fmt.Print("\r\n")
+		fmt.Fprintf(os.Stderr, "%s@%s's password: ", user, host)
+		defer fmt.Fprintf(os.Stderr, "\r\n")
 		errch := make(chan error, 1)
 		defer close(errch)
 
@@ -289,7 +290,13 @@ func getPasswordAuthMethod(args *sshArgs, host, user string) ssh.AuthMethod {
 		defer func() { signal.Stop(sigch); close(sigch) }()
 
 		go func() {
-			pw, err := term.ReadPassword(int(syscall.Stdin))
+			stdin, closer, err := getKeyboardInput()
+			if err != nil {
+				errch <- err
+				return
+			}
+			defer closer()
+			pw, err := term.ReadPassword(int(stdin.Fd()))
 			if err != nil {
 				errch <- err
 				return
@@ -305,7 +312,7 @@ func getPasswordAuthMethod(args *sshArgs, host, user string) ssh.AuthMethod {
 func getKeyboardInteractiveAuthMethod(host, user string) ssh.AuthMethod {
 	return ssh.RetryableAuthMethod(ssh.KeyboardInteractive(
 		func(name, instruction string, questions []string, echos []bool) ([]string, error) {
-			defer fmt.Print("\r\n")
+			defer fmt.Fprintf(os.Stderr, "\r\n")
 			var answers []string
 			errch := make(chan error, 1)
 			defer close(errch)
@@ -320,12 +327,18 @@ func getKeyboardInteractiveAuthMethod(host, user string) ssh.AuthMethod {
 			defer func() { signal.Stop(sigch); close(sigch) }()
 
 			go func() {
+				stdin, closer, err := getKeyboardInput()
+				if err != nil {
+					errch <- err
+					return
+				}
+				defer closer()
 				for i, question := range questions {
 					if i > 0 {
-						fmt.Print("\r\n")
+						fmt.Fprintf(os.Stderr, "\r\n")
 					}
-					fmt.Printf("(%s@%s) %s", user, host, strings.ReplaceAll(question, "\n", "\r\n"))
-					pw, err := term.ReadPassword(int(syscall.Stdin))
+					fmt.Fprintf(os.Stderr, "(%s@%s) %s", user, host, strings.ReplaceAll(question, "\n", "\r\n"))
+					pw, err := term.ReadPassword(int(stdin.Fd()))
 					if err != nil {
 						errch <- err
 						return
@@ -503,6 +516,10 @@ func sshConnect(args *sshArgs, client *ssh.Client, proxy string) (*ssh.Client, e
 		Auth:            authMethods,
 		Timeout:         3 * time.Second,
 		HostKeyCallback: hostkeyCallback,
+		BannerCallback: func(banner string) error {
+			_, err := fmt.Fprint(os.Stderr, strings.ReplaceAll(banner, "\n", "\r\n"))
+			return err
+		},
 	}
 
 	proxyConnect := func(client *ssh.Client, proxy string) (*ssh.Client, error) {
@@ -593,48 +610,65 @@ func keepAlive(client *ssh.Client, args *sshArgs) {
 	}
 }
 
-func getRemoteCommand(args *sshArgs) string {
-	if args.Command != "" {
-		return args.Command
-	}
-	return ssh_config.Get(args.Destination, "RemoteCommand")
-}
+func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session, err error) {
+	defer func() {
+		if err != nil {
+			if session != nil {
+				session.Close()
+			}
+			if client != nil {
+				client.Close()
+			}
+		}
+	}()
 
-func sshLogin(args *sshArgs) (*ssh.Session, error) {
 	// init user home
-	var err error
 	userHomeDir, err = os.UserHomeDir()
 	if err != nil {
-		return nil, fmt.Errorf("user home dir failed: %v", err)
+		err = fmt.Errorf("user home dir failed: %v", err)
+		return
 	}
 
 	// ssh login
-	client, err := sshConnect(args, nil, "")
+	client, err = sshConnect(args, nil, "")
 	if err != nil {
-		return nil, err
+		return
 	}
-	session, err := client.NewSession()
+	session, err = client.NewSession()
 	if err != nil {
-		return nil, fmt.Errorf("ssh new session failed: %v", err)
+		err = fmt.Errorf("ssh new session failed: %v", err)
+		return
+	}
+	session.Stderr = os.Stderr
+
+	// no tty
+	if !tty {
+		session.Stdin = os.Stdin
+		session.Stdout = os.Stdout
+		return
 	}
 
 	// request pty session
 	width, height, err := getTerminalSize()
 	if err != nil {
-		return nil, fmt.Errorf("get terminal size failed: %v", err)
+		err = fmt.Errorf("get terminal size failed: %v", err)
+		return
 	}
-	if err := session.RequestPty("xterm-256color", height, width, ssh.TerminalModes{}); err != nil {
-		return nil, fmt.Errorf("request pty failed: %v", err)
+	if err = session.RequestPty("xterm-256color", height, width, ssh.TerminalModes{}); err != nil {
+		err = fmt.Errorf("request pty failed: %v", err)
+		return
 	}
 
 	// session input and output
 	serverIn, err := session.StdinPipe()
 	if err != nil {
-		return nil, fmt.Errorf("stdin pipe failed: %v", err)
+		err = fmt.Errorf("stdin pipe failed: %v", err)
+		return
 	}
 	serverOut, err := session.StdoutPipe()
 	if err != nil {
-		return nil, fmt.Errorf("stdout pipe failed: %v", err)
+		err = fmt.Errorf("stdout pipe failed: %v", err)
+		return
 	}
 
 	// create a TrzszFilter to support trzsz ( trz / tsz )
@@ -651,7 +685,6 @@ func sshLogin(args *sshArgs) (*ssh.Session, error) {
 		DetectDragFile:  args.DragFile,
 		DetectTraceLog:  args.TraceLog,
 	})
-	session.Stderr = os.Stderr
 
 	// reset terminal size on resize
 	onTerminalResize(func(width, height int) {
@@ -661,18 +694,5 @@ func sshLogin(args *sshArgs) (*ssh.Session, error) {
 
 	// keep alive
 	go keepAlive(client, args)
-
-	// start shell
-	command := getRemoteCommand(args)
-	if command != "" {
-		if err := session.Start(command); err != nil {
-			return nil, fmt.Errorf("start command [%s] failed: %v", command, err)
-		}
-	} else {
-		if err := session.Shell(); err != nil {
-			return nil, fmt.Errorf("start shell failed: %v", err)
-		}
-	}
-
-	return session, nil
+	return
 }
