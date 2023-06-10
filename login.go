@@ -291,9 +291,24 @@ func getSigner(path string) (ssh.Signer, error) {
 }
 
 func getPasswordAuthMethod(args *sshArgs, host, user string) ssh.AuthMethod {
-	password := ssh_config.Get(args.Destination, "Password")
-	if password != "" {
-		return ssh.Password(password)
+	path := filepath.Join(userHomeDir, ".ssh", "password")
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		for {
+			file, err := os.Open(path)
+			if err != nil {
+				break
+			}
+			defer file.Close()
+			cfg, err := ssh_config.Decode(file)
+			if err != nil {
+				break
+			}
+			password, err := cfg.Get(args.Destination, "Password")
+			if err == nil && password != "" {
+				return ssh.Password(password)
+			}
+			break // nolint:all
+		}
 	}
 	return ssh.RetryableAuthMethod(ssh.PasswordCallback(func() (secret string, err error) {
 		fmt.Fprintf(os.Stderr, "%s@%s's password: ", user, host)

@@ -60,24 +60,21 @@ _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\
 
 ## 记住密码
 
-- 推荐使用前面密钥认证的方式，密码的安全性弱一些。如果必须要用，建议设置好 `~/.ssh/config` 配置的权限：
+- 为了兼容标准 ssh ，密码配置项独立放在 `~/.ssh/password` 中，其他配置项依然放在 `~/.ssh/config` 中。
+
+- 推荐使用前面密钥认证的方式，密码的安全性弱一些。如果必须要用，建议设置好 `~/.ssh/password` 配置的权限：
 
   ```sh
-  chmod 700 ~/.ssh && chmod 600 ~/.ssh/config
+  chmod 700 ~/.ssh && chmod 600 ~/.ssh/password
   ```
 
-- 下面 `~/.ssh/config` 配置的 `test1` 和 `test3` 的密码是 `111111`，`test2` 的密码是 `123456`：
+- 下面 `~/.ssh/password` 配置 `test2` 的密码是 `123456`，其他以 `test` 开头的密码是 `111111`：
 
   ```
-  Host test1
-      HostName 192.168.0.1
   Host test2
-      HostName 192.168.0.2
       Password 123456
-  Host test3
-      HostName 192.168.0.3
 
-  # ~/.ssh/config 是支持通配符的，tssh 会使用第一个匹配到的值。
+  # ~/.ssh/config 和 ~/.ssh/password 是支持通配符的，tssh 会使用第一个匹配到的值。
   # 这里希望 test2 使用区别于其他 test* 的密码，所以将 test* 放在了 test2 的后面。
 
   Host test*
