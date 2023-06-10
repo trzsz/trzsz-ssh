@@ -62,4 +62,5 @@ func onTerminalResize(setTerminalSize func(int, int)) {
 			}
 		}
 	}()
+	ch <- syscall.SIGWINCH
 }
