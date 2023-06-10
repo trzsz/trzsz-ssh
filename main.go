@@ -53,6 +53,7 @@ type sshArgs struct {
 	Option      sshOption `arg:"-o,--" help:"options in the format used in ~/.ssh/config\ne.g., tssh -o ProxyCommand=\"ssh proxy nc %h %p\""`
 	DragFile    bool      `help:"enable drag files and directories to upload"`
 	TraceLog    bool      `help:"enable trzsz detect trace logs for debugging"`
+	Relay       bool      `help:"force trzsz run as a relay on the jump server"`
 }
 
 func (sshArgs) Description() string {

@@ -692,26 +692,33 @@ func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session
 		return
 	}
 
-	// create a TrzszFilter to support trzsz ( trz / tsz )
-	//
-	//   os.Stdin  ┌────────┐   os.Stdin   ┌─────────────┐   ServerIn   ┌────────┐
-	// ───────────►│        ├─────────────►│             ├─────────────►│        │
-	//             │        │              │ TrzszFilter │              │        │
-	// ◄───────────│ Client │◄─────────────┤             │◄─────────────┤ Server │
-	//   os.Stdout │        │   os.Stdout  └─────────────┘   ServerOut  │        │
-	// ◄───────────│        │◄──────────────────────────────────────────┤        │
-	//   os.Stderr └────────┘                  stderr                   └────────┘
-	trzszFilter := trzsz.NewTrzszFilter(os.Stdin, os.Stdout, serverIn, serverOut, trzsz.TrzszOptions{
-		TerminalColumns: int32(width),
-		DetectDragFile:  args.DragFile,
-		DetectTraceLog:  args.TraceLog,
-	})
+	if args.Relay || isNoGUI() {
+		// run as a relay
+		trzsz.NewTrzszRelay(os.Stdin, os.Stdout, serverIn, serverOut, trzsz.TrzszOptions{
+			DetectTraceLog: args.TraceLog,
+		})
+	} else {
+		// create a TrzszFilter to support trzsz ( trz / tsz )
+		//
+		//   os.Stdin  ┌────────┐   os.Stdin   ┌─────────────┐   ServerIn   ┌────────┐
+		// ───────────►│        ├─────────────►│             ├─────────────►│        │
+		//             │        │              │ TrzszFilter │              │        │
+		// ◄───────────│ Client │◄─────────────┤             │◄─────────────┤ Server │
+		//   os.Stdout │        │   os.Stdout  └─────────────┘   ServerOut  │        │
+		// ◄───────────│        │◄──────────────────────────────────────────┤        │
+		//   os.Stderr └────────┘                  stderr                   └────────┘
+		trzszFilter := trzsz.NewTrzszFilter(os.Stdin, os.Stdout, serverIn, serverOut, trzsz.TrzszOptions{
+			TerminalColumns: int32(width),
+			DetectDragFile:  args.DragFile,
+			DetectTraceLog:  args.TraceLog,
+		})
 
-	// reset terminal size on resize
-	onTerminalResize(func(width, height int) {
-		trzszFilter.SetTerminalColumns(int32(width))
-		_ = session.WindowChange(height, width)
-	})
+		// reset terminal size on resize
+		onTerminalResize(func(width, height int) {
+			trzszFilter.SetTerminalColumns(int32(width))
+			_ = session.WindowChange(height, width)
+		})
+	}
 
 	// keep alive
 	go keepAlive(client, args)
