@@ -7,7 +7,7 @@ require (
 	github.com/kevinburke/ssh_config v1.2.0
 	github.com/manifoldco/promptui v0.9.0
 	github.com/trzsz/go-arg v1.5.0
-	github.com/trzsz/trzsz-go v1.1.3-0.20230610135508-66fe0bd99b6a
+	github.com/trzsz/trzsz-go v1.1.3
 	golang.org/x/crypto v0.9.0
 	golang.org/x/sys v0.8.0
 	golang.org/x/term v0.8.0

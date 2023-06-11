@@ -34,7 +34,7 @@ import (
 	"golang.org/x/term"
 )
 
-const kTsshVersion = "0.1.1"
+const kTsshVersion = "0.1.2"
 
 type sshOption struct {
 	options map[string]string

@@ -707,6 +707,8 @@ func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session
 		return
 	}
 
+	// support trzsz ( trz / tsz )
+	trzsz.SetAffectedByWindows(false)
 	if args.Relay || isNoGUI() {
 		// run as a relay
 		trzsz.NewTrzszRelay(os.Stdin, os.Stdout, serverIn, serverOut, trzsz.TrzszOptions{

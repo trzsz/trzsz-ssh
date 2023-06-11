@@ -42,8 +42,8 @@ github.com/stretchr/testify v1.7.0 h1:nwc3DEeHmmLAfoZucVR881uASk0Mfjw8xYJ99tb5Cc
 github.com/stretchr/testify v1.7.0/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
 github.com/trzsz/go-arg v1.5.0 h1:mGMS+6OV9xT3o6rv8bb5s7G63Z3pAZGiz22IXVc2n+w=
 github.com/trzsz/go-arg v1.5.0/go.mod h1:uyyrY2iRmpx38VWfScFlsSyB4eYsQcKg/K4rx+HAOQc=
-github.com/trzsz/trzsz-go v1.1.3-0.20230610135508-66fe0bd99b6a h1:cOcvoRnCAeCtjnSYx7GRwcZBJftD1q3OfmHlHD5vtDc=
-github.com/trzsz/trzsz-go v1.1.3-0.20230610135508-66fe0bd99b6a/go.mod h1:TUaPU/tZinjuX+jaiNUcpSZq8yXw4jWcAttMuSzU6F4=
+github.com/trzsz/trzsz-go v1.1.3 h1:3By3UuC6k8iKfzy5IZ0i1aNvUxlqsjgylngLMvqD1iw=
+github.com/trzsz/trzsz-go v1.1.3/go.mod h1:TUaPU/tZinjuX+jaiNUcpSZq8yXw4jWcAttMuSzU6F4=
 github.com/yuin/goldmark v1.4.13/go.mod h1:6yULJ656Px+3vBD8DxQVa3kxgyrAnzto9xy5taEt/CY=
 go.uber.org/goleak v1.2.1 h1:NBol2c7O1ZokfZ0LEU9K6Whx/KnwvepVetCUhtKja4A=
 golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2/go.mod h1:djNgcEr1/C05ACkg1iLfiJU5Ep61QUkGW8qpdssI0+w=
