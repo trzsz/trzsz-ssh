@@ -33,8 +33,7 @@ import (
 	"strconv"
 )
 
-func isRemoteSshEnv() bool {
-	pid := os.Getppid()
+func isRemoteSshEnv(pid int) bool {
 	for i := 0; i < 1000; i++ {
 		stat, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
 		if err != nil {
@@ -87,5 +86,5 @@ func isNoGUI() bool {
 	if os.Getenv("DISPLAY") != "" {
 		return false
 	}
-	return isDockerEnv() || isRemoteSshEnv()
+	return isDockerEnv() || isRemoteSshEnv(os.Getppid()) || isSshTmuxEnv()
 }

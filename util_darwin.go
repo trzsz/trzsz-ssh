@@ -31,8 +31,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func isRemoteSshEnv() bool {
-	pid := os.Getppid()
+func isRemoteSshEnv(pid int) bool {
 	for i := 0; i < 1000; i++ {
 		kinfo, err := unix.SysctlKinfoProc("kern.proc.pid", pid)
 		if err != nil {
@@ -64,5 +63,5 @@ func isNoGUI() bool {
 	if os.Getenv("DISPLAY") != "" {
 		return false
 	}
-	return isDockerEnv() || isRemoteSshEnv()
+	return isDockerEnv() || isRemoteSshEnv(os.Getppid()) || isSshTmuxEnv()
 }
