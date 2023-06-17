@@ -1,10 +1,15 @@
-# trzsz-ssh
+# trzsz-ssh ( tssh )
+
+[![MIT License](https://img.shields.io/badge/license-MIT-green.svg?style=flat)](https://choosealicense.com/licenses/mit/)
+[![GitHub Release](https://img.shields.io/github/v/release/trzsz/trzsz-ssh)](https://github.com/trzsz/trzsz-ssh/releases)
 
 你是否曾经因为服务器太多记不住，而喜欢的 ssh 终端又没有服务器管理功能而苦恼？
 
 tssh 支持选择（ 搜索 ） `~/.ssh/config` 中配置的服务器进行登录，支持酷炫的 vim 操作习惯。
 
-tssh 内置支持 [trzsz](https://trzsz.github.io/) ( trz / tsz ) ，一并解决了 Windows 中使用 `trzsz ssh` 上传速度慢的问题。
+tssh 内置支持 [trzsz](https://trzsz.github.io/) ( trz / tsz ) ，一并解决了 Windows 中使用 `trzsz ssh` 上传速度很慢的问题。
+
+_在作者的 MacOS 上，使用 `trzsz ssh` 的上传速度在 10 MB/s 左右，而使用 `tssh` 可以到 80 MB/s 以上。_
 
 ## 安装方法
 
@@ -14,6 +19,14 @@ _服务器上要安装 [trzsz](https://trzsz.github.io/cn/) 才能使用 `trz / 
 _如果服务器不安装 [trzsz](https://trzsz.github.io/cn/)，也能用 `tssh`，只是不使用 `trz / tsz` 上传和下载而已。_
 
 客户端安装 `tssh` 的方法如下（ 任选其一 ）：
+
+- Windows 可用 [scoop](https://scoop.sh/) 安装
+
+  ```sh
+  scoop bucket add extras
+  scoop update
+  scoop install tssh
+  ```
 
 - 用 go 直接安装（ 要求 go 1.20 以上 ）
 
