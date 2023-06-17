@@ -413,25 +413,29 @@ var getDefaultSigners = func() func() ([]ssh.Signer, error) {
 
 func getAuthMethods(args *sshArgs, host, user string) ([]ssh.AuthMethod, error) {
 	var signers []ssh.Signer
-	if args.Identity != "" {
-		signer, err := getSigner(args.Identity)
-		if err != nil {
-			return nil, err
-		}
-		signers = []ssh.Signer{signer}
-	} else {
-		identity := ssh_config.Get(args.Destination, "IdentityFile")
-		if identity != ssh_config.Default("IdentityFile") {
+	if len(args.Identity.values) > 0 {
+		for _, identity := range args.Identity.values {
 			signer, err := getSigner(identity)
 			if err != nil {
 				return nil, err
 			}
-			signers = []ssh.Signer{signer}
-		} else {
+			signers = append(signers, signer)
+		}
+	} else {
+		identities := ssh_config.GetAll(args.Destination, "IdentityFile")
+		if len(identities) <= 0 || len(identities) == 1 && identities[0] == ssh_config.Default("IdentityFile") {
 			var err error
 			signers, err = getDefaultSigners()
 			if err != nil {
 				return nil, err
+			}
+		} else {
+			for _, identity := range identities {
+				signer, err := getSigner(identity)
+				if err != nil {
+					return nil, err
+				}
+				signers = append(signers, signer)
 			}
 		}
 	}

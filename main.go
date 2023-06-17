@@ -40,6 +40,10 @@ type sshOption struct {
 	options map[string]string
 }
 
+type multiStr struct {
+	values []string
+}
+
 type sshArgs struct {
 	Ver         bool      `arg:"-V,--" help:"show program's version number and exit"`
 	Destination string    `arg:"positional" help:"alias in ~/.ssh/config, or [user@]hostname[:port]"`
@@ -48,7 +52,7 @@ type sshArgs struct {
 	DisableTTY  bool      `arg:"-T,--" help:"disable pseudo-terminal allocation"`
 	ForceTTY    bool      `arg:"-t,--" help:"force pseudo-terminal allocation"`
 	Port        int       `arg:"-p,--" help:"port to connect to on the remote host"`
-	Identity    string    `arg:"-i,--" help:"identity (private key) for public key auth"`
+	Identity    multiStr  `arg:"-i,--" help:"identity (private key) for public key auth"`
 	ProxyJump   string    `arg:"-J,--" help:"jump hosts separated by comma characters"`
 	Option      sshOption `arg:"-o,--" help:"options in the format used in ~/.ssh/config\ne.g., tssh -o ProxyCommand=\"ssh proxy nc %h %p\""`
 	DragFile    bool      `help:"enable drag files and directories to upload"`
@@ -66,9 +70,6 @@ func (sshArgs) Version() string {
 
 func (o *sshOption) UnmarshalText(b []byte) error {
 	s := string(b)
-	if s == fmt.Sprintf("%s", sshOption{}) {
-		return nil
-	}
 	pos := strings.Index(s, "=")
 	if pos < 1 {
 		return fmt.Errorf("invalid option: %s", s)
@@ -87,12 +88,21 @@ func (o *sshOption) get(option string) string {
 	return o.options[strings.ToLower(option)]
 }
 
+func (v *multiStr) UnmarshalText(b []byte) error {
+	v.values = append(v.values, string(b))
+	return nil
+}
+
 func parseRemoteCommand(args *sshArgs) string {
 	if args.Command != "" {
 		if len(args.Argument) == 0 {
 			return args.Command
 		}
 		return fmt.Sprintf("%s %s", args.Command, strings.Join(args.Argument, " "))
+	}
+	command := args.Option.get("RemoteCommand")
+	if strings.ToLower(command) == "none" {
+		return ""
 	}
 	return ssh_config.Get(args.Destination, "RemoteCommand")
 }
