@@ -26,6 +26,7 @@ package tssh
 
 import (
 	"bytes"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
@@ -273,11 +274,59 @@ var getHostKeyCallback = func() func() (ssh.HostKeyCallback, error) {
 	}
 }()
 
-func getSigner(path string) (ssh.Signer, error) {
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		if strings.HasPrefix(path, "~/") || strings.HasPrefix(path, "~\\") {
-			path = filepath.Join(userHomeDir, path[2:])
+type passphraseSigner struct {
+	path   string
+	priKey []byte
+	pubKey ssh.PublicKey
+	signer ssh.Signer
+}
+
+func (s *passphraseSigner) PublicKey() ssh.PublicKey {
+	return s.pubKey
+}
+
+func (s *passphraseSigner) Sign(rand io.Reader, data []byte) (*ssh.Signature, error) {
+	if s.signer == nil {
+		prompt := fmt.Sprintf("Enter passphrase for key '%s': ", s.path)
+		for i := 0; i < 3; i++ {
+			secret, err := readSecret(prompt)
+			if err != nil {
+				return nil, err
+			}
+			if len(secret) == 0 {
+				continue
+			}
+			s.signer, err = ssh.ParsePrivateKeyWithPassphrase(s.priKey, secret)
+			if err == x509.IncorrectPasswordError {
+				continue
+			}
+			if err != nil {
+				return nil, err
+			}
+			return s.signer.Sign(rand, data)
 		}
+		return nil, fmt.Errorf("passphrase incorrect")
+	}
+	return s.signer.Sign(rand, data)
+}
+
+func newPassphraseSigner(path string, priKey []byte, err *ssh.PassphraseMissingError) (ssh.Signer, error) {
+	if err.PublicKey == nil {
+		return nil, fmt.Errorf("can't get public key from '%s'", path)
+	}
+	return &passphraseSigner{path, priKey, err.PublicKey, nil}, nil
+}
+
+func isFileExist(path string) bool {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return false
+	}
+	return true
+}
+
+func getSigner(path string) (ssh.Signer, error) {
+	if !isFileExist(path) && (strings.HasPrefix(path, "~/") || strings.HasPrefix(path, "~\\")) {
+		path = filepath.Join(userHomeDir, path[2:])
 	}
 	privateKey, err := os.ReadFile(path)
 	if err != nil {
@@ -285,14 +334,51 @@ func getSigner(path string) (ssh.Signer, error) {
 	}
 	signer, err := ssh.ParsePrivateKey(privateKey)
 	if err != nil {
+		if err, ok := err.(*ssh.PassphraseMissingError); ok {
+			return newPassphraseSigner(path, privateKey, err)
+		}
 		return nil, fmt.Errorf("parse private key [%s] failed: %v", path, err)
 	}
 	return signer, nil
 }
 
+func readSecret(prompt string) (secret []byte, err error) {
+	fmt.Fprintf(os.Stderr, "%s", prompt)
+	defer fmt.Fprintf(os.Stderr, "\r\n")
+	errch := make(chan error, 1)
+	defer close(errch)
+
+	sigch := make(chan os.Signal, 1)
+	signal.Notify(sigch, os.Interrupt)
+	go func() {
+		for range sigch {
+			errch <- fmt.Errorf("interrupt")
+		}
+	}()
+	defer func() { signal.Stop(sigch); close(sigch) }()
+
+	go func() {
+		stdin, closer, err := getKeyboardInput()
+		if err != nil {
+			errch <- err
+			return
+		}
+		defer closer()
+		pw, err := term.ReadPassword(int(stdin.Fd()))
+		if err != nil {
+			errch <- err
+			return
+		}
+		secret = pw
+		errch <- nil
+	}()
+	err = <-errch
+	return
+}
+
 func getPasswordAuthMethod(args *sshArgs, host, user string) ssh.AuthMethod {
 	path := filepath.Join(userHomeDir, ".ssh", "password")
-	if _, err := os.Stat(path); !os.IsNotExist(err) {
+	if isFileExist(path) {
 		for {
 			file, err := os.Open(path)
 			if err != nil {
@@ -310,80 +396,27 @@ func getPasswordAuthMethod(args *sshArgs, host, user string) ssh.AuthMethod {
 			break // nolint:all
 		}
 	}
-	return ssh.RetryableAuthMethod(ssh.PasswordCallback(func() (secret string, err error) {
-		fmt.Fprintf(os.Stderr, "%s@%s's password: ", user, host)
-		defer fmt.Fprintf(os.Stderr, "\r\n")
-		errch := make(chan error, 1)
-		defer close(errch)
-
-		sigch := make(chan os.Signal, 1)
-		signal.Notify(sigch, os.Interrupt)
-		go func() {
-			for range sigch {
-				errch <- fmt.Errorf("interrupt")
-			}
-		}()
-		defer func() { signal.Stop(sigch); close(sigch) }()
-
-		go func() {
-			stdin, closer, err := getKeyboardInput()
-			if err != nil {
-				errch <- err
-				return
-			}
-			defer closer()
-			pw, err := term.ReadPassword(int(stdin.Fd()))
-			if err != nil {
-				errch <- err
-				return
-			}
-			secret = string(pw)
-			errch <- nil
-		}()
-		err = <-errch
-		return
+	return ssh.RetryableAuthMethod(ssh.PasswordCallback(func() (string, error) {
+		secret, err := readSecret(fmt.Sprintf("%s@%s's password: ", user, host))
+		if err != nil {
+			return "", err
+		}
+		return string(secret), nil
 	}), 3)
 }
 
 func getKeyboardInteractiveAuthMethod(host, user string) ssh.AuthMethod {
 	return ssh.RetryableAuthMethod(ssh.KeyboardInteractive(
 		func(name, instruction string, questions []string, echos []bool) ([]string, error) {
-			defer fmt.Fprintf(os.Stderr, "\r\n")
 			var answers []string
-			errch := make(chan error, 1)
-			defer close(errch)
-
-			sigch := make(chan os.Signal, 1)
-			signal.Notify(sigch, os.Interrupt)
-			go func() {
-				for range sigch {
-					errch <- fmt.Errorf("interrupt")
-				}
-			}()
-			defer func() { signal.Stop(sigch); close(sigch) }()
-
-			go func() {
-				stdin, closer, err := getKeyboardInput()
+			for _, question := range questions {
+				secret, err := readSecret(fmt.Sprintf("(%s@%s) %s", user, host, strings.ReplaceAll(question, "\n", "\r\n")))
 				if err != nil {
-					errch <- err
-					return
+					return nil, err
 				}
-				defer closer()
-				for i, question := range questions {
-					if i > 0 {
-						fmt.Fprintf(os.Stderr, "\r\n")
-					}
-					fmt.Fprintf(os.Stderr, "(%s@%s) %s", user, host, strings.ReplaceAll(question, "\n", "\r\n"))
-					pw, err := term.ReadPassword(int(stdin.Fd()))
-					if err != nil {
-						errch <- err
-						return
-					}
-					answers = append(answers, string(pw))
-				}
-				errch <- nil
-			}()
-			return answers, <-errch
+				answers = append(answers, string(secret))
+			}
+			return answers, nil
 		}), 3)
 }
 
@@ -393,13 +426,23 @@ var getDefaultSigners = func() func() ([]ssh.Signer, error) {
 	var signers []ssh.Signer
 	return func() ([]ssh.Signer, error) {
 		once.Do(func() {
-			for _, name := range []string{ssh_config.Default("IdentityFile"), "id_rsa", "id_ecdsa",
-				"id_ecdsa_sk", "id_ed25519", "id_ed25519_sk", "id_dsa"} {
+			var signer ssh.Signer
+			identity := ssh_config.Default("IdentityFile")
+			if strings.HasPrefix(identity, "~/") || strings.HasPrefix(identity, "~\\") {
+				identity = filepath.Join(userHomeDir, identity[2:])
+			}
+			if isFileExist(identity) {
+				signer, err = getSigner(identity)
+				if err != nil {
+					return
+				}
+				signers = append(signers, signer)
+			}
+			for _, name := range []string{"id_rsa", "id_ecdsa", "id_ecdsa_sk", "id_ed25519", "id_ed25519_sk", "id_dsa"} {
 				path := filepath.Join(userHomeDir, ".ssh", name)
-				if _, err := os.Stat(path); os.IsNotExist(err) {
+				if !isFileExist(path) {
 					continue
 				}
-				var signer ssh.Signer
 				signer, err = getSigner(path)
 				if err != nil {
 					return

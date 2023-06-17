@@ -7,7 +7,7 @@ require (
 	github.com/manifoldco/promptui v0.9.0
 	github.com/trzsz/go-arg v1.5.1
 	github.com/trzsz/ssh_config v1.3.0
-	github.com/trzsz/trzsz-go v1.1.3
+	github.com/trzsz/trzsz-go v1.1.4-0.20230617063508-3e24dd25fe44
 	golang.org/x/crypto v0.10.0
 	golang.org/x/sys v0.9.0
 	golang.org/x/term v0.9.0
