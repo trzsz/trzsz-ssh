@@ -33,8 +33,8 @@ import (
 	"strings"
 
 	"github.com/chzyer/readline"
-	"github.com/kevinburke/ssh_config"
 	"github.com/manifoldco/promptui"
+	"github.com/trzsz/ssh_config"
 )
 
 type sshHost struct {

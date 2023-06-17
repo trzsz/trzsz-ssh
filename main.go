@@ -29,8 +29,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/kevinburke/ssh_config"
 	"github.com/trzsz/go-arg"
+	"github.com/trzsz/ssh_config"
 	"golang.org/x/term"
 )
 

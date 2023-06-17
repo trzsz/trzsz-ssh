@@ -42,7 +42,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kevinburke/ssh_config"
+	"github.com/trzsz/ssh_config"
 	"github.com/trzsz/trzsz-go/trzsz"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"

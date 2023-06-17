@@ -4,9 +4,9 @@ go 1.20
 
 require (
 	github.com/chzyer/readline v1.5.1
-	github.com/kevinburke/ssh_config v1.2.0
 	github.com/manifoldco/promptui v0.9.0
 	github.com/trzsz/go-arg v1.5.1
+	github.com/trzsz/ssh_config v1.3.0
 	github.com/trzsz/trzsz-go v1.1.3
 	golang.org/x/crypto v0.10.0
 	golang.org/x/sys v0.9.0
