@@ -17,7 +17,9 @@ else
 	TSSH := tssh
 endif
 
-.PHONY: all clean install
+GO_TEST := ${shell basename `which gotest 2>/dev/null` 2>/dev/null || echo go test}
+
+.PHONY: all clean test install
 
 all: ${BIN_DIR}/${TSSH}
 
@@ -26,6 +28,9 @@ ${BIN_DIR}/${TSSH}: $(wildcard ./cmd/tssh/*.go ./*.go)
 
 clean:
 	-rm -f ${BIN_DIR}/tssh{,.exe}
+
+test:
+	${GO_TEST} -v -count=1
 
 install: all
 	mkdir -p ${DESTDIR}${BIN_DST}
