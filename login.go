@@ -63,6 +63,13 @@ type loginParam struct {
 
 var portRegexp = regexp.MustCompile(`:(\d+)$`)
 
+func joinHostPort(host, port string) string {
+	if !strings.HasPrefix(host, "[") && strings.ContainsRune(host, ':') {
+		return fmt.Sprintf("[%s]:%s", host, port)
+	}
+	return fmt.Sprintf("%s:%s", host, port)
+}
+
 func getLoginParamFromArgs(args *sshArgs) (*loginParam, error) {
 	param := &loginParam{}
 
@@ -92,7 +99,7 @@ func getLoginParamFromArgs(args *sshArgs) (*loginParam, error) {
 			param.port = "22"
 		}
 	}
-	param.addr = fmt.Sprintf("%s:%s", param.host, param.port)
+	param.addr = joinHostPort(param.host, param.port)
 
 	// login proxy
 	command := args.Option.get("ProxyCommand")
@@ -133,7 +140,7 @@ func getLoginParam(args *sshArgs) (*loginParam, error) {
 	} else {
 		param.port = ssh_config.Get(args.Destination, "Port")
 	}
-	param.addr = fmt.Sprintf("%s:%s", param.host, param.port)
+	param.addr = joinHostPort(param.host, param.port)
 
 	// login proxy
 	command := args.Option.get("ProxyCommand")
@@ -717,6 +724,13 @@ func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session
 	if err != nil {
 		return
 	}
+
+	// no command
+	if args.NoCommand || args.StdioForward != "" {
+		return
+	}
+
+	// new session
 	session, err = client.NewSession()
 	if err != nil {
 		err = fmt.Errorf("ssh new session failed: %v", err)

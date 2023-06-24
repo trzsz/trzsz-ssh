@@ -27,14 +27,37 @@ package tssh
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
+	"sync"
 
 	"github.com/trzsz/go-arg"
 	"github.com/trzsz/ssh_config"
 	"golang.org/x/term"
 )
 
-const kTsshVersion = "0.1.3"
+const kTsshVersion = "0.1.4"
+
+func background(dest string) (bool, error) {
+	if v := os.Getenv("TRZSZ-SSH-BACKGROUND"); v == "TRUE" {
+		return false, nil
+	}
+	env := append(os.Environ(), "TRZSZ-SSH-BACKGROUND=TRUE")
+	args := os.Args
+	if dest != "" {
+		args = append(args, dest)
+	}
+	cmd := exec.Cmd{
+		Path:   os.Args[0],
+		Args:   args,
+		Env:    env,
+		Stderr: os.Stderr,
+	}
+	if err := cmd.Start(); err != nil {
+		return true, err
+	}
+	return true, nil
+}
 
 func parseRemoteCommand(args *sshArgs) string {
 	if args.Command != "" {
@@ -98,7 +121,7 @@ func TsshMain() int {
 	var err error
 	defer func() {
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "%v\n", err)
+			fmt.Fprintf(os.Stderr, "%v\r\n", err)
 		}
 	}()
 
@@ -113,13 +136,14 @@ func TsshMain() int {
 	}
 
 	// choose ssh alias
+	dest := ""
 	if args.Destination == "" {
 		if !isTerminal {
 			parser.WriteHelp(os.Stderr)
 			return 2
 		}
 		var quit bool
-		args.Destination, quit, err = chooseAlias()
+		dest, quit, err = chooseAlias()
 		if quit {
 			err = nil
 			return 0
@@ -127,51 +151,92 @@ func TsshMain() int {
 		if err != nil {
 			return 3
 		}
+		args.Destination = dest
+	}
+
+	// run as background
+	if args.Background {
+		var parent bool
+		parent, err = background(dest)
+		if err != nil {
+			return 4
+		}
+		if parent {
+			return 0
+		}
 	}
 
 	// parse cmd and tty
 	command, tty, err := parseCmdAndTTY(&args)
 	if err != nil {
-		return 4
+		return 5
 	}
 
 	// ssh login
 	client, session, err := sshLogin(&args, tty)
 	if err != nil {
-		return 5
+		return 6
 	}
 	defer client.Close()
-	defer session.Close()
+	if session != nil {
+		defer session.Close()
+	}
 
-	// reset terminal if no tty
-	if !tty && mode != nil {
+	// reset terminal if no login tty
+	if mode != nil && (!tty || args.StdioForward != "" || args.NoCommand) {
 		resetTerminalMode(mode)
+	}
+
+	// stdio forward
+	if args.StdioForward != "" {
+		var wg *sync.WaitGroup
+		wg, err = stdioForward(client, args.StdioForward)
+		if err != nil {
+			return 7
+		}
+		wg.Wait()
+		return 0
+	}
+
+	// ssh forward
+	if err = sshForward(client, &args); err != nil {
+		return 8
+	}
+
+	// no command
+	if args.NoCommand {
+		if client.Wait() != nil {
+			return 9
+		}
+		return 0
 	}
 
 	// run command or start shell
 	if command != "" {
 		if !tty {
-			err = session.Run(command)
-			if err != nil {
-				return 6
+			if err = session.Run(command); err != nil {
+				err = fmt.Errorf("run command [%s] failed: %v", command, err)
+				return 10
 			}
 			return 0
 		}
 		if err = session.Start(command); err != nil {
 			err = fmt.Errorf("start command [%s] failed: %v", command, err)
-			return 7
+			return 11
 		}
 	} else {
 		if err = session.Shell(); err != nil {
 			err = fmt.Errorf("start shell failed: %v", err)
-			return 8
+			return 12
 		}
 	}
 
 	// wait for exit
-	if err = session.Wait(); err != nil {
-		err = nil // ignore wait error
-		return 9
+	if session.Wait() != nil {
+		return 13
+	}
+	if args.Background && client.Wait() != nil {
+		return 14
 	}
 	return 0
 }

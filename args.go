@@ -37,20 +37,35 @@ type multiStr struct {
 	values []string
 }
 
+type bindArgs struct {
+	binds []*bindCfg
+}
+
+type forwardArgs struct {
+	cfgs []*forwardCfg
+}
+
 type sshArgs struct {
-	Ver         bool      `arg:"-V,--" help:"show program's version number and exit"`
-	Destination string    `arg:"positional" help:"alias in ~/.ssh/config, or [user@]hostname[:port]"`
-	Command     string    `arg:"positional" help:"command to execute instead of a login shell"`
-	Argument    []string  `arg:"positional" help:"command arguments separated by spaces"`
-	DisableTTY  bool      `arg:"-T,--" help:"disable pseudo-terminal allocation"`
-	ForceTTY    bool      `arg:"-t,--" help:"force pseudo-terminal allocation"`
-	Port        int       `arg:"-p,--" help:"port to connect to on the remote host"`
-	Identity    multiStr  `arg:"-i,--" help:"identity (private key) for public key auth"`
-	ProxyJump   string    `arg:"-J,--" help:"jump hosts separated by comma characters"`
-	Option      sshOption `arg:"-o,--" help:"options in the format used in ~/.ssh/config\ne.g., tssh -o ProxyCommand=\"ssh proxy nc %h %p\""`
-	DragFile    bool      `help:"enable drag files and directories to upload"`
-	TraceLog    bool      `help:"enable trzsz detect trace logs for debugging"`
-	Relay       bool      `help:"force trzsz run as a relay on the jump server"`
+	Ver            bool        `arg:"-V,--" help:"show program's version number and exit"`
+	Destination    string      `arg:"positional" help:"alias in ~/.ssh/config, or [user@]hostname[:port]"`
+	Command        string      `arg:"positional" help:"command to execute instead of a login shell"`
+	Argument       []string    `arg:"positional" help:"command arguments separated by spaces"`
+	DisableTTY     bool        `arg:"-T,--" help:"disable pseudo-terminal allocation"`
+	ForceTTY       bool        `arg:"-t,--" help:"force pseudo-terminal allocation"`
+	Gateway        bool        `arg:"-g,--" help:"forwarding allows remote hosts to connect"`
+	Background     bool        `arg:"-f,--" help:"run as a background process, implies -n"`
+	NoCommand      bool        `arg:"-N,--" help:"do not execute a remote command"`
+	Port           int         `arg:"-p,--" help:"port to connect to on the remote host"`
+	Identity       multiStr    `arg:"-i,--" placeholder:"identity_file" help:"identity (private key) for public key auth"`
+	ProxyJump      string      `arg:"-J,--" placeholder:"destination" help:"jump hosts separated by comma characters"`
+	Option         sshOption   `arg:"-o,--" placeholder:"key=value" help:"options in the format used in ~/.ssh/config\ne.g., tssh -o ProxyCommand=\"ssh proxy nc %h %p\""`
+	StdioForward   string      `arg:"-W,--" placeholder:"host:port" help:"forward stdin and stdout to host on port"`
+	DynamicForward bindArgs    `arg:"-D,--" placeholder:"[bind_addr:]port" help:"dynamic port forwarding ( socks5 proxy )"`
+	LocalForward   forwardArgs `arg:"-L,--" placeholder:"[bind_addr:]port:host:hostport" help:"local port forwarding"`
+	RemoteForward  forwardArgs `arg:"-R,--" placeholder:"[bind_addr:]port:host:hostport" help:"remote port forwarding"`
+	DragFile       bool        `arg:"--dragfile" help:"enable drag files and directories to upload"`
+	TraceLog       bool        `arg:"--tracelog" help:"enable trzsz detect trace logs for debugging"`
+	Relay          bool        `arg:"--relay" help:"force trzsz run as a relay on the jump server"`
 }
 
 func (sshArgs) Description() string {
@@ -83,5 +98,23 @@ func (o *sshOption) get(option string) string {
 
 func (v *multiStr) UnmarshalText(b []byte) error {
 	v.values = append(v.values, string(b))
+	return nil
+}
+
+func (a *bindArgs) UnmarshalText(b []byte) error {
+	bind, err := parseBindCfg(string(b))
+	if err != nil {
+		return err
+	}
+	a.binds = append(a.binds, bind)
+	return nil
+}
+
+func (f *forwardArgs) UnmarshalText(b []byte) error {
+	arg, err := parseForwardArg(string(b))
+	if err != nil {
+		return err
+	}
+	f.cfgs = append(f.cfgs, arg)
 	return nil
 }
