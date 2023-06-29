@@ -115,8 +115,17 @@ func getLoginParamFromArgs(args *sshArgs) (*loginParam, error) {
 	return param, nil
 }
 
+func isIP(str string) bool {
+	ip := net.ParseIP(str)
+	return ip != nil
+}
+
 func getLoginParam(args *sshArgs) (*loginParam, error) {
 	host := ssh_config.Get(args.Destination, "HostName")
+
+	if isIP(args.Destination) {
+		host = args.Destination
+	}
 	if host == "" { // from args
 		return getLoginParamFromArgs(args)
 	}
