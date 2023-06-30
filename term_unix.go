@@ -70,7 +70,7 @@ func onTerminalResize(setTerminalSize func(int, int)) {
 	signal.Notify(ch, syscall.SIGWINCH)
 	go func() {
 		for range ch {
-			if width, height, err := term.GetSize(int(os.Stdin.Fd())); err != nil {
+			if width, height, err := term.GetSize(int(os.Stdin.Fd())); err == nil {
 				setTerminalSize(width, height)
 			}
 		}
