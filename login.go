@@ -725,6 +725,9 @@ func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session
 		return
 	}
 
+	// keep alive
+	go keepAlive(client, args)
+
 	// no command
 	if args.NoCommand || args.StdioForward != "" {
 		return
@@ -798,7 +801,5 @@ func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session
 		})
 	}
 
-	// keep alive
-	go keepAlive(client, args)
 	return
 }
