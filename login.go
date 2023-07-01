@@ -36,7 +36,6 @@ import (
 	"os/signal"
 	"os/user"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -61,8 +60,6 @@ type loginParam struct {
 	command string
 }
 
-var portRegexp = regexp.MustCompile(`:(\d+)$`)
-
 func joinHostPort(host, port string) string {
 	if !strings.HasPrefix(host, "[") && strings.ContainsRune(host, ':') {
 		return fmt.Sprintf("[%s]:%s", host, port)
@@ -70,35 +67,79 @@ func joinHostPort(host, port string) string {
 	return fmt.Sprintf("%s:%s", host, port)
 }
 
-func getLoginParamFromArgs(args *sshArgs) (*loginParam, error) {
-	param := &loginParam{}
-
-	// login user
-	idx := strings.Index(args.Destination, "@")
-	if idx > 0 {
-		param.host = args.Destination[idx+1:]
-		param.user = args.Destination[:idx]
-	} else {
-		param.host = args.Destination
-		currentUser, err := user.Current()
-		if err != nil {
-			return nil, fmt.Errorf("get current user failed: %v", err)
-		}
-		param.user = currentUser.Username
+func parseDestination(dest string) (user, host, port string) {
+	// user
+	idx := strings.Index(dest, "@")
+	if idx >= 0 {
+		user = dest[:idx]
+		dest = dest[idx+1:]
 	}
 
-	// login addr
+	// port
+	idx = strings.Index(dest, "]:")
+	if idx > 0 && dest[0] == '[' { // ipv6 port
+		port = dest[idx+2:]
+		dest = dest[1:idx]
+	} else {
+		tokens := strings.Split(dest, ":")
+		if len(tokens) == 2 { // ipv4 port
+			port = tokens[1]
+			dest = tokens[0]
+		}
+	}
+
+	host = dest
+	return
+}
+
+func getLoginParam(args *sshArgs) (*loginParam, error) {
+	param := &loginParam{}
+
+	// login dest
+	destUser, destHost, destPort := parseDestination(args.Destination)
+	args.Destination = destHost
+
+	// login host
+	hostName := ssh_config.Get(destHost, "HostName")
+	if hostName != "" {
+		param.host = hostName
+	} else {
+		param.host = destHost
+	}
+
+	// login user
+	if args.LoginName != "" {
+		param.user = args.LoginName
+	} else if destUser != "" {
+		param.user = destUser
+	} else {
+		userName := ssh_config.Get(destHost, "User")
+		if userName != "" {
+			param.user = userName
+		} else {
+			currentUser, err := user.Current()
+			if err != nil {
+				return nil, fmt.Errorf("get current user failed: %v", err)
+			}
+			param.user = currentUser.Username
+		}
+	}
+
+	// login port
 	if args.Port > 0 {
 		param.port = strconv.Itoa(args.Port)
+	} else if destPort != "" {
+		param.port = destPort
 	} else {
-		match := portRegexp.FindSubmatch([]byte(param.host))
-		if len(match) == 2 {
-			param.host = param.host[:strings.LastIndex(param.host, ":")]
-			param.port = string(match[1])
+		port := ssh_config.Get(destHost, "Port")
+		if port != "" {
+			param.port = port
 		} else {
 			param.port = "22"
 		}
 	}
+
+	// login addr
 	param.addr = joinHostPort(param.host, param.port)
 
 	// login proxy
@@ -110,53 +151,12 @@ func getLoginParamFromArgs(args *sshArgs) (*loginParam, error) {
 		param.command = command
 	} else if args.ProxyJump != "" {
 		param.proxy = strings.Split(args.ProxyJump, ",")
-	}
-
-	return param, nil
-}
-
-func getLoginParam(args *sshArgs) (*loginParam, error) {
-	host := ssh_config.Get(args.Destination, "HostName")
-	if host == "" { // from args
-		return getLoginParamFromArgs(args)
-	}
-
-	// ssh alias
-	param := &loginParam{host: host}
-
-	// login user
-	param.user = ssh_config.Get(args.Destination, "User")
-	if param.user == "" {
-		currentUser, err := user.Current()
-		if err != nil {
-			return nil, fmt.Errorf("get current user failed: %v", err)
-		}
-		param.user = currentUser.Username
-	}
-
-	// login addr
-	if args.Port > 0 {
-		param.port = strconv.Itoa(args.Port)
 	} else {
-		param.port = ssh_config.Get(args.Destination, "Port")
-	}
-	param.addr = joinHostPort(param.host, param.port)
-
-	// login proxy
-	command := args.Option.get("ProxyCommand")
-	if command != "" && args.ProxyJump != "" {
-		return nil, fmt.Errorf("Cannot specify -J with ProxyCommand")
-	}
-	if command != "" {
-		param.command = command
-	} else if args.ProxyJump != "" {
-		param.proxy = strings.Split(args.ProxyJump, ",")
-	} else {
-		proxy := ssh_config.Get(args.Destination, "ProxyJump")
+		proxy := ssh_config.Get(destHost, "ProxyJump")
 		if proxy != "" {
 			param.proxy = strings.Split(proxy, ",")
 		} else {
-			command := ssh_config.Get(args.Destination, "ProxyCommand")
+			command := ssh_config.Get(destHost, "ProxyCommand")
 			if command != "" {
 				param.command = command
 			}

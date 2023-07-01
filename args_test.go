@@ -59,6 +59,8 @@ func TestSshArgs(t *testing.T) {
 
 	assertArgsEqual("-p1022", sshArgs{Port: 1022})
 	assertArgsEqual("-p 2049", sshArgs{Port: 2049})
+	assertArgsEqual("-luser", sshArgs{LoginName: "user"})
+	assertArgsEqual("-l loginName", sshArgs{LoginName: "loginName"})
 	assertArgsEqual("-i id_rsa", sshArgs{Identity: multiStr{values: []string{"id_rsa"}}})
 	assertArgsEqual("-i ./id_rsa -i /tmp/id_ed25519",
 		sshArgs{Identity: multiStr{[]string{"./id_rsa", "/tmp/id_ed25519"}}})

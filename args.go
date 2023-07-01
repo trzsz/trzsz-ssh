@@ -55,7 +55,8 @@ type sshArgs struct {
 	Gateway        bool        `arg:"-g,--" help:"forwarding allows remote hosts to connect"`
 	Background     bool        `arg:"-f,--" help:"run as a background process, implies -n"`
 	NoCommand      bool        `arg:"-N,--" help:"do not execute a remote command"`
-	Port           int         `arg:"-p,--" help:"port to connect to on the remote host"`
+	Port           int         `arg:"-p,--" placeholder:"port" help:"port to connect to on the remote host"`
+	LoginName      string      `arg:"-l,--" placeholder:"login_name" help:"the user to log in as on the remote machine"`
 	Identity       multiStr    `arg:"-i,--" placeholder:"identity_file" help:"identity (private key) for public key auth"`
 	ProxyJump      string      `arg:"-J,--" placeholder:"destination" help:"jump hosts separated by comma characters"`
 	Option         sshOption   `arg:"-o,--" placeholder:"key=value" help:"options in the format used in ~/.ssh/config\ne.g., tssh -o ProxyCommand=\"ssh proxy nc %h %p\""`
