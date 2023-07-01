@@ -588,6 +588,44 @@ func execProxyCommand(param *loginParam) (net.Conn, string, error) {
 	return &cmdPipe{stdin: cmdIn, stdout: cmdOut, addr: param.addr}, command, nil
 }
 
+func dialWithTimeout(client *ssh.Client, network, addr string) (conn net.Conn, err error) {
+	done := make(chan struct{}, 1)
+	go func() {
+		conn, err = client.Dial(network, addr)
+		done <- struct{}{}
+	}()
+	select {
+	case <-time.After(3 * time.Second):
+		err = fmt.Errorf("dial [%s] timeout", addr)
+	case <-done:
+	}
+	return
+}
+
+type connWithTimeout struct {
+	net.Conn
+	timeout   time.Duration
+	firstRead bool
+}
+
+func (c *connWithTimeout) Read(b []byte) (n int, err error) {
+	if !c.firstRead {
+		return c.Conn.Read(b)
+	}
+	done := make(chan struct{}, 1)
+	go func() {
+		n, err = c.Conn.Read(b)
+		done <- struct{}{}
+	}()
+	select {
+	case <-time.After(c.timeout):
+		err = fmt.Errorf("first read timeout")
+	case <-done:
+	}
+	c.firstRead = false
+	return
+}
+
 func sshConnect(args *sshArgs, client *ssh.Client, proxy string) (*ssh.Client, error) {
 	param, err := getLoginParam(args)
 	if err != nil {
@@ -613,11 +651,11 @@ func sshConnect(args *sshArgs, client *ssh.Client, proxy string) (*ssh.Client, e
 	}
 
 	proxyConnect := func(client *ssh.Client, proxy string) (*ssh.Client, error) {
-		conn, err := client.Dial("tcp", param.addr)
+		conn, err := dialWithTimeout(client, "tcp", param.addr)
 		if err != nil {
 			return nil, fmt.Errorf("proxy [%s] dial tcp [%s] failed: %v", proxy, param.addr, err)
 		}
-		ncc, chans, reqs, err := ssh.NewClientConn(conn, param.addr, config)
+		ncc, chans, reqs, err := ssh.NewClientConn(&connWithTimeout{conn, config.Timeout, true}, param.addr, config)
 		if err != nil {
 			return nil, fmt.Errorf("proxy [%s] new conn [%s] failed: %v", proxy, param.addr, err)
 		}
@@ -644,11 +682,15 @@ func sshConnect(args *sshArgs, client *ssh.Client, proxy string) (*ssh.Client, e
 
 	// no proxy
 	if len(param.proxy) == 0 {
-		client, err := ssh.Dial("tcp", param.addr, config)
+		conn, err := net.DialTimeout("tcp", param.addr, config.Timeout)
 		if err != nil {
-			return nil, fmt.Errorf("ssh dial tcp [%s] failed: %v", param.addr, err)
+			return nil, fmt.Errorf("dial tcp [%s] failed: %v", param.addr, err)
 		}
-		return client, nil
+		ncc, chans, reqs, err := ssh.NewClientConn(&connWithTimeout{conn, config.Timeout, true}, param.addr, config)
+		if err != nil {
+			return nil, fmt.Errorf("new conn [%s] failed: %v", param.addr, err)
+		}
+		return ssh.NewClient(ncc, chans, reqs), nil
 	}
 
 	// has proxies

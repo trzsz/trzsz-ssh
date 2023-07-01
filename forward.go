@@ -244,20 +244,6 @@ func listenOnRemote(args *sshArgs, client *ssh.Client, addr *string, port string
 	return
 }
 
-func dialWithTimeout(client *ssh.Client, network, addr string) (conn net.Conn, err error) {
-	done := make(chan struct{}, 1)
-	go func() {
-		conn, err = client.Dial(network, addr)
-		done <- struct{}{}
-	}()
-	select {
-	case <-done:
-		return
-	case <-time.After(3 * time.Second):
-		return nil, fmt.Errorf("dial [%s] timeout", addr)
-	}
-}
-
 func stdioForward(client *ssh.Client, addr string) (*sync.WaitGroup, error) {
 	conn, err := dialWithTimeout(client, "tcp", addr)
 	if err != nil {
