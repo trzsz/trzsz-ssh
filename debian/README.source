@@ -1,0 +1,9 @@
+tssh for Debian
+--------------
+
+tssh for Debian is developed in Go.
+* Install go and make
+* make && make install
+
+ -- Lonny Wong <lonnywong@qq.com>  Sun, 02 Jul 2023 13:25:57 +0800
+

@@ -1,0 +1,15 @@
+Source: tssh
+Section: utils
+Priority: optional
+Maintainer: Lonny Wong <lonnywong@qq.com>
+Build-Depends: debhelper (>=9),
+               golang-1.20-go
+Standards-Version: 3.9.6
+Homepage: https://trzsz.github.io
+Vcs-Browser: https://github.com/trzsz/trzsz-ssh
+Vcs-Git: https://github.com/trzsz/trzsz-ssh.git
+
+Package: tssh
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: simple ssh client with trzsz ( trz / tsz ) support.

@@ -1,0 +1,6 @@
+tssh for Debian
+--------------
+
+tssh is a simple ssh client with trzsz ( trz / tsz ) support.
+
+ -- Lonny Wong <lonnywong@qq.com>  Sun, 02 Jul 2023 13:25:57 +0800
