@@ -98,6 +98,7 @@ func TestSshArgs(t *testing.T) {
 	assertArgsEqual("--dragfile", sshArgs{DragFile: true})
 	assertArgsEqual("--tracelog", sshArgs{TraceLog: true})
 	assertArgsEqual("--relay", sshArgs{Relay: true})
+	assertArgsEqual("--debug", sshArgs{Debug: true})
 
 	assertArgsEqual("dest", sshArgs{Destination: "dest"})
 	assertArgsEqual("dest cmd", sshArgs{Destination: "dest", Command: "cmd"})

@@ -27,6 +27,7 @@ package tssh
 import (
 	"bytes"
 	"crypto/x509"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -50,6 +51,15 @@ import (
 )
 
 var userHomeDir string
+
+var enableDebugLogging bool
+
+func debug(format string, a ...any) {
+	if !enableDebugLogging {
+		return
+	}
+	fmt.Fprintf(os.Stderr, fmt.Sprintf("\033[0;36mdebug:\033[0m %s\r\n", format), a...)
+}
 
 type loginParam struct {
 	host    string
@@ -383,27 +393,52 @@ func readSecret(prompt string) (secret []byte, err error) {
 	return
 }
 
-func getPasswordAuthMethod(args *sshArgs, host, user string) ssh.AuthMethod {
+func readPasswordFromConfig(dest string) string {
 	path := filepath.Join(userHomeDir, ".ssh", "password")
-	if isFileExist(path) {
-		for {
-			file, err := os.Open(path)
-			if err != nil {
-				break
-			}
-			defer file.Close()
-			cfg, err := ssh_config.Decode(file)
-			if err != nil {
-				break
-			}
-			password, err := cfg.Get(args.Destination, "Password")
-			if err == nil && password != "" {
-				return ssh.Password(password)
-			}
-			break // nolint:all
-		}
+	debug("reading password from %s", path)
+	if !isFileExist(path) {
+		debug("%s does not exist", path)
+		return ""
 	}
+	file, err := os.Open(path)
+	if err != nil {
+		debug("open %s failed: %v", path, err)
+		return ""
+	}
+	debug("open %s success", path)
+	defer file.Close()
+	cfg, err := ssh_config.Decode(file)
+	if err != nil {
+		debug("decode %s failed: %v", path, err)
+		return ""
+	}
+	debug("decode %s success", path)
+
+	password, err := cfg.Get(dest, "Password")
+	if err != nil {
+		debug("read password configuration for %s failed: %v", dest, err)
+		return ""
+	}
+	if password != "" {
+		debug("read password configuration for %s success", dest)
+		return password
+	}
+	debug("no password configuration for %s", dest)
+	return ""
+}
+
+func getPasswordAuthMethod(args *sshArgs, host, user string) ssh.AuthMethod {
+	idx := 0
 	return ssh.RetryableAuthMethod(ssh.PasswordCallback(func() (string, error) {
+		idx++
+		if idx == 1 {
+			if password := readPasswordFromConfig(args.Destination); password != "" {
+				debug("trying the password configuration for %s", args.Destination)
+				return password, nil
+			}
+		} else if idx == 2 {
+			debug("the password configuration for %s is incorrect", args.Destination)
+		}
 		secret, err := readSecret(fmt.Sprintf("%s@%s's password: ", user, host))
 		if err != nil {
 			return "", err
@@ -412,11 +447,71 @@ func getPasswordAuthMethod(args *sshArgs, host, user string) ssh.AuthMethod {
 	}), 3)
 }
 
-func getKeyboardInteractiveAuthMethod(host, user string) ssh.AuthMethod {
+func readQuestionAnswerFromConfig(dest string, idx int, question string) string {
+	path := filepath.Join(userHomeDir, ".ssh", "password")
+	debug("reading question '%s' answer from %s", question, path)
+	if !isFileExist(path) {
+		debug("%s does not exist", path)
+		return ""
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		debug("open %s failed: %v", path, err)
+		return ""
+	}
+	debug("open %s success", path)
+	defer file.Close()
+	cfg, err := ssh_config.Decode(file)
+	if err != nil {
+		debug("decode %s failed: %v", path, err)
+		return ""
+	}
+	debug("decode %s success", path)
+
+	qhex := hex.EncodeToString([]byte(question))
+	debug("the hex code for question '%s' is %s", question, qhex)
+	answer, err := cfg.Get(dest, qhex)
+	if err != nil {
+		debug("read question '%s' answer configuration from %s failed: %v", question, qhex, err)
+		return ""
+	}
+	if answer != "" {
+		debug("read question '%s' answer configuration from %s success", question, qhex)
+		return answer
+	}
+	debug("no question '%s' answer configuration from %s", question, qhex)
+
+	qkey := fmt.Sprintf("QuestionAnswer%d", idx)
+	debug("the configuration key for question '%s' is %s", question, qkey)
+	answer, err = cfg.Get(dest, qkey)
+	if err != nil {
+		debug("read question '%s' answer configuration from %s failed: %v", question, qkey, err)
+		return ""
+	}
+	if answer != "" {
+		debug("read question '%s' answer configuration from %s success", question, qkey)
+		return answer
+	}
+	debug("no question '%s' answer configuration from %s", question, qkey)
+	return ""
+}
+
+func getKeyboardInteractiveAuthMethod(args *sshArgs, host, user string) ssh.AuthMethod {
+	idx := 0
+	questionSet := make(map[string]struct{})
 	return ssh.RetryableAuthMethod(ssh.KeyboardInteractive(
 		func(name, instruction string, questions []string, echos []bool) ([]string, error) {
 			var answers []string
 			for _, question := range questions {
+				idx++
+				if _, ok := questionSet[question]; !ok {
+					questionSet[question] = struct{}{}
+					answer := readQuestionAnswerFromConfig(args.Destination, idx, question)
+					if answer != "" {
+						answers = append(answers, answer)
+						continue
+					}
+				}
 				secret, err := readSecret(fmt.Sprintf("(%s@%s) %s", user, host, strings.ReplaceAll(question, "\n", "\r\n")))
 				if err != nil {
 					return nil, err
@@ -496,8 +591,8 @@ func getAuthMethods(args *sshArgs, host, user string) ([]ssh.AuthMethod, error) 
 	}
 
 	authMethods = append(authMethods,
-		getPasswordAuthMethod(args, host, user),
-		getKeyboardInteractiveAuthMethod(host, user))
+		getKeyboardInteractiveAuthMethod(args, host, user),
+		getPasswordAuthMethod(args, host, user))
 
 	return authMethods, nil
 }

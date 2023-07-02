@@ -67,6 +67,7 @@ type sshArgs struct {
 	DragFile       bool        `arg:"--dragfile" help:"enable drag files and directories to upload"`
 	TraceLog       bool        `arg:"--tracelog" help:"enable trzsz detect trace logs for debugging"`
 	Relay          bool        `arg:"--relay" help:"force trzsz run as a relay on the jump server"`
+	Debug          bool        `arg:"--debug" help:"verbose mode for debugging, same as ssh's -vvv"`
 }
 
 func (sshArgs) Description() string {

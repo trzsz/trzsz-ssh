@@ -36,7 +36,7 @@ import (
 	"golang.org/x/term"
 )
 
-const kTsshVersion = "0.1.4"
+const kTsshVersion = "0.1.5"
 
 func background(dest string) (bool, error) {
 	if v := os.Getenv("TRZSZ-SSH-BACKGROUND"); v == "TRUE" {
@@ -115,6 +115,11 @@ func TsshMain() int {
 	if args.Ver {
 		fmt.Println(args.Version())
 		return 0
+	}
+
+	// debug log
+	if args.Debug {
+		enableDebugLogging = true
 	}
 
 	// print message after stdin reset

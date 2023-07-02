@@ -14,7 +14,7 @@ _在作者的 MacOS 上，使用 `trzsz ssh` 的上传速度在 10 MB/s 左右�
 ## 安装方法
 
 _服务器上要安装 [trzsz](https://trzsz.github.io/cn/) 才能使用 `trz / tsz` 上传和下载，三个版本可任选其一：
-[Go 版](https://github.com/trzsz/trzsz-go)、[Py 版](https://github.com/trzsz/trzsz)、[Js 版](https://github.com/trzsz/trzsz.js)。_
+[Go 版](https://github.com/trzsz/trzsz-go)（ ⭐ 推荐 ）、[Py 版](https://github.com/trzsz/trzsz)、[Js 版](https://github.com/trzsz/trzsz.js)。_
 
 _如果服务器不安装 [trzsz](https://trzsz.github.io/cn/)，也能用 `tssh`，只是不使用 `trz / tsz` 上传和下载而已。_
 
@@ -92,6 +92,26 @@ _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\
 
   Host test*
       Password 111111
+  ```
+
+## 记住答案
+
+- 除了私钥和密码，还有一种登录方式，英文叫 keyboard interactive ，是服务器返回一些问题，客户端提供正确的答案就能登录，很多自定义的一次性密码就是利用这种方式实现的。
+
+- 如果答案是固定不变的，tssh 支持“记住答案”，也是在 `~/.ssh/password` 中进行配置。大部分都是只有一个问题，只要配置 `QuestionAnswer1` 即可。对于有多个问题的，每个问题答案可按序号进行配置，也可以按问题的 hex 编码进行配置。
+
+- 使用 `tssh --debug` 登录，会输出问题的 hex 编码，从而知道该如何使用 hex 编码进行配置。配置举例：
+
+  ```
+  Host test1
+      QuestionAnswer1 答案一
+  Host test2
+      QuestionAnswer1 答案一
+      QuestionAnswer2 答案二
+      QuestionAnswer3 答案三
+  Host test3
+      6e616d653a20 my_name  # 其中 `6e616d653a20` 是问题 `name: ` 的 hex 编码
+      636f64653a20 my_code  # 其中 `636f64653a20` 是问题 `code: ` 的 hex 编码
   ```
 
 ## 录屏演示
