@@ -13,14 +13,9 @@ _在作者的 MacOS 上，使用 `trzsz ssh` 的上传速度在 10 MB/s 左右�
 
 ## 安装方法
 
-_服务器上要安装 [trzsz](https://trzsz.github.io/cn/) 才能使用 `trz / tsz` 上传和下载，三个版本可任选其一：
-[Go 版](https://github.com/trzsz/trzsz-go)（ ⭐ 推荐 ）、[Py 版](https://github.com/trzsz/trzsz)、[Js 版](https://github.com/trzsz/trzsz.js)。_
+**_客户端安装 `trzsz-ssh ( tssh )` 的方法如下（ 任选其一 ）：_**
 
-_如果服务器不安装 [trzsz](https://trzsz.github.io/cn/)，也能用 `tssh`，只是不使用 `trz / tsz` 上传和下载而已。_
-
-客户端安装 `tssh` 的方法如下（ 任选其一 ）：
-
-- Windows 可用 [scoop](https://scoop.sh/) 安装
+- Windows 可用 [scoop](https://scoop.sh/) 安装<details><summary><code>scoop install tssh</code></summary>
 
   ```sh
   scoop bucket add extras
@@ -28,7 +23,67 @@ _如果服务器不安装 [trzsz](https://trzsz.github.io/cn/)，也能用 `tssh
   scoop install tssh
   ```
 
-- 用 go 直接安装（ 要求 go 1.20 以上 ）
+  </details>
+
+- MacOS 可用 [homebrew](https://brew.sh/) 安装<details><summary><code>brew install trzsz-ssh</code></summary>
+
+  ```sh
+  brew update
+  brew install trzsz-ssh
+  ```
+
+  </details>
+
+- Ubuntu 可用 apt 安装<details><summary><code>sudo apt install tssh</code></summary>
+
+  ```sh
+  sudo apt update && sudo apt install software-properties-common
+  sudo add-apt-repository ppa:trzsz/ppa && sudo apt update
+
+  sudo apt install tssh
+  ```
+
+  </details>
+
+- Debian 可用 apt 安装<details><summary><code>sudo apt install tssh</code></summary>
+
+  ```sh
+  sudo apt install curl gpg
+  curl -s 'https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x7074ce75da7cc691c1ae1a7c7e51d1ad956055ca' \
+    | gpg --dearmor -o /usr/share/keyrings/trzsz.gpg
+  echo 'deb [signed-by=/usr/share/keyrings/trzsz.gpg] https://ppa.launchpadcontent.net/trzsz/ppa/ubuntu jammy main' \
+    | sudo tee /etc/apt/sources.list.d/trzsz.list
+  sudo apt update
+
+  sudo apt install tssh
+  ```
+
+  </details>
+
+- Linux 可用 yum 安装<details><summary><code>sudo yum install tssh</code></summary>
+
+  ```sh
+  echo '[trzsz]
+  name=Trzsz Repo
+  baseurl=https://yum.fury.io/trzsz/
+  enabled=1
+  gpgcheck=0' | sudo tee /etc/yum.repos.d/trzsz.repo
+
+  sudo yum install tssh
+  ```
+
+  </details>
+
+- ArchLinux 可用 [yay](https://github.com/Jguer/yay) 安装<details><summary><code>yay -S tssh</code></summary>
+
+  ```sh
+  yay -Syu
+  yay -S tssh
+  ```
+
+  </details>
+
+- 用 Go 直接安装（ 要求 go 1.20 以上 ）<details><summary><code>go install github.com/trzsz/trzsz-ssh/cmd/tssh@latest</code></summary>
 
   ```sh
   go install github.com/trzsz/trzsz-ssh/cmd/tssh@latest
@@ -36,7 +91,22 @@ _如果服务器不安装 [trzsz](https://trzsz.github.io/cn/)，也能用 `tssh
 
   安装后，`tssh` 程序一般位于 `~/go/bin/` 目录下（ Windows 一般在 `C:\Users\your_name\go\bin\` ）。
 
-- 从 [Releases](https://github.com/trzsz/trzsz-ssh/releases) 中直接下载适用的版本。
+  </details>
+
+- 可从 [Releases](https://github.com/trzsz/trzsz-ssh/releases) 中直接下载适用的版本<details><summary><code>或者用 Go 编译（ 要求 go 1.20 以上 ）</code></summary>
+
+  ```sh
+  git clone https://github.com/trzsz/trzsz-ssh.git
+  cd trzsz-ssh
+  go build ./cmd/tssh
+  ```
+
+  </details>
+
+**_服务器上要安装 [trzsz](https://trzsz.github.io/cn/) 才能使用 `trz / tsz` 上传和下载，可任选其一安装：
+[Go 版](https://github.com/trzsz/trzsz-go)（ ⭐ 推荐 ）、[Py 版](https://github.com/trzsz/trzsz)、[Js 版](https://github.com/trzsz/trzsz.js)。_**
+
+_如果服务器不安装 [trzsz](https://trzsz.github.io/cn/)，也能用 `tssh`，只是不使用 `trz / tsz` 上传和下载而已。_
 
 ## 使用方法
 
