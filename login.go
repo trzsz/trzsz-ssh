@@ -340,10 +340,19 @@ func (s *passphraseSigner) Sign(rand io.Reader, data []byte) (*ssh.Signature, er
 }
 
 func newPassphraseSigner(path string, priKey []byte, err *ssh.PassphraseMissingError) (ssh.Signer, error) {
-	if err.PublicKey == nil {
-		return nil, fmt.Errorf("can't get public key from '%s'", path)
+	pubKey := err.PublicKey
+	if pubKey == nil {
+		pubPath := path + ".pub"
+		pubData, err := os.ReadFile(pubPath)
+		if err != nil {
+			return nil, fmt.Errorf("read public key [%s] failed: %v", pubPath, err)
+		}
+		pubKey, _, _, _, err = ssh.ParseAuthorizedKey(pubData)
+		if err != nil {
+			return nil, fmt.Errorf("parse public key [%s] failed: %v", pubPath, err)
+		}
 	}
-	return &passphraseSigner{path, priKey, err.PublicKey, nil}, nil
+	return &passphraseSigner{path, priKey, pubKey, nil}, nil
 }
 
 func isFileExist(path string) bool {
