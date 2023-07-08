@@ -6,6 +6,7 @@ require (
 	github.com/armon/go-socks5 v0.0.0-20160902184237-e75332964ef5
 	github.com/chzyer/readline v1.5.1
 	github.com/manifoldco/promptui v0.9.0
+	github.com/skeema/knownhosts v1.1.2-0.20230707234735-619ef88d66f2
 	github.com/stretchr/testify v1.8.4
 	github.com/trzsz/go-arg v1.5.2
 	github.com/trzsz/ssh_config v1.3.0

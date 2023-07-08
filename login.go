@@ -28,7 +28,6 @@ import (
 	"bytes"
 	"crypto/x509"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -43,10 +42,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/skeema/knownhosts"
 	"github.com/trzsz/ssh_config"
 	"github.com/trzsz/trzsz-go/trzsz"
 	"golang.org/x/crypto/ssh"
-	"golang.org/x/crypto/ssh/knownhosts"
 	"golang.org/x/term"
 )
 
@@ -197,14 +196,22 @@ func readLineFromRawIO(stdin *os.File) (string, error) {
 		if bytes.ContainsRune(data, '\x03') {
 			return "", fmt.Errorf("interrupt")
 		}
-		buffer.Write(data)
-		if bytes.ContainsAny(data, "\r\n") {
-			fmt.Fprintf(os.Stderr, "\r\n")
-			break
+		for _, b := range data {
+			if b == '\r' || b == '\n' {
+				fmt.Fprintf(os.Stderr, "\r\n")
+				return string(bytes.TrimSpace(buffer.Bytes())), nil
+			}
+			if b == '\x7f' {
+				if buffer.Len() > 0 {
+					buffer.Truncate(buffer.Len() - 1)
+					fmt.Fprintf(os.Stderr, "\b \b")
+				}
+			} else if b >= ' ' && b <= '~' {
+				buffer.WriteByte(b)
+				fmt.Fprintf(os.Stderr, "%s", string(b))
+			}
 		}
-		fmt.Fprintf(os.Stderr, "%s", string(data))
 	}
-	return string(bytes.TrimSpace(buffer.Bytes())), nil
 }
 
 func addHostKey(path, host string, remote net.Addr, key ssh.PublicKey) error {
@@ -237,38 +244,43 @@ func addHostKey(path, host string, remote net.Addr, key ssh.PublicKey) error {
 		fmt.Fprintf(os.Stderr, "Please type 'yes', 'no' or the fingerprint: ")
 	}
 
-	fmt.Fprintf(os.Stderr, "\r\033[0;33mWarning: Permanently added '%s' (%s) to the list of known hosts.\033[0m\r\n", host, key.Type())
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
-	if err != nil {
-		return err
+	writeKnownHost := func() error {
+		file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+		return knownhosts.WriteKnownHost(file, host, remote, key)
 	}
-	defer file.Close()
 
-	knownHost := knownhosts.Normalize(host)
-	_, err = file.WriteString(knownhosts.Line([]string{knownHost}, key) + "\n")
-	return err
+	if err = writeKnownHost(); err != nil {
+		fmt.Fprintf(os.Stderr, "\r\033[0;33mFailed to add the host to the list of known hosts (%s): %v\033[0m\r\n", path, err)
+		return nil
+	}
+
+	fmt.Fprintf(os.Stderr, "\r\033[0;33mWarning: Permanently added '%s' (%s) to the list of known hosts.\033[0m\r\n", host, key.Type())
+	return nil
 }
 
-var getHostKeyCallback = func() func() (ssh.HostKeyCallback, error) {
+var getHostKeyCallback = func() func() (ssh.HostKeyCallback, knownhosts.HostKeyCallback, error) {
 	var err error
 	var once sync.Once
-	var hkcb ssh.HostKeyCallback
-	return func() (ssh.HostKeyCallback, error) {
+	var cb ssh.HostKeyCallback
+	var kh knownhosts.HostKeyCallback
+	return func() (ssh.HostKeyCallback, knownhosts.HostKeyCallback, error) {
 		once.Do(func() {
 			path := filepath.Join(userHomeDir, ".ssh", "known_hosts")
 			if err = createKnownHosts(path); err != nil {
 				return
 			}
-			var cb ssh.HostKeyCallback
-			cb, err = knownhosts.New(path)
+			kh, err = knownhosts.New(path)
 			if err != nil {
 				err = fmt.Errorf("new knownhosts [%s] failed: %v", path, err)
 				return
 			}
-			hkcb = func(host string, remote net.Addr, key ssh.PublicKey) error {
-				var keyErr *knownhosts.KeyError
-				err := cb(host, remote, key)
-				if errors.As(err, &keyErr) && len(keyErr.Want) > 0 {
+			cb = func(host string, remote net.Addr, key ssh.PublicKey) error {
+				err := kh(host, remote, key)
+				if knownhosts.IsHostKeyChanged(err) {
 					fmt.Fprintf(os.Stderr, "\033[0;31m@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\r\n"+
 						"@    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @\r\n"+
 						"@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\r\n"+
@@ -280,14 +292,14 @@ var getHostKeyCallback = func() func() (ssh.HostKeyCallback, error) {
 						"Please contact your system administrator.\r\n"+
 						"Add correct host key in %s to get rid of this message.\r\n",
 						key.Type(), ssh.FingerprintSHA256(key), path)
-					return keyErr
-				} else if errors.As(err, &keyErr) && len(keyErr.Want) == 0 {
+					return err
+				} else if knownhosts.IsHostUnknown(err) {
 					return addHostKey(path, host, remote, key)
 				}
 				return err
 			}
 		})
-		return hkcb, err
+		return cb, kh, err
 	}
 }()
 
@@ -730,15 +742,16 @@ func sshConnect(args *sshArgs, client *ssh.Client, proxy string) (*ssh.Client, e
 	if err != nil {
 		return nil, err
 	}
-	hostkeyCallback, err := getHostKeyCallback()
+	cb, kh, err := getHostKeyCallback()
 	if err != nil {
 		return nil, err
 	}
 	config := &ssh.ClientConfig{
-		User:            param.user,
-		Auth:            authMethods,
-		Timeout:         3 * time.Second,
-		HostKeyCallback: hostkeyCallback,
+		User:              param.user,
+		Auth:              authMethods,
+		Timeout:           3 * time.Second,
+		HostKeyCallback:   cb,
+		HostKeyAlgorithms: kh.HostKeyAlgorithms(param.addr),
 		BannerCallback: func(banner string) error {
 			_, err := fmt.Fprint(os.Stderr, strings.ReplaceAll(banner, "\n", "\r\n"))
 			return err
