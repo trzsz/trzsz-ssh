@@ -36,7 +36,7 @@ import (
 	"golang.org/x/term"
 )
 
-const kTsshVersion = "0.1.5"
+const kTsshVersion = "0.1.6"
 
 func background(dest string) (bool, error) {
 	if v := os.Getenv("TRZSZ-SSH-BACKGROUND"); v == "TRUE" {
