@@ -14,7 +14,6 @@ builds:
       - darwin
 archives:
   - id: tssh
-    rlcp: true
     name_template: >-
       {{ .ProjectName }}_
       {{- .Version }}_

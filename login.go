@@ -543,37 +543,37 @@ func getKeyboardInteractiveAuthMethod(args *sshArgs, host, user string) ssh.Auth
 		}), 3)
 }
 
-var getDefaultSigners = func() func() ([]ssh.Signer, error) {
-	var err error
+var getDefaultSigners = func() func() []ssh.Signer {
 	var once sync.Once
 	var signers []ssh.Signer
-	return func() ([]ssh.Signer, error) {
+	return func() []ssh.Signer {
 		once.Do(func() {
-			var signer ssh.Signer
 			identity := ssh_config.Default("IdentityFile")
 			if strings.HasPrefix(identity, "~/") || strings.HasPrefix(identity, "~\\") {
 				identity = filepath.Join(userHomeDir, identity[2:])
 			}
 			if isFileExist(identity) {
-				signer, err = getSigner(identity)
+				signer, err := getSigner(identity)
 				if err != nil {
-					return
+					fmt.Fprintf(os.Stderr, "\033[0;33mWarning: %s\033[0m\r\n", err)
+				} else {
+					signers = append(signers, signer)
 				}
-				signers = append(signers, signer)
 			}
-			for _, name := range []string{"id_rsa", "id_ecdsa", "id_ecdsa_sk", "id_ed25519", "id_ed25519_sk", "id_dsa"} {
+			for _, name := range []string{"id_rsa", "id_ecdsa", "id_ecdsa_sk", "id_ed25519", "id_ed25519_sk"} {
 				path := filepath.Join(userHomeDir, ".ssh", name)
 				if !isFileExist(path) {
 					continue
 				}
-				signer, err = getSigner(path)
+				signer, err := getSigner(path)
 				if err != nil {
-					return
+					fmt.Fprintf(os.Stderr, "\033[0;33mWarning: %s\033[0m\r\n", err)
+				} else {
+					signers = append(signers, signer)
 				}
-				signers = append(signers, signer)
 			}
 		})
-		return signers, err
+		return signers
 	}
 }()
 
@@ -590,11 +590,7 @@ func getAuthMethods(args *sshArgs, host, user string) ([]ssh.AuthMethod, error) 
 	} else {
 		identities := ssh_config.GetAll(args.Destination, "IdentityFile")
 		if len(identities) <= 0 || len(identities) == 1 && identities[0] == ssh_config.Default("IdentityFile") {
-			var err error
-			signers, err = getDefaultSigners()
-			if err != nil {
-				return nil, err
-			}
+			signers = getDefaultSigners()
 		} else {
 			for _, identity := range identities {
 				signer, err := getSigner(identity)

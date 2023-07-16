@@ -28,6 +28,7 @@ jobs:
           assets_path: |
             dist/*.tar.gz
             dist/*.zip
+            dist/*.rpm
             dist/*_checksums.txt
       - name: Publish rpm to Gemfury
         env:
