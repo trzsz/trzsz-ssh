@@ -22,14 +22,58 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-package main
+package tssh
 
 import (
+	"math"
 	"os"
-
-	"github.com/trzsz/trzsz-ssh/tssh"
 )
 
-func main() {
-	os.Exit(tssh.TsshMain())
+const (
+	openTermPane = 0
+	openTermTab  = 1
+	openTermWin  = 2
+)
+
+type terminalManager interface {
+	openTerminals(openType int, hosts []*sshHost)
+}
+
+func getTerminalManager() terminalManager {
+	if mgr := getTmuxManager(); mgr != nil {
+		return mgr
+	}
+	if mgr := getWindowsTerminalManager(); mgr != nil {
+		return mgr
+	}
+	return nil
+}
+
+type paneHost struct {
+	alias  string
+	paneId string
+}
+
+func getPanesMatrix(hosts []*sshHost) [][]*paneHost {
+	rows := int(math.Floor(math.Sqrt(float64(len(hosts)))))
+	cols := make([]int, rows)
+	for i := 0; i < len(hosts); i++ {
+		cols[i%rows]++
+	}
+	matrix := make([][]*paneHost, rows)
+	idx := 0
+	for i := 0; i < rows; i++ {
+		matrix[i] = make([]*paneHost, cols[i])
+		for j := 0; j < cols[i]; j++ {
+			matrix[i][j] = &paneHost{hosts[idx].Alias, ""}
+			idx++
+		}
+	}
+	return matrix
+}
+
+func appendArgs(alias string, args ...string) []string {
+	args = append(args, os.Args...)
+	args = append(args, alias)
+	return args
 }

@@ -116,7 +116,7 @@ func setupTerminalMode() (*terminalMode, error) {
 	// enable virtual terminal
 	inMode, outMode, err := enableVirtualTerminal()
 	if err != nil {
-		return nil, fmt.Errorf("enable virtual terminal failed: %#v", err)
+		return nil, fmt.Errorf("enable virtual terminal failed: %v", err)
 	}
 
 	// set code page to UTF8
@@ -127,7 +127,7 @@ func setupTerminalMode() (*terminalMode, error) {
 
 	state, err := term.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {
-		return nil, fmt.Errorf("terminal make raw failed: %#v", err)
+		return nil, fmt.Errorf("terminal make raw failed: %v", err)
 	}
 
 	return &terminalMode{inCP, outCP, inMode, outMode, state}, nil
@@ -195,7 +195,7 @@ func getKeyboardInput() (*os.File, func(), error) {
 	state, err := term.MakeRaw(int(file.Fd()))
 	if err != nil {
 		_ = file.Close()
-		return nil, nil, fmt.Errorf("CONIN$ make raw failed: %#v", err)
+		return nil, nil, fmt.Errorf("CONIN$ make raw failed: %v", err)
 	}
 
 	return file, func() { _ = term.Restore(int(file.Fd()), state); _ = file.Close() }, nil

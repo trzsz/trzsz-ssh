@@ -13,11 +13,13 @@ Website: [https://trzsz.github.io/ssh](https://trzsz.github.io/ssh) ( English ) 
 
 你喜欢的 ssh 终端是否有好用的服务器管理功能？是否支持记住密码？是否有好用的文件传输工具？
 
-trzsz-ssh ( tssh ) 支持选择或搜索 `~/.ssh/config` 中配置的服务器，支持 vim 操作习惯，解决 ssh 终端的服务器管理问题。
+tssh 支持选择或搜索 `~/.ssh/config` 中配置的服务器，支持 vim 操作习惯，解决 ssh 终端的服务器管理问题。
 
-trzsz-ssh ( tssh ) 支持配置服务器登录密码，解决每次手工输入密码的麻烦（ 在自己能控制的服务器，推荐使用公私钥登录 ）。
+tssh 支持一次选择多台服务器，批量登录，并支持批量执行预先指定的命令，方便快速完成批量服务器操作。
 
-trzsz-ssh ( tssh ) 内置支持 [trzsz](https://trzsz.github.io/cn/) ( trz / tsz ) 文件传输工具，一并解决了 Windows 中使用 `trzsz ssh` 上传速度很慢的问题。
+tssh 支持配置服务器登录密码，解决每次手工输入密码的麻烦（ 在自己能控制的服务器，推荐使用公私钥登录 ）。
+
+tssh 内置支持 [trzsz](https://trzsz.github.io/cn/) ( trz / tsz ) 文件传输工具，一并解决了 Windows 中使用 `trzsz ssh` 上传速度很慢的问题。
 
 _在作者的 MacOS 上，使用 `trzsz ssh` 的上传速度在 10 MB/s 左右，而使用 `tssh` 可以到 80 MB/s 以上。_
 
@@ -177,6 +179,21 @@ _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\
 
 - 直接执行 `tssh` 命令（ 不带参数 ），可以选择（ 搜索 ） `~/.ssh/config` 中配置好的服务器并登录。
 
+## 批量登录
+
+- 目前支持在 `tmux` 和 `Windows Terminal` 中一次选择多台服务器，批量登录，并支持批量执行预先指定的命令。
+
+- 按下 `Space`、`Ctrl+Space` 或 `Alt+Space` 可以选中或取消当前服务器，若不能选中说明还不支持当前终端，请先运行 `tmux`。
+
+- 按下 `Enter` 或 `Ctrl+P` 会以分屏的方式批量登录，`Ctrl+W` 会打开新窗口批量登录，`Ctrl+T` 会打开新 tab 批量登录。
+
+- `tssh` 不带参数启动可以批量登录服务器，若带 `-o RemoteCommand` 参数启动则可以批量执行指定的命令。支持执行指定命令之后进入交互式 shell，但 `Windows Terminal` 不支持分号 `;`，可以用 `|cat&&` 代替。举例：
+
+  ```sh
+  tssh -t -o RemoteCommand='ping -c3 trzsz.github.io ; bash'
+  tssh -t -o RemoteCommand="ping -c3 trzsz.github.io |cat&& bash"
+  ```
+
 ## 记住密码
 
 - 为了兼容标准 ssh ，密码配置项独立放在 `~/.ssh/password` 中，其他配置项依然放在 `~/.ssh/config` 中。
@@ -223,6 +240,8 @@ _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\
 ## 录屏演示
 
 ![tssh登录演示](https://trzsz.github.io/images/tssh.gif)
+
+![tssh批量执行](https://trzsz.github.io/images/batch_ssh.gif)
 
 ## 联系方式
 

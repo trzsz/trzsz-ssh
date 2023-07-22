@@ -45,7 +45,7 @@ type terminalMode struct {
 func setupTerminalMode() (*terminalMode, error) {
 	state, err := term.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {
-		return nil, fmt.Errorf("terminal make raw failed: %#v", err)
+		return nil, fmt.Errorf("terminal make raw failed: %v", err)
 	}
 	return &terminalMode{state}, nil
 }
@@ -92,7 +92,7 @@ func getKeyboardInput() (*os.File, func(), error) {
 	state, err := term.MakeRaw(int(file.Fd()))
 	if err != nil {
 		_ = file.Close()
-		return nil, nil, fmt.Errorf("%s make raw failed: %#v", path, err)
+		return nil, nil, fmt.Errorf("%s make raw failed: %v", path, err)
 	}
 
 	return file, func() { _ = term.Restore(int(file.Fd()), state); _ = file.Close() }, nil

@@ -60,6 +60,10 @@ func debug(format string, a ...any) {
 	fmt.Fprintf(os.Stderr, fmt.Sprintf("\033[0;36mdebug:\033[0m %s\r\n", format), a...)
 }
 
+func warning(format string, a ...any) {
+	fmt.Fprintf(os.Stderr, fmt.Sprintf("\033[0;33m%s\033[0m\r\n", format), a...)
+}
+
 type loginParam struct {
 	host    string
 	port    string
@@ -185,6 +189,7 @@ func createKnownHosts(path string) error {
 }
 
 func readLineFromRawIO(stdin *os.File) (string, error) {
+	defer fmt.Fprintf(os.Stderr, "\r\n")
 	buffer := new(bytes.Buffer)
 	buf := make([]byte, 100)
 	for {
@@ -194,11 +199,11 @@ func readLineFromRawIO(stdin *os.File) (string, error) {
 		}
 		data := buf[:n]
 		if bytes.ContainsRune(data, '\x03') {
+			fmt.Fprintf(os.Stderr, "^C")
 			return "", fmt.Errorf("interrupt")
 		}
 		for _, b := range data {
 			if b == '\r' || b == '\n' {
-				fmt.Fprintf(os.Stderr, "\r\n")
 				return string(bytes.TrimSpace(buffer.Bytes())), nil
 			}
 			if b == '\x7f' {
@@ -218,7 +223,6 @@ func addHostKey(path, host string, remote net.Addr, key ssh.PublicKey) error {
 	fingerprint := ssh.FingerprintSHA256(key)
 	fmt.Fprintf(os.Stderr, "The authenticity of host '%s' can't be established.\r\n"+
 		"%s key fingerprint is %s.\r\n", host, key.Type(), fingerprint)
-	defer fmt.Fprintf(os.Stderr, "\r")
 
 	stdin, closer, err := getKeyboardInput()
 	if err != nil {
@@ -254,11 +258,11 @@ func addHostKey(path, host string, remote net.Addr, key ssh.PublicKey) error {
 	}
 
 	if err = writeKnownHost(); err != nil {
-		fmt.Fprintf(os.Stderr, "\r\033[0;33mFailed to add the host to the list of known hosts (%s): %v\033[0m\r\n", path, err)
+		warning("Failed to add the host to the list of known hosts (%s): %v", path, err)
 		return nil
 	}
 
-	fmt.Fprintf(os.Stderr, "\r\033[0;33mWarning: Permanently added '%s' (%s) to the list of known hosts.\033[0m\r\n", host, key.Type())
+	warning("Warning: Permanently added '%s' (%s) to the list of known hosts.", host, key.Type())
 	return nil
 }
 
@@ -555,7 +559,7 @@ var getDefaultSigners = func() func() []ssh.Signer {
 			if isFileExist(identity) {
 				signer, err := getSigner(identity)
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "\033[0;33mWarning: %s\033[0m\r\n", err)
+					warning("Warning: %s", err)
 				} else {
 					signers = append(signers, signer)
 				}
@@ -567,7 +571,7 @@ var getDefaultSigners = func() func() []ssh.Signer {
 				}
 				signer, err := getSigner(path)
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "\033[0;33mWarning: %s\033[0m\r\n", err)
+					warning("Warning: %s", err)
 				} else {
 					signers = append(signers, signer)
 				}
@@ -855,6 +859,42 @@ func keepAlive(client *ssh.Client, args *sshArgs) {
 	}
 }
 
+func wrapStdIO(serverIn io.WriteCloser, serverOut io.Reader) {
+	go func() {
+		defer serverIn.Close()
+		win := runtime.GOOS == "windows"
+		buffer := make([]byte, 32*1024)
+		for {
+			n, err := os.Stdin.Read(buffer)
+			if n > 0 {
+				buf := buffer[:n]
+				if win {
+					buf = bytes.ReplaceAll(buf, []byte("\r\n"), []byte("\n"))
+				}
+				w := 0
+				for w < len(buf) {
+					n, err := serverIn.Write(buf[w:])
+					if err != nil {
+						warning("write to server failed: %v", err)
+						return
+					}
+					w += n
+				}
+			}
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				warning("read from stdin failed: %v", err)
+				return
+			}
+		}
+	}()
+	go func() {
+		_, _ = io.Copy(os.Stdout, serverOut)
+	}()
+}
+
 func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session, err error) {
 	defer func() {
 		if err != nil {
@@ -896,10 +936,21 @@ func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session
 	}
 	session.Stderr = os.Stderr
 
+	// session input and output
+	serverIn, err := session.StdinPipe()
+	if err != nil {
+		err = fmt.Errorf("stdin pipe failed: %v", err)
+		return
+	}
+	serverOut, err := session.StdoutPipe()
+	if err != nil {
+		err = fmt.Errorf("stdout pipe failed: %v", err)
+		return
+	}
+
 	// no tty
 	if !tty {
-		session.Stdin = os.Stdin
-		session.Stdout = os.Stdout
+		wrapStdIO(serverIn, serverOut)
 		return
 	}
 
@@ -911,18 +962,6 @@ func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session
 	}
 	if err = session.RequestPty("xterm-256color", height, width, ssh.TerminalModes{}); err != nil {
 		err = fmt.Errorf("request pty failed: %v", err)
-		return
-	}
-
-	// session input and output
-	serverIn, err := session.StdinPipe()
-	if err != nil {
-		err = fmt.Errorf("stdin pipe failed: %v", err)
-		return
-	}
-	serverOut, err := session.StdoutPipe()
-	if err != nil {
-		err = fmt.Errorf("stdout pipe failed: %v", err)
 		return
 	}
 

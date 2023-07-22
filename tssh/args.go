@@ -81,7 +81,7 @@ func (sshArgs) Version() string {
 func (o *sshOption) UnmarshalText(b []byte) error {
 	s := string(b)
 	pos := strings.Index(s, "=")
-	if pos < 1 {
+	if pos < 1 || strings.TrimSpace(s[pos+1:]) == "" {
 		return fmt.Errorf("invalid option: %s", s)
 	}
 	if o.options == nil {

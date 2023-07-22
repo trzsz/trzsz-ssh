@@ -36,7 +36,7 @@ import (
 	"golang.org/x/term"
 )
 
-const kTsshVersion = "0.1.7"
+const kTsshVersion = "0.1.8"
 
 func background(dest string) (bool, error) {
 	if v := os.Getenv("TRZSZ-SSH-BACKGROUND"); v == "TRUE" {
@@ -59,24 +59,34 @@ func background(dest string) (bool, error) {
 	return true, nil
 }
 
-func parseRemoteCommand(args *sshArgs) string {
+var onExitFuncs []func()
+
+func parseRemoteCommand(args *sshArgs) (string, error) {
+	command := args.Option.get("RemoteCommand")
+	if args.Command != "" && command != "" && strings.ToLower(command) != "none" {
+		return "", fmt.Errorf("cannot execute command-line and remote command")
+	}
 	if args.Command != "" {
 		if len(args.Argument) == 0 {
-			return args.Command
+			return args.Command, nil
 		}
-		return fmt.Sprintf("%s %s", args.Command, strings.Join(args.Argument, " "))
+		return fmt.Sprintf("%s %s", args.Command, strings.Join(args.Argument, " ")), nil
 	}
-	command := args.Option.get("RemoteCommand")
 	if strings.ToLower(command) == "none" {
-		return ""
+		return "", nil
+	} else if command != "" {
+		return command, nil
 	}
-	return ssh_config.Get(args.Destination, "RemoteCommand")
+	return ssh_config.Get(args.Destination, "RemoteCommand"), nil
 }
 
 var isTerminal bool = term.IsTerminal(int(os.Stdin.Fd()))
 
 func parseCmdAndTTY(args *sshArgs) (cmd string, tty bool, err error) {
-	cmd = parseRemoteCommand(args)
+	cmd, err = parseRemoteCommand(args)
+	if err != nil {
+		return
+	}
 
 	if args.DisableTTY && args.ForceTTY {
 		err = fmt.Errorf("cannot specify -t with -T")
@@ -121,6 +131,13 @@ func TsshMain() int {
 	if args.Debug {
 		enableDebugLogging = true
 	}
+
+	// cleanup on exit
+	defer func() {
+		for _, f := range onExitFuncs {
+			f()
+		}
+	}()
 
 	// print message after stdin reset
 	var err error
@@ -218,30 +235,23 @@ func TsshMain() int {
 
 	// run command or start shell
 	if command != "" {
-		if !tty {
-			if err = session.Run(command); err != nil {
-				err = fmt.Errorf("run command [%s] failed: %v", command, err)
-				return 10
-			}
-			return 0
-		}
 		if err = session.Start(command); err != nil {
 			err = fmt.Errorf("start command [%s] failed: %v", command, err)
-			return 11
+			return 10
 		}
 	} else {
 		if err = session.Shell(); err != nil {
 			err = fmt.Errorf("start shell failed: %v", err)
-			return 12
+			return 11
 		}
 	}
 
 	// wait for exit
 	if session.Wait() != nil {
-		return 13
+		return 12
 	}
 	if args.Background && client.Wait() != nil {
-		return 14
+		return 13
 	}
 	return 0
 }

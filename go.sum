@@ -43,6 +43,8 @@ github.com/stretchr/testify v1.8.4 h1:CcVxjf3Q8PM0mHUKJCdn+eZZtm5yQwehR5yeSVQQcU
 github.com/stretchr/testify v1.8.4/go.mod h1:sz/lmYIOXD/1dqDmKjjqLyZ2RngseejIcXlSw2iwfAo=
 github.com/trzsz/go-arg v1.5.2 h1:zGxCuTKvtC3jBf7HbvNk0HooUjv8uKAy2mY+bHVhRas=
 github.com/trzsz/go-arg v1.5.2/go.mod h1:IC6Z/FiVH7uYvcbp1/gJhDYCFPS/GkL0APYakVvgY4I=
+github.com/trzsz/promptui v0.10.1 h1:wdCx85TdjmEaCTl0R0ZDKloGbHqhjFInDjkKw5tC29E=
+github.com/trzsz/promptui v0.10.1/go.mod h1:GMZtu6ZTzU73CBFkzGtmB4wnTROIAbv4GFA74fV8V8g=
 github.com/trzsz/ssh_config v1.3.0 h1:nXzIfKDpmKBVJsRb0OeLsLhrtRN4499xZ1bgx9K55Qw=
 github.com/trzsz/ssh_config v1.3.0/go.mod h1:Dl1okTjVVfsrtTA8nqkJ1OnjiCrZY6DUEI2DGT2/YoQ=
 github.com/trzsz/trzsz-go v1.1.4 h1:r33p69zGNWl43hdtMHbroD1l02+YXjdOjYMRPyVPpHg=
