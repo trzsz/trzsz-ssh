@@ -94,29 +94,27 @@ func getAllHosts() ([]*sshHost, error) {
 	if err != nil {
 		return nil, fmt.Errorf("decode config [%s] failed: %v", path, err)
 	}
-	hosts := []*sshHost{}
-	hosts = appendPromptHosts(hosts, cfg.Hosts...)
-	hosts = append(hosts, getIncludeHosts(cfg.Hosts)...)
+	hosts := recursiveGetHosts(cfg.Hosts)
 	if len(hosts) == 0 {
 		return nil, fmt.Errorf("no config in %s", path)
 	}
 	return hosts, nil
 }
 
-// getIncludeHosts get ssh/config include file hosts
-func getIncludeHosts(cfgHosts []*ssh_config.Host) []*sshHost {
+// recursiveGetHosts recursive get hosts (contains include file's hosts)
+func recursiveGetHosts(cfgHosts []*ssh_config.Host) []*sshHost {
 	hosts := make([]*sshHost, 0)
 	for _, host := range cfgHosts {
 		for _, node := range host.Nodes {
 			if include, ok := node.(*ssh_config.Include); ok && include != nil {
-				files := include.GetFiles()
-				for _, config := range files {
+				for _, config := range include.GetFiles() {
 					if config != nil {
-						hosts = appendPromptHosts(hosts, config.Hosts...)
+						hosts = append(hosts, recursiveGetHosts(config.Hosts)...)
 					}
 				}
 			}
 		}
+		hosts = appendPromptHosts(hosts, host)
 	}
 	return hosts
 }
