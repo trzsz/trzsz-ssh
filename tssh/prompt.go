@@ -94,8 +94,33 @@ func getAllHosts() ([]*sshHost, error) {
 	if err != nil {
 		return nil, fmt.Errorf("decode config [%s] failed: %v", path, err)
 	}
-	hosts := []*sshHost{}
-	for _, host := range cfg.Hosts {
+	hosts := recursiveGetHosts(cfg.Hosts)
+	if len(hosts) == 0 {
+		return nil, fmt.Errorf("no config in %s", path)
+	}
+	return hosts, nil
+}
+
+// recursiveGetHosts recursive get hosts (contains include file's hosts)
+func recursiveGetHosts(cfgHosts []*ssh_config.Host) []*sshHost {
+	var hosts []*sshHost
+	for _, host := range cfgHosts {
+		for _, node := range host.Nodes {
+			if include, ok := node.(*ssh_config.Include); ok && include != nil {
+				for _, config := range include.GetFiles() {
+					if config != nil {
+						hosts = append(hosts, recursiveGetHosts(config.Hosts)...)
+					}
+				}
+			}
+		}
+		hosts = appendPromptHosts(hosts, host)
+	}
+	return hosts
+}
+
+func appendPromptHosts(hosts []*sshHost, cfgHosts ...*ssh_config.Host) []*sshHost {
+	for _, host := range cfgHosts {
 		alias := host.Patterns[0].String()
 		if strings.ContainsRune(alias, '*') || strings.ContainsRune(alias, '?') {
 			continue
@@ -111,10 +136,7 @@ func getAllHosts() ([]*sshHost, error) {
 			RemoteCommand: ssh_config.Get(alias, "RemoteCommand"),
 		})
 	}
-	if len(hosts) == 0 {
-		return nil, fmt.Errorf("no config in %s", path)
-	}
-	return hosts, nil
+	return hosts
 }
 
 func (p *sshPrompt) getPageCount() int {
