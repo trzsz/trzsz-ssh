@@ -103,7 +103,7 @@ func getAllHosts() ([]*sshHost, error) {
 
 // recursiveGetHosts recursive get hosts (contains include file's hosts)
 func recursiveGetHosts(cfgHosts []*ssh_config.Host) []*sshHost {
-	hosts := make([]*sshHost, 0)
+	var hosts []*sshHost
 	for _, host := range cfgHosts {
 		for _, node := range host.Nodes {
 			if include, ok := node.(*ssh_config.Include); ok && include != nil {
