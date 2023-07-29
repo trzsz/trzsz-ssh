@@ -1,8 +1,8 @@
 # trzsz-ssh ( tssh )
 
-支持 [trzsz](https://trzsz.github.io/cn/) ( trz / tsz ) 的 ssh 客户端，支持选择或搜索服务器登录，支持记住密码。
+支持 [trzsz](https://trzsz.github.io/cn/) ( trz / tsz ) 的 ssh 客户端，支持搜索和选择服务器进行批量登录，支持记住密码。
 
-A ssh client that supports [trzsz](https://trzsz.github.io/), supports selecting or searching servers for login, supports remember password.
+An ssh client that supports [trzsz](https://trzsz.github.io/), supports searching and selecting servers for batch login.
 
 Website: [https://trzsz.github.io/ssh](https://trzsz.github.io/ssh) ( English ) 　中文文档：[https://trzsz.github.io/cn/ssh](https://trzsz.github.io/cn/ssh)
 
@@ -27,14 +27,21 @@ _在作者的 MacOS 上，使用 `trzsz ssh` 的上传速度在 10 MB/s 左右�
 
 **_客户端安装 `trzsz-ssh ( tssh )` 的方法如下（ 任选其一 ）：_**
 
-- Windows 可用 [scoop](https://scoop.sh/) 安装
+- Windows 可用 [scoop](https://scoop.sh/) / [winget](https://learn.microsoft.com/zh-cn/windows/package-manager/winget/) / [choco](https://community.chocolatey.org/) 安装
 
   <details><summary><code>scoop install tssh</code></summary>
 
   ```sh
   scoop bucket add extras
-  scoop update
   scoop install tssh
+  ```
+
+  ```sh
+  winget install tssh
+  ```
+
+  ```sh
+  choco install tssh
   ```
 
   </details>
@@ -236,6 +243,28 @@ _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\
       6e616d653a20 my_name  # 其中 `6e616d653a20` 是问题 `name: ` 的 hex 编码
       636f64653a20 my_code  # 其中 `636f64653a20` 是问题 `code: ` 的 hex 编码
   ```
+
+## 快捷键
+
+| 操作      | 全局快捷键                      | 非搜索快捷键 | 快捷键描述      |
+| --------- | ------------------------------- | ------------ | --------------- |
+| Confirm   | Enter                           |              | 确认并登录      |
+| Quit/Exit | Ctrl+C Ctrl+Q                   | q Q          | 取消并退出      |
+| Move Prev | Ctrl+K Shift+Tab ↑              | k K          | 往上移光标      |
+| Move Next | Ctrl+J Tab ↓                    | j J          | 往下移光标      |
+| Page Up   | Ctrl+H Ctrl+U Ctrl+B PageUp ←   | h H u U b B  | 往上翻一页      |
+| Page Down | Ctrl+L Ctrl+D Ctrl+F PageDown → | l L d D f F  | 往下翻一页      |
+| Goto Home | Home                            | g            | 跳到第一行      |
+| Goto End  | End                             | G            | 跳到最尾行      |
+| EraseKeys | Ctrl+E                          | e E          | 擦除搜索关键字  |
+| TglSearch | /                               |              | 切换搜索功能    |
+| Tgl Help  | ?                               |              | 切换帮助信息    |
+| TglSelect | Ctrl+X Ctrl+Space Alt+Space     | Space x X    | 切换选中状态    |
+| SelectAll | Ctrl+A                          | a A          | 全选当前页      |
+| SelectOpp | Ctrl+O                          | o O          | 反选当前页      |
+| Open Wins | Ctrl+W                          | w W          | 新窗口批量登录  |
+| Open Tabs | Ctrl+T                          | t T          | 新 Tab 批量登录 |
+| Open Pane | Ctrl+P                          | p P          | 分屏批量登录    |
 
 ## 录屏演示
 

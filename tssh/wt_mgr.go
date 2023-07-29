@@ -43,12 +43,18 @@ func (m *wtMgr) openTerminals(openType int, hosts []*sshHost) {
 		return
 	}
 	switch openType {
-	case openTermWin:
-		m.openWindows(hosts)
-	case openTermTab:
-		m.openTabs(hosts)
+	case openTermDefault:
+		if len(hosts) > 36 {
+			m.openTabs(hosts)
+		} else {
+			m.openPanes(hosts)
+		}
 	case openTermPane:
 		m.openPanes(hosts)
+	case openTermTab:
+		m.openTabs(hosts)
+	case openTermWindow:
+		m.openWindows(hosts)
 	}
 }
 

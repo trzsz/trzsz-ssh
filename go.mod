@@ -8,7 +8,7 @@ require (
 	github.com/skeema/knownhosts v1.2.0
 	github.com/stretchr/testify v1.8.4
 	github.com/trzsz/go-arg v1.5.2
-	github.com/trzsz/promptui v0.10.1
+	github.com/trzsz/promptui v0.10.2
 	github.com/trzsz/ssh_config v1.3.1
 	github.com/trzsz/trzsz-go v1.1.4
 	golang.org/x/crypto v0.11.0

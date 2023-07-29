@@ -30,9 +30,10 @@ import (
 )
 
 const (
-	openTermPane = 0
-	openTermTab  = 1
-	openTermWin  = 2
+	openTermDefault = 0
+	openTermPane    = 1
+	openTermTab     = 2
+	openTermWindow  = 3
 )
 
 type terminalManager interface {

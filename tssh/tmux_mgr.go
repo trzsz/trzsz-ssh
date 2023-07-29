@@ -39,10 +39,16 @@ func (m *tmuxMgr) openTerminals(openType int, hosts []*sshHost) {
 		return
 	}
 	switch openType {
-	case openTermWin, openTermTab:
-		m.openWindows(hosts)
+	case openTermDefault:
+		if len(hosts) > 36 {
+			m.openWindows(hosts)
+		} else {
+			m.openPanes(hosts)
+		}
 	case openTermPane:
 		m.openPanes(hosts)
+	case openTermTab, openTermWindow:
+		m.openWindows(hosts)
 	}
 }
 
