@@ -36,7 +36,7 @@ import (
 	"golang.org/x/term"
 )
 
-const kTsshVersion = "0.1.8"
+const kTsshVersion = "0.1.9"
 
 func background(dest string) (bool, error) {
 	if v := os.Getenv("TRZSZ-SSH-BACKGROUND"); v == "TRUE" {
@@ -134,8 +134,8 @@ func TsshMain() int {
 
 	// cleanup on exit
 	defer func() {
-		for _, f := range onExitFuncs {
-			f()
+		for i := len(onExitFuncs) - 1; i >= 0; i-- {
+			onExitFuncs[i]()
 		}
 	}()
 
