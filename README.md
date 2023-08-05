@@ -189,9 +189,9 @@ _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\
 
 - 目前支持在 `tmux` 和 `Windows Terminal` 中一次选择多台服务器，批量登录，并支持批量执行预先指定的命令。
 
-- 按下 `Space`、`Ctrl+Space` 或 `Alt+Space` 可以选中或取消当前服务器，若不能选中说明还不支持当前终端，请先运行 `tmux`。
+- 按下 `Space`、`Ctrl+X` 等可以选中或取消当前服务器，若不能选中说明还不支持当前终端，请先运行 `tmux`。
 
-- 按下 `Enter` 或 `Ctrl+P` 会以分屏的方式批量登录，`Ctrl+W` 会打开新窗口批量登录，`Ctrl+T` 会打开新 tab 批量登录。
+- 按下 `Ctrl+P` 会以分屏的方式批量登录，`Ctrl+W` 会打开新窗口批量登录，`Ctrl+T` 会打开新 tab 批量登录。
 
 - `tssh` 不带参数启动可以批量登录服务器，若带 `-o RemoteCommand` 参数启动则可以批量执行指定的命令。支持执行指定命令之后进入交互式 shell，但 `Windows Terminal` 不支持分号 `;`，可以用 `|cat&&` 代替。举例：
 
@@ -275,7 +275,11 @@ _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\
 
 有什么问题可以发邮件给作者 <lonnywong@qq.com>，也可以提 [Issues](https://github.com/trzsz/trzsz-ssh/issues) 。欢迎加入 QQ 群：318578930。
 
+## 赞助打赏
+
 请作者喝一杯咖啡 ☕ ?
 
 ![sponsor wechat qrcode](https://trzsz.github.io/images/sponsor_wechat.jpg)
 ![sponsor alipay qrcode](https://trzsz.github.io/images/sponsor_alipay.jpg)
+
+感谢 [@mx4994](https://github.com/mx4994) ！
