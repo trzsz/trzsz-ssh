@@ -38,23 +38,36 @@ import (
 
 const kTsshVersion = "0.1.9"
 
-func background(dest string) (bool, error) {
+func background(args *sshArgs, dest string) (bool, error) {
 	if v := os.Getenv("TRZSZ-SSH-BACKGROUND"); v == "TRUE" {
 		return false, nil
 	}
 	env := append(os.Environ(), "TRZSZ-SSH-BACKGROUND=TRUE")
-	args := os.Args
-	if dest != "" {
-		args = append(args, dest)
+	newArgs := os.Args
+	if args.Destination == "" {
+		newArgs = append(newArgs, dest)
+	} else if args.Destination != dest {
+		idx := -1
+		count := 0
+		for i, arg := range newArgs {
+			if arg == args.Destination {
+				idx = i
+				count++
+			}
+		}
+		if count != 1 {
+			return true, fmt.Errorf("don't know how to replace the destination: %s => %s", args.Destination, dest)
+		}
+		newArgs[idx] = dest
 	}
 	cmd := exec.Cmd{
 		Path:   os.Args[0],
-		Args:   args,
+		Args:   newArgs,
 		Env:    env,
 		Stderr: os.Stderr,
 	}
 	if err := cmd.Start(); err != nil {
-		return true, err
+		return true, fmt.Errorf("run in background failed: %v", err)
 	}
 	return true, nil
 }
@@ -159,27 +172,28 @@ func TsshMain() int {
 
 	// choose ssh alias
 	dest := ""
+	quit := false
 	if args.Destination == "" {
 		if !isTerminal {
 			parser.WriteHelp(os.Stderr)
 			return 2
 		}
-		var quit bool
-		dest, quit, err = chooseAlias()
-		if quit {
-			err = nil
-			return 0
-		}
-		if err != nil {
-			return 3
-		}
-		args.Destination = dest
+		dest, quit, err = chooseAlias("")
+	} else {
+		dest, quit, err = predictDestination(args.Destination)
+	}
+	if quit {
+		err = nil
+		return 0
+	}
+	if err != nil {
+		return 3
 	}
 
 	// run as background
 	if args.Background {
 		var parent bool
-		parent, err = background(dest)
+		parent, err = background(&args, dest)
 		if err != nil {
 			return 4
 		}
@@ -187,6 +201,7 @@ func TsshMain() int {
 			return 0
 		}
 	}
+	args.Destination = dest
 
 	// parse cmd and tty
 	command, tty, err := parseCmdAndTTY(&args)

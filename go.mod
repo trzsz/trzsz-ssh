@@ -8,12 +8,12 @@ require (
 	github.com/skeema/knownhosts v1.2.0
 	github.com/stretchr/testify v1.8.4
 	github.com/trzsz/go-arg v1.5.2
-	github.com/trzsz/promptui v0.10.2
+	github.com/trzsz/promptui v0.10.3
 	github.com/trzsz/ssh_config v1.3.1
 	github.com/trzsz/trzsz-go v1.1.5
-	golang.org/x/crypto v0.11.0
-	golang.org/x/sys v0.10.0
-	golang.org/x/term v0.10.0
+	golang.org/x/crypto v0.12.0
+	golang.org/x/sys v0.11.0
+	golang.org/x/term v0.11.0
 )
 
 require (
@@ -26,11 +26,11 @@ require (
 	github.com/josephspurrier/goversioninfo v1.4.0 // indirect
 	github.com/klauspost/compress v1.16.7 // indirect
 	github.com/manifoldco/promptui v0.9.0 // indirect
-	github.com/ncruces/zenity v0.10.9 // indirect
+	github.com/ncruces/zenity v0.10.10 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/randall77/makefat v0.0.0-20210315173500-7ddd0e42c844 // indirect
-	golang.org/x/image v0.9.0 // indirect
-	golang.org/x/net v0.12.0 // indirect
-	golang.org/x/text v0.11.0 // indirect
+	golang.org/x/image v0.11.0 // indirect
+	golang.org/x/net v0.14.0 // indirect
+	golang.org/x/text v0.12.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

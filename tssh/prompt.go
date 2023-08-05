@@ -28,9 +28,11 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/chzyer/readline"
 	"github.com/trzsz/promptui"
@@ -100,7 +102,22 @@ func (b *bellFilter) Close() error {
 	return nil
 }
 
+type sshHostCache struct {
+	hosts []*sshHost
+	err   error
+}
+
+var hostsCache *sshHostCache
+
 func getAllHosts() ([]*sshHost, error) {
+	if hostsCache == nil {
+		hosts, err := doGetAllHosts()
+		hostsCache = &sshHostCache{hosts, err}
+	}
+	return hostsCache.hosts, hostsCache.err
+}
+
+func doGetAllHosts() ([]*sshHost, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("user home dir failed: %v", err)
@@ -141,20 +158,22 @@ func recursiveGetHosts(cfgHosts []*ssh_config.Host) []*sshHost {
 
 func appendPromptHosts(hosts []*sshHost, cfgHosts ...*ssh_config.Host) []*sshHost {
 	for _, host := range cfgHosts {
-		alias := host.Patterns[0].String()
-		if strings.ContainsRune(alias, '*') || strings.ContainsRune(alias, '?') {
-			continue
+		for _, pattern := range host.Patterns {
+			alias := pattern.String()
+			if strings.ContainsRune(alias, '*') || strings.ContainsRune(alias, '?') {
+				continue
+			}
+			hosts = append(hosts, &sshHost{
+				Alias:         alias,
+				Host:          ssh_config.Get(alias, "HostName"),
+				Port:          ssh_config.Get(alias, "Port"),
+				User:          ssh_config.Get(alias, "User"),
+				IdentityFile:  ssh_config.Get(alias, "IdentityFile"),
+				ProxyCommand:  ssh_config.Get(alias, "ProxyCommand"),
+				ProxyJump:     ssh_config.Get(alias, "ProxyJump"),
+				RemoteCommand: ssh_config.Get(alias, "RemoteCommand"),
+			})
 		}
-		hosts = append(hosts, &sshHost{
-			Alias:         alias,
-			Host:          ssh_config.Get(alias, "HostName"),
-			Port:          ssh_config.Get(alias, "Port"),
-			User:          ssh_config.Get(alias, "User"),
-			IdentityFile:  ssh_config.Get(alias, "IdentityFile"),
-			ProxyCommand:  ssh_config.Get(alias, "ProxyCommand"),
-			ProxyJump:     ssh_config.Get(alias, "ProxyJump"),
-			RemoteCommand: ssh_config.Get(alias, "RemoteCommand"),
-		})
 	}
 	return hosts
 }
@@ -604,11 +623,25 @@ func (p *sshPrompt) wrapStdin() {
 	}
 }
 
-func chooseAlias() (string, bool, error) {
+func matchHost(h *sshHost, keywords []string) bool {
+	alias := strings.ReplaceAll(strings.ToLower(h.Alias), " ", "")
+	host := strings.ReplaceAll(strings.ToLower(h.Host), " ", "")
+	for _, keywork := range keywords {
+		if !strings.Contains(alias, keywork) && !strings.Contains(host, keywork) {
+			return false
+		}
+	}
+	return true
+}
+
+func chooseAlias(keywords string) (string, bool, error) {
 	hosts, err := getAllHosts()
 	if err != nil {
 		return "", false, err
 	}
+	defer func() {
+		hostsCache = nil // for gc
+	}()
 
 	templates := &promptui.SelectTemplates{
 		Help:     `{{ "Use ← ↓ ↑ → h j k l to navigate, / toggles search, ? toggles help" | faint }}`,
@@ -639,15 +672,7 @@ func chooseAlias() (string, bool, error) {
 	}
 
 	searcher := func(input string, index int) bool {
-		h := hosts[index]
-		alias := strings.ReplaceAll(strings.ToLower(h.Alias), " ", "")
-		host := strings.ReplaceAll(strings.ToLower(h.Host), " ", "")
-		for _, token := range strings.Fields(strings.ToLower(input)) {
-			if !strings.Contains(alias, token) && !strings.Contains(host, token) {
-				return false
-			}
-		}
-		return true
+		return matchHost(hosts[index], strings.Fields(strings.ToLower(input)))
 	}
 
 	termMgr := getTerminalManager()
@@ -663,6 +688,7 @@ func chooseAlias() (string, bool, error) {
 			Stdin:        pipeIn,
 			Stdout:       &bellFilter{os.Stderr},
 			HideSelected: true,
+			Keywords:     keywords,
 		},
 		pipeOut: pipeOut,
 		hosts:   hosts,
@@ -687,4 +713,54 @@ func chooseAlias() (string, bool, error) {
 		termMgr.openTerminals(prompt.openType, selectedHosts)
 	}
 	return selectedHosts[0].Alias, false, nil
+}
+
+func fastLookupHost(host string) bool {
+	errch := make(chan error, 1)
+	go func() {
+		defer close(errch)
+		_, err := net.LookupHost(host)
+		errch <- err
+	}()
+
+	select {
+	case <-time.After(200 * time.Millisecond):
+		return false
+	case err := <-errch:
+		return err == nil
+	}
+}
+
+func predictDestination(dest string) (string, bool, error) {
+	if strings.ContainsRune(dest, '.') || strings.ContainsRune(dest, ':') {
+		return dest, false, nil
+	}
+
+	hosts, err := getAllHosts()
+	if err != nil {
+		return dest, false, nil
+	}
+	for _, host := range hosts {
+		if host.Alias == dest {
+			return dest, false, nil
+		}
+	}
+
+	match := false
+	keywords := strings.Fields(strings.ToLower(dest))
+	for _, host := range hosts {
+		if matchHost(host, keywords) {
+			match = true
+			break
+		}
+	}
+	if !match {
+		return dest, false, nil
+	}
+
+	if fastLookupHost(dest) {
+		return dest, false, nil
+	}
+
+	return chooseAlias(dest)
 }
