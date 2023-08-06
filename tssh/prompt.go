@@ -39,6 +39,9 @@ import (
 	"github.com/trzsz/ssh_config"
 )
 
+var promptCursorIcon = "🧨"
+var promptSelectedIcon = "🍺"
+
 const promptPageSize = 10
 
 const (
@@ -644,8 +647,9 @@ func chooseAlias(keywords string) (string, bool, error) {
 	}()
 
 	templates := &promptui.SelectTemplates{
-		Help:     `{{ "Use ← ↓ ↑ → h j k l to navigate, / toggles search, ? toggles help" | faint }}`,
-		Active:   `🧨 {{ if .Selected }}{{ "✔ " | green }}{{ end }}{{ .Alias | cyan }} ({{ .Host | red }})`,
+		Help: `{{ "Use ← ↓ ↑ → h j k l to navigate, / toggles search, ? toggles help" | faint }}`,
+		Active: fmt.Sprintf(`%s {{ if .Selected }}{{ "✔ " | green }}{{ end }}{{ .Alias | cyan }} ({{ .Host | red }})`,
+			promptCursorIcon),
 		Inactive: `   {{ if .Selected }}{{ "✔ " | green }}{{ end }}{{ .Alias | cyan }} ({{ .Host | red }})`,
 		Details: `
 --------- SSH Alias ----------
@@ -707,7 +711,7 @@ func chooseAlias(keywords string) (string, bool, error) {
 
 	selectedHosts := prompt.getSelected(idx)
 	for _, h := range selectedHosts {
-		fmt.Fprintf(os.Stderr, "🍺 \033[0;32m%s\033[0m\r\n", h.Alias)
+		fmt.Fprintf(os.Stderr, "\033[0;32m%s %s\033[0m\r\n", promptSelectedIcon, h.Alias)
 	}
 	if len(selectedHosts) > 1 && termMgr != nil {
 		termMgr.openTerminals(prompt.openType, selectedHosts)

@@ -265,6 +265,12 @@ _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\
 | Open Tabs | Ctrl+T                          | t T          | 新 Tab 批量登录 |
 | Open Pane | Ctrl+P                          | p P          | 分屏批量登录    |
 
+## 故障排除
+
+- 如果你在使用 Windows7 或者旧版本的 Windows10 等，遇到 `enable virtual terminal failed` 的错误。
+
+  - 可以尝试在 [Cygwin](https://www.cygwin.com/)、[MSYS2](https://www.msys2.org/) 或 [Git Bash](https://www.atlassian.com/git/tutorials/git-bash) 内使用 `tssh`。
+
 ## 录屏演示
 
 ![tssh登录演示](https://trzsz.github.io/images/tssh.gif)

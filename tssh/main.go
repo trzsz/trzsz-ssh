@@ -31,9 +31,9 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/mattn/go-isatty"
 	"github.com/trzsz/go-arg"
 	"github.com/trzsz/ssh_config"
-	"golang.org/x/term"
 )
 
 const kTsshVersion = "0.1.9"
@@ -93,7 +93,7 @@ func parseRemoteCommand(args *sshArgs) (string, error) {
 	return ssh_config.Get(args.Destination, "RemoteCommand"), nil
 }
 
-var isTerminal bool = term.IsTerminal(int(os.Stdin.Fd()))
+var isTerminal bool = isatty.IsTerminal(os.Stdout.Fd()) || isatty.IsCygwinTerminal(os.Stdout.Fd())
 
 func parseCmdAndTTY(args *sshArgs) (cmd string, tty bool, err error) {
 	cmd, err = parseRemoteCommand(args)

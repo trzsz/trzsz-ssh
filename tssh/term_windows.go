@@ -27,6 +27,9 @@ package tssh
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -35,11 +38,7 @@ import (
 )
 
 type terminalMode struct {
-	inCP    uint32
-	outCP   uint32
-	inMode  uint32
-	outMode uint32
-	state   *term.State
+	state *term.State
 }
 
 const CP_UTF8 uint32 = 65001
@@ -64,58 +63,99 @@ func setConsoleOutputCP(cp uint32) {
 	kernel32.NewProc("SetConsoleOutputCP").Call(uintptr(cp))
 }
 
-func enableVirtualTerminal() (uint32, uint32, error) {
+func enableVirtualTerminal() error {
 	var inMode, outMode uint32
 	inHandle, err := syscall.GetStdHandle(syscall.STD_INPUT_HANDLE)
 	if err != nil {
-		return 0, 0, err
+		return err
 	}
 	if err := windows.GetConsoleMode(windows.Handle(inHandle), &inMode); err != nil {
-		return 0, 0, err
+		return err
 	}
+	onExitFuncs = append(onExitFuncs, func() {
+		windows.SetConsoleMode(windows.Handle(inHandle), inMode)
+	})
 	if err := windows.SetConsoleMode(windows.Handle(inHandle), inMode|windows.ENABLE_VIRTUAL_TERMINAL_INPUT); err != nil {
-		return 0, 0, err
+		return err
 	}
 
 	outHandle, err := syscall.GetStdHandle(syscall.STD_OUTPUT_HANDLE)
 	if err != nil {
-		return 0, 0, err
+		return err
 	}
 	if err := windows.GetConsoleMode(windows.Handle(outHandle), &outMode); err != nil {
-		return 0, 0, err
+		return err
 	}
+	onExitFuncs = append(onExitFuncs, func() {
+		windows.SetConsoleMode(windows.Handle(outHandle), outMode)
+	})
 	if err := windows.SetConsoleMode(windows.Handle(outHandle),
 		outMode|windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING|windows.DISABLE_NEWLINE_AUTO_RETURN); err != nil {
-		return 0, 0, err
-	}
-
-	return inMode, outMode, nil
-}
-
-func resetVirtualTerminal(inMode, outMode uint32) error {
-	inHandle, err := syscall.GetStdHandle(syscall.STD_INPUT_HANDLE)
-	if err != nil {
-		return err
-	}
-	if err := windows.SetConsoleMode(windows.Handle(inHandle), inMode); err != nil {
-		return err
-	}
-
-	outHandle, err := syscall.GetStdHandle(syscall.STD_OUTPUT_HANDLE)
-	if err != nil {
-		return err
-	}
-	if err := windows.SetConsoleMode(windows.Handle(outHandle), outMode); err != nil {
 		return err
 	}
 
 	return nil
 }
 
+var sttyCommandExists *bool
+
+func sttyExecutable() bool {
+	if sttyCommandExists == nil {
+		_, err := exec.LookPath("stty")
+		exists := err == nil
+		sttyCommandExists = &exists
+	}
+	return *sttyCommandExists
+}
+
+func sttySettings() (string, error) {
+	cmd := exec.Command("stty", "-g")
+	cmd.Stdin = os.Stdin
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+func sttyMakeRaw() error {
+	cmd := exec.Command("stty", "raw", "-echo")
+	cmd.Stdin = os.Stdin
+	return cmd.Run()
+}
+
+func sttyReset(settings string) {
+	cmd := exec.Command("stty", settings)
+	cmd.Stdin = os.Stdin
+	_ = cmd.Run()
+}
+
+func sttySize() (int, int, error) {
+	cmd := exec.Command("stty", "size")
+	cmd.Stdin = os.Stdin
+	out, err := cmd.Output()
+	if err != nil {
+		return 0, 0, err
+	}
+	output := strings.TrimSpace(string(out))
+	tokens := strings.Fields(output)
+	if len(tokens) != 2 {
+		return 0, 0, fmt.Errorf("stty size invalid: %s", output)
+	}
+	rows, err := strconv.Atoi(tokens[0])
+	if err != nil {
+		return 0, 0, fmt.Errorf("stty size invalid: %s", output)
+	}
+	cols, err := strconv.Atoi(tokens[1])
+	if err != nil {
+		return 0, 0, fmt.Errorf("stty size invalid: %s", output)
+	}
+	return cols, rows, nil
+}
+
 func setupTerminalMode() (*terminalMode, error) {
 	// enable virtual terminal
-	inMode, outMode, err := enableVirtualTerminal()
-	if err != nil {
+	if err := enableVirtualTerminal(); err != nil && !sttyExecutable() {
 		return nil, fmt.Errorf("enable virtual terminal failed: %v", err)
 	}
 
@@ -124,35 +164,53 @@ func setupTerminalMode() (*terminalMode, error) {
 	outCP := getConsoleOutputCP()
 	setConsoleCP(CP_UTF8)
 	setConsoleOutputCP(CP_UTF8)
+	onExitFuncs = append(onExitFuncs, func() {
+		setConsoleCP(inCP)
+		setConsoleOutputCP(outCP)
+	})
 
 	state, err := term.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {
-		return nil, fmt.Errorf("terminal make raw failed: %v", err)
+		if !sttyExecutable() {
+			return nil, fmt.Errorf("terminal make raw failed: %v", err)
+		}
+		settings, err := sttySettings()
+		if err != nil {
+			return nil, fmt.Errorf("get stty settings failed: %v", err)
+		}
+		onExitFuncs = append(onExitFuncs, func() {
+			sttyReset(settings)
+		})
+		if err := sttyMakeRaw(); err != nil {
+			return nil, fmt.Errorf("stty make raw failed: %v", err)
+		}
+		promptCursorIcon = ">>"
+		promptSelectedIcon = "++"
 	}
 
-	return &terminalMode{inCP, outCP, inMode, outMode, state}, nil
+	return &terminalMode{state}, nil
 }
 
 func resetTerminalMode(tm *terminalMode) {
-	if tm.state == nil {
-		return
+	if tm.state != nil {
+		_ = term.Restore(int(os.Stdin.Fd()), tm.state)
+		tm.state = nil
 	}
-
-	_ = term.Restore(int(os.Stdin.Fd()), tm.state)
-	tm.state = nil
-
-	setConsoleCP(tm.inCP)
-	setConsoleOutputCP(tm.outCP)
-	resetVirtualTerminal(tm.inMode, tm.outMode)
 }
 
 func getTerminalSize() (int, int, error) {
 	handle, err := syscall.GetStdHandle(syscall.STD_OUTPUT_HANDLE)
 	if err != nil {
+		if sttyExecutable() {
+			return sttySize()
+		}
 		return 0, 0, err
 	}
 	var info windows.ConsoleScreenBufferInfo
 	if err := windows.GetConsoleScreenBufferInfo(windows.Handle(handle), &info); err != nil {
+		if sttyExecutable() {
+			return sttySize()
+		}
 		return 0, 0, err
 	}
 	return int(info.Window.Right-info.Window.Left) + 1, int(info.Window.Bottom-info.Window.Top) + 1, nil
