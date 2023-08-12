@@ -307,43 +307,63 @@ var getHostKeyCallback = func() func() (ssh.HostKeyCallback, knownhosts.HostKeyC
 	}
 }()
 
-type passphraseSigner struct {
+type sshSigner struct {
 	path   string
 	priKey []byte
 	pubKey ssh.PublicKey
 	signer ssh.Signer
 }
 
-func (s *passphraseSigner) PublicKey() ssh.PublicKey {
+func (s *sshSigner) PublicKey() ssh.PublicKey {
 	return s.pubKey
 }
 
-func (s *passphraseSigner) Sign(rand io.Reader, data []byte) (*ssh.Signature, error) {
-	if s.signer == nil {
-		prompt := fmt.Sprintf("Enter passphrase for key '%s': ", s.path)
-		for i := 0; i < 3; i++ {
-			secret, err := readSecret(prompt)
-			if err != nil {
-				return nil, err
-			}
-			if len(secret) == 0 {
-				continue
-			}
-			s.signer, err = ssh.ParsePrivateKeyWithPassphrase(s.priKey, secret)
-			if err == x509.IncorrectPasswordError {
-				continue
-			}
-			if err != nil {
-				return nil, err
-			}
-			return s.signer.Sign(rand, data)
-		}
-		return nil, fmt.Errorf("passphrase incorrect")
+func (s *sshSigner) initSigner() error {
+	if s.signer != nil {
+		return nil
 	}
+	prompt := fmt.Sprintf("Enter passphrase for key '%s': ", s.path)
+	for i := 0; i < 3; i++ {
+		secret, err := readSecret(prompt)
+		if err != nil {
+			return err
+		}
+		if len(secret) == 0 {
+			continue
+		}
+		s.signer, err = ssh.ParsePrivateKeyWithPassphrase(s.priKey, secret)
+		if err == x509.IncorrectPasswordError {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+	return fmt.Errorf("passphrase incorrect")
+}
+
+func (s *sshSigner) Sign(rand io.Reader, data []byte) (*ssh.Signature, error) {
+	if err := s.initSigner(); err != nil {
+		return nil, err
+	}
+	debug("sign without algorithm: %s", ssh.FingerprintSHA256(s.pubKey))
 	return s.signer.Sign(rand, data)
 }
 
-func newPassphraseSigner(path string, priKey []byte, err *ssh.PassphraseMissingError) (ssh.Signer, error) {
+func (s *sshSigner) SignWithAlgorithm(rand io.Reader, data []byte, algorithm string) (*ssh.Signature, error) {
+	if err := s.initSigner(); err != nil {
+		return nil, err
+	}
+	if signer, ok := s.signer.(ssh.AlgorithmSigner); ok {
+		debug("sign with algorithm [%s]: %s", algorithm, ssh.FingerprintSHA256(s.pubKey))
+		return signer.SignWithAlgorithm(rand, data, algorithm)
+	}
+	debug("sign without algorithm: %s", ssh.FingerprintSHA256(s.pubKey))
+	return s.signer.Sign(rand, data)
+}
+
+func newPassphraseSigner(path string, priKey []byte, err *ssh.PassphraseMissingError) (ssh.AlgorithmSigner, error) {
 	pubKey := err.PublicKey
 	if pubKey == nil {
 		pubPath := path + ".pub"
@@ -356,7 +376,8 @@ func newPassphraseSigner(path string, priKey []byte, err *ssh.PassphraseMissingE
 			return nil, fmt.Errorf("parse public key [%s] failed: %v", pubPath, err)
 		}
 	}
-	return &passphraseSigner{path, priKey, pubKey, nil}, nil
+	debug("added identity file with passphrase: %s", path)
+	return &sshSigner{path: path, priKey: priKey, pubKey: pubKey}, nil
 }
 
 func isFileExist(path string) bool {
@@ -381,7 +402,8 @@ func getSigner(path string) (ssh.Signer, error) {
 		}
 		return nil, fmt.Errorf("parse private key [%s] failed: %v", path, err)
 	}
-	return signer, nil
+	debug("added identity file: %s", path)
+	return &sshSigner{path: path, pubKey: signer.PublicKey(), signer: signer}, nil
 }
 
 func readSecret(prompt string) (secret []byte, err error) {
@@ -454,14 +476,16 @@ func readPasswordFromConfig(dest string) string {
 
 func getPasswordAuthMethod(args *sshArgs, host, user string) ssh.AuthMethod {
 	idx := 0
+	rememberPassword := false
 	return ssh.RetryableAuthMethod(ssh.PasswordCallback(func() (string, error) {
 		idx++
 		if idx == 1 {
 			if password := readPasswordFromConfig(args.Destination); password != "" {
+				rememberPassword = true
 				debug("trying the password configuration for %s", args.Destination)
 				return password, nil
 			}
-		} else if idx == 2 {
+		} else if idx == 2 && rememberPassword {
 			debug("the password configuration for %s is incorrect", args.Destination)
 		}
 		secret, err := readSecret(fmt.Sprintf("%s@%s's password: ", user, host))
@@ -678,6 +702,7 @@ func execProxyCommand(param *loginParam) (net.Conn, string, error) {
 	command = strings.ReplaceAll(command, "%h", param.host)
 	command = strings.ReplaceAll(command, "%p", param.port)
 	command = strings.ReplaceAll(command, "%r", param.user)
+	debug("exec proxy command: %s", command)
 
 	var cmd *exec.Cmd
 	if !strings.ContainsAny(command, "'\"\\") {
@@ -768,6 +793,7 @@ func sshConnect(args *sshArgs, client *ssh.Client, proxy string) (*ssh.Client, e
 	}
 
 	proxyConnect := func(client *ssh.Client, proxy string) (*ssh.Client, error) {
+		debug("login to [%s], addr: %s", args.Destination, param.addr)
 		conn, err := dialWithTimeout(client, "tcp", param.addr)
 		if err != nil {
 			return nil, fmt.Errorf("proxy [%s] dial tcp [%s] failed: %v", proxy, param.addr, err)
@@ -786,6 +812,7 @@ func sshConnect(args *sshArgs, client *ssh.Client, proxy string) (*ssh.Client, e
 
 	// proxy command
 	if param.command != "" {
+		debug("login to [%s], addr: %s", args.Destination, param.addr)
 		conn, cmd, err := execProxyCommand(param)
 		if err != nil {
 			return nil, fmt.Errorf("exec proxy command [%s] failed: %v", cmd, err)
@@ -799,6 +826,7 @@ func sshConnect(args *sshArgs, client *ssh.Client, proxy string) (*ssh.Client, e
 
 	// no proxy
 	if len(param.proxy) == 0 {
+		debug("login to [%s], addr: %s", args.Destination, param.addr)
 		conn, err := net.DialTimeout("tcp", param.addr, config.Timeout)
 		if err != nil {
 			return nil, fmt.Errorf("dial tcp [%s] failed: %v", param.addr, err)
