@@ -93,7 +93,7 @@ func parseRemoteCommand(args *sshArgs) (string, error) {
 	return ssh_config.Get(args.Destination, "RemoteCommand"), nil
 }
 
-var isTerminal bool = isatty.IsTerminal(os.Stdout.Fd()) || isatty.IsCygwinTerminal(os.Stdout.Fd())
+var isTerminal bool = isatty.IsTerminal(os.Stdin.Fd()) || isatty.IsCygwinTerminal(os.Stdin.Fd())
 
 func parseCmdAndTTY(args *sshArgs) (cmd string, tty bool, err error) {
 	cmd, err = parseRemoteCommand(args)
