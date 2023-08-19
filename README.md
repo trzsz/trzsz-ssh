@@ -223,6 +223,24 @@ _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\
       Password 111111
   ```
 
+- 支持记住私钥的`Passphrase`。如果 `~/.ssh/config` 中配置了 `IdentityFile`, 则使用相同的 Host 别名，在 `~/.ssh/password` 中配置对应的 `Passphrase`。如果 `~/.ssh/config` 中没有配置 `IdentityFile`，通用的私钥则使用私钥文件名代替 Host 别名。举例：
+
+  ```
+  # ~/.ssh/config 中 test1 配置了 IdentityFile
+  Host test1
+      IdentityFile /path/to/id_rsa
+  ```
+
+  ```
+  # ~/.ssh/password 中配置 test1 私钥对应的 Passphrase
+  Host test1
+      Passphrase 123456
+
+  # ~/.ssh/password 中配置通用私钥 ~/.ssh/id_rsa 对应的 Passphrase
+  Host id_rsa
+      Passphrase 111111
+  ```
+
 ## 记住答案
 
 - 除了私钥和密码，还有一种登录方式，英文叫 keyboard interactive ，是服务器返回一些问题，客户端提供正确的答案就能登录，很多自定义的一次性密码就是利用这种方式实现的。

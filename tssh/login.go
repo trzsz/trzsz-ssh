@@ -387,7 +387,7 @@ func isFileExist(path string) bool {
 	return true
 }
 
-func getSigner(path string) (ssh.Signer, error) {
+func getSigner(dest string, path string) (ssh.Signer, error) {
 	if !isFileExist(path) && (strings.HasPrefix(path, "~/") || strings.HasPrefix(path, "~\\")) {
 		path = filepath.Join(userHomeDir, path[2:])
 	}
@@ -397,10 +397,16 @@ func getSigner(path string) (ssh.Signer, error) {
 	}
 	signer, err := ssh.ParsePrivateKey(privateKey)
 	if err != nil {
-		if err, ok := err.(*ssh.PassphraseMissingError); ok {
-			return newPassphraseSigner(path, privateKey, err)
+		if e, ok := err.(*ssh.PassphraseMissingError); ok {
+			if passphrase := readPasswordConfig(dest, "passphrase"); passphrase != "" {
+				signer, err = ssh.ParsePrivateKeyWithPassphrase(privateKey, []byte(passphrase))
+			} else {
+				return newPassphraseSigner(path, privateKey, e)
+			}
 		}
-		return nil, fmt.Errorf("parse private key [%s] failed: %v", path, err)
+		if err != nil {
+			return nil, fmt.Errorf("parse private key [%s] failed: %v", path, err)
+		}
 	}
 	debug("added identity file: %s", path)
 	return &sshSigner{path: path, pubKey: signer.PublicKey(), signer: signer}, nil
@@ -440,39 +446,45 @@ func readSecret(prompt string) (secret []byte, err error) {
 	return
 }
 
-func readPasswordFromConfig(dest string) string {
-	path := filepath.Join(userHomeDir, ".ssh", "password")
-	debug("reading password from %s", path)
-	if !isFileExist(path) {
-		debug("%s does not exist", path)
+var readPasswordConfig = func() func(dest string, key string) string {
+	var once sync.Once
+	var cfg *ssh_config.Config
+	return func(dest string, key string) string {
+		once.Do(func() {
+			path := filepath.Join(userHomeDir, ".ssh", "password")
+			if !isFileExist(path) {
+				debug("%s does not exist", path)
+				return
+			}
+			file, err := os.Open(path)
+			if err != nil {
+				debug("open %s failed: %v", path, err)
+				return
+			}
+			debug("open %s success", path)
+			defer file.Close()
+			cfg, err = ssh_config.Decode(file)
+			if err != nil {
+				debug("decode %s failed: %v", path, err)
+				return
+			}
+			debug("decode %s success", path)
+		})
+		if cfg != nil {
+			value, err := cfg.Get(dest, key)
+			if err != nil {
+				debug("read %s configuration for [%s] failed: %v", key, dest, err)
+				return ""
+			}
+			if value != "" {
+				debug("read %s configuration for [%s] success", key, dest)
+				return value
+			}
+		}
+		debug("no %s configuration for [%s]", key, dest)
 		return ""
 	}
-	file, err := os.Open(path)
-	if err != nil {
-		debug("open %s failed: %v", path, err)
-		return ""
-	}
-	debug("open %s success", path)
-	defer file.Close()
-	cfg, err := ssh_config.Decode(file)
-	if err != nil {
-		debug("decode %s failed: %v", path, err)
-		return ""
-	}
-	debug("decode %s success", path)
-
-	password, err := cfg.Get(dest, "Password")
-	if err != nil {
-		debug("read password configuration for %s failed: %v", dest, err)
-		return ""
-	}
-	if password != "" {
-		debug("read password configuration for %s success", dest)
-		return password
-	}
-	debug("no password configuration for %s", dest)
-	return ""
-}
+}()
 
 func getPasswordAuthMethod(args *sshArgs, host, user string) ssh.AuthMethod {
 	idx := 0
@@ -480,7 +492,7 @@ func getPasswordAuthMethod(args *sshArgs, host, user string) ssh.AuthMethod {
 	return ssh.RetryableAuthMethod(ssh.PasswordCallback(func() (string, error) {
 		idx++
 		if idx == 1 {
-			if password := readPasswordFromConfig(args.Destination); password != "" {
+			if password := readPasswordConfig(args.Destination, "password"); password != "" {
 				rememberPassword = true
 				debug("trying the password configuration for %s", args.Destination)
 				return password, nil
@@ -496,52 +508,19 @@ func getPasswordAuthMethod(args *sshArgs, host, user string) ssh.AuthMethod {
 	}), 3)
 }
 
-func readQuestionAnswerFromConfig(dest string, idx int, question string) string {
-	path := filepath.Join(userHomeDir, ".ssh", "password")
-	debug("reading question '%s' answer from %s", question, path)
-	if !isFileExist(path) {
-		debug("%s does not exist", path)
-		return ""
-	}
-	file, err := os.Open(path)
-	if err != nil {
-		debug("open %s failed: %v", path, err)
-		return ""
-	}
-	debug("open %s success", path)
-	defer file.Close()
-	cfg, err := ssh_config.Decode(file)
-	if err != nil {
-		debug("decode %s failed: %v", path, err)
-		return ""
-	}
-	debug("decode %s success", path)
-
+func readQuestionAnswerConfig(dest string, idx int, question string) string {
 	qhex := hex.EncodeToString([]byte(question))
 	debug("the hex code for question '%s' is %s", question, qhex)
-	answer, err := cfg.Get(dest, qhex)
-	if err != nil {
-		debug("read question '%s' answer configuration from %s failed: %v", question, qhex, err)
-		return ""
-	}
-	if answer != "" {
-		debug("read question '%s' answer configuration from %s success", question, qhex)
+	if answer := readPasswordConfig(dest, qhex); answer != "" {
 		return answer
 	}
-	debug("no question '%s' answer configuration from %s", question, qhex)
 
 	qkey := fmt.Sprintf("QuestionAnswer%d", idx)
 	debug("the configuration key for question '%s' is %s", question, qkey)
-	answer, err = cfg.Get(dest, qkey)
-	if err != nil {
-		debug("read question '%s' answer configuration from %s failed: %v", question, qkey, err)
-		return ""
-	}
-	if answer != "" {
-		debug("read question '%s' answer configuration from %s success", question, qkey)
+	if answer := readPasswordConfig(dest, qkey); answer != "" {
 		return answer
 	}
-	debug("no question '%s' answer configuration from %s", question, qkey)
+
 	return ""
 }
 
@@ -555,7 +534,7 @@ func getKeyboardInteractiveAuthMethod(args *sshArgs, host, user string) ssh.Auth
 				idx++
 				if _, ok := questionSet[question]; !ok {
 					questionSet[question] = struct{}{}
-					answer := readQuestionAnswerFromConfig(args.Destination, idx, question)
+					answer := readQuestionAnswerConfig(args.Destination, idx, question)
 					if answer != "" {
 						answers = append(answers, answer)
 						continue
@@ -581,7 +560,7 @@ var getDefaultSigners = func() func() []ssh.Signer {
 				identity = filepath.Join(userHomeDir, identity[2:])
 			}
 			if isFileExist(identity) {
-				signer, err := getSigner(identity)
+				signer, err := getSigner(filepath.Base(identity), identity)
 				if err != nil {
 					warning("Warning: %s", err)
 				} else {
@@ -593,7 +572,7 @@ var getDefaultSigners = func() func() []ssh.Signer {
 				if !isFileExist(path) {
 					continue
 				}
-				signer, err := getSigner(path)
+				signer, err := getSigner(name, path)
 				if err != nil {
 					warning("Warning: %s", err)
 				} else {
@@ -609,7 +588,7 @@ func getAuthMethods(args *sshArgs, host, user string) ([]ssh.AuthMethod, error) 
 	var signers []ssh.Signer
 	if len(args.Identity.values) > 0 {
 		for _, identity := range args.Identity.values {
-			signer, err := getSigner(identity)
+			signer, err := getSigner(args.Destination, identity)
 			if err != nil {
 				return nil, err
 			}
@@ -621,7 +600,7 @@ func getAuthMethods(args *sshArgs, host, user string) ([]ssh.AuthMethod, error) 
 			signers = getDefaultSigners()
 		} else {
 			for _, identity := range identities {
-				signer, err := getSigner(identity)
+				signer, err := getSigner(args.Destination, identity)
 				if err != nil {
 					return nil, err
 				}
@@ -923,6 +902,12 @@ func wrapStdIO(serverIn io.WriteCloser, serverOut io.Reader) {
 	}()
 }
 
+func cleanupForGC() {
+	getDefaultSigners = nil
+	getHostKeyCallback = nil
+	readPasswordConfig = nil
+}
+
 func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session, err error) {
 	defer func() {
 		if err != nil {
@@ -933,6 +918,7 @@ func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session
 				client.Close()
 			}
 		}
+		cleanupForGC()
 	}()
 
 	// init user home
