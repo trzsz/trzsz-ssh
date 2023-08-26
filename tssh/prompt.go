@@ -30,13 +30,11 @@ import (
 	"io"
 	"net"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/chzyer/readline"
 	"github.com/trzsz/promptui"
-	"github.com/trzsz/ssh_config"
 )
 
 var promptCursorIcon = "🧨"
@@ -67,18 +65,6 @@ const (
 	keyESC       = '\x1b'
 )
 
-type sshHost struct {
-	Alias         string
-	Host          string
-	Port          string
-	User          string
-	IdentityFile  string
-	ProxyCommand  string
-	ProxyJump     string
-	RemoteCommand string
-	Selected      bool
-}
-
 type sshPrompt struct {
 	selector      *promptui.Select
 	pipeOut       io.WriteCloser
@@ -103,82 +89,6 @@ func (b *bellFilter) Write(p []byte) (int, error) {
 
 func (b *bellFilter) Close() error {
 	return nil
-}
-
-type sshHostCache struct {
-	hosts []*sshHost
-	err   error
-}
-
-var hostsCache *sshHostCache
-
-func getAllHosts() ([]*sshHost, error) {
-	if hostsCache == nil {
-		hosts, err := doGetAllHosts()
-		hostsCache = &sshHostCache{hosts, err}
-	}
-	return hostsCache.hosts, hostsCache.err
-}
-
-func doGetAllHosts() ([]*sshHost, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, fmt.Errorf("user home dir failed: %v", err)
-	}
-	path := filepath.Join(home, ".ssh", "config")
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("open config [%s] failed: %v", path, err)
-	}
-	cfg, err := ssh_config.Decode(f)
-	if err != nil {
-		return nil, fmt.Errorf("decode config [%s] failed: %v", path, err)
-	}
-	hosts := recursiveGetHosts(cfg.Hosts)
-	if len(hosts) == 0 {
-		return nil, fmt.Errorf("no config in %s", path)
-	}
-	return hosts, nil
-}
-
-// recursiveGetHosts recursive get hosts (contains include file's hosts)
-func recursiveGetHosts(cfgHosts []*ssh_config.Host) []*sshHost {
-	var hosts []*sshHost
-	for _, host := range cfgHosts {
-		for _, node := range host.Nodes {
-			if include, ok := node.(*ssh_config.Include); ok && include != nil {
-				for _, config := range include.GetFiles() {
-					if config != nil {
-						hosts = append(hosts, recursiveGetHosts(config.Hosts)...)
-					}
-				}
-			}
-		}
-		hosts = appendPromptHosts(hosts, host)
-	}
-	return hosts
-}
-
-func appendPromptHosts(hosts []*sshHost, cfgHosts ...*ssh_config.Host) []*sshHost {
-	for _, host := range cfgHosts {
-		for _, pattern := range host.Patterns {
-			alias := pattern.String()
-			if strings.ContainsRune(alias, '*') || strings.ContainsRune(alias, '?') {
-				continue
-			}
-			hosts = append(hosts, &sshHost{
-				Alias:         alias,
-				Host:          ssh_config.Get(alias, "HostName"),
-				Port:          ssh_config.Get(alias, "Port"),
-				User:          ssh_config.Get(alias, "User"),
-				IdentityFile:  ssh_config.Get(alias, "IdentityFile"),
-				ProxyCommand:  ssh_config.Get(alias, "ProxyCommand"),
-				ProxyJump:     ssh_config.Get(alias, "ProxyJump"),
-				RemoteCommand: ssh_config.Get(alias, "RemoteCommand"),
-			})
-		}
-	}
-	return hosts
 }
 
 type sshShortcuts struct {
@@ -638,13 +548,7 @@ func matchHost(h *sshHost, keywords []string) bool {
 }
 
 func chooseAlias(keywords string) (string, bool, error) {
-	hosts, err := getAllHosts()
-	if err != nil {
-		return "", false, err
-	}
-	defer func() {
-		hostsCache = nil // for gc
-	}()
+	hosts := getAllHosts()
 
 	templates := &promptui.SelectTemplates{
 		Help: `{{ "Use ← ↓ ↑ → h j k l to navigate, / toggles search, ? toggles help" | faint }}`,
@@ -661,7 +565,7 @@ func chooseAlias(keywords string) (string, bool, error) {
 {{- if .User }}
 {{ "User:" | faint }}	{{ .User }}
 {{- end }}
-{{- if ne .IdentityFile "~/.ssh/identity" }}
+{{- if .IdentityFile }}
 {{ "IdentityFile:" | faint }}	{{ .IdentityFile }}
 {{- end }}
 {{- if .ProxyCommand }}
@@ -740,10 +644,7 @@ func predictDestination(dest string) (string, bool, error) {
 		return dest, false, nil
 	}
 
-	hosts, err := getAllHosts()
-	if err != nil {
-		return dest, false, nil
-	}
+	hosts := getAllHosts()
 	for _, host := range hosts {
 		if host.Alias == dest {
 			return dest, false, nil

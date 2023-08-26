@@ -261,6 +261,24 @@ _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\
       636f64653a20 my_code  # 其中 `636f64653a20` 是问题 `code: ` 的 hex 编码
   ```
 
+## 可选配置
+
+- 支持在 `~/.tssh.conf`（ Windows 是 `C:\Users\your_name\.tssh.conf` ）中进行以下自定义配置：
+
+  ```
+  # SSH 配置路径，默认为 ~/.ssh/config
+  ConfigPath = ~/.ssh/config
+
+  # 扩展配置路径，默认为 ~/.ssh/password
+  ExConfigPath = ~/.ssh/password
+
+  # trz 上传时，对话框打开的路径，为空时打开上次的路径， 默认为空
+  DefaultUploadPath = ~/Downloads
+
+  # tsz 下载时，自动保存的路径，为空时弹出对话框手工选择，默认为空
+  DefaultDownloadPath = ~/Downloads
+  ```
+
 ## 快捷键
 
 | 操作      | 全局快捷键                      | 非搜索快捷键 | 快捷键描述      |

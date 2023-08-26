@@ -33,7 +33,6 @@ import (
 
 	"github.com/mattn/go-isatty"
 	"github.com/trzsz/go-arg"
-	"github.com/trzsz/ssh_config"
 )
 
 const kTsshVersion = "0.1.10"
@@ -90,7 +89,7 @@ func parseRemoteCommand(args *sshArgs) (string, error) {
 	} else if command != "" {
 		return command, nil
 	}
-	return ssh_config.Get(args.Destination, "RemoteCommand"), nil
+	return getConfig(args.Destination, "RemoteCommand"), nil
 }
 
 var isTerminal bool = isatty.IsTerminal(os.Stdin.Fd()) || isatty.IsCygwinTerminal(os.Stdin.Fd())
@@ -114,8 +113,8 @@ func parseCmdAndTTY(args *sshArgs) (cmd string, tty bool, err error) {
 		return
 	}
 
-	requestTTY := strings.ToLower(ssh_config.Get(args.Destination, "RequestTTY"))
-	switch requestTTY {
+	requestTTY := getConfig(args.Destination, "RequestTTY")
+	switch strings.ToLower(requestTTY) {
 	case "", "auto":
 		tty = isTerminal && (cmd == "")
 	case "no":
@@ -125,7 +124,7 @@ func parseCmdAndTTY(args *sshArgs) (cmd string, tty bool, err error) {
 	case "yes":
 		tty = isTerminal
 	default:
-		err = fmt.Errorf("unknown RequestTTY option: %s", ssh_config.Get(args.Destination, "RequestTTY"))
+		err = fmt.Errorf("unknown RequestTTY option: %s", requestTTY)
 	}
 	return
 }
@@ -159,6 +158,11 @@ func TsshMain() int {
 			fmt.Fprintf(os.Stderr, "%v\r\n", err)
 		}
 	}()
+
+	// init user config
+	if err = initUserConfig(args.ConfigFile); err != nil {
+		return -1
+	}
 
 	// setup terminal
 	var mode *terminalMode
@@ -239,6 +243,9 @@ func TsshMain() int {
 	if err = sshForward(client, &args); err != nil {
 		return 8
 	}
+
+	// cleanup for GC
+	userConfig = nil
 
 	// no command
 	if args.NoCommand {

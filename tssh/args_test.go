@@ -64,6 +64,8 @@ func TestSshArgs(t *testing.T) {
 	assertArgsEqual("-i id_rsa", sshArgs{Identity: multiStr{values: []string{"id_rsa"}}})
 	assertArgsEqual("-i ./id_rsa -i /tmp/id_ed25519",
 		sshArgs{Identity: multiStr{[]string{"./id_rsa", "/tmp/id_ed25519"}}})
+	assertArgsEqual("-Fcfg", sshArgs{ConfigFile: "cfg"})
+	assertArgsEqual("-F /path/to/cfg", sshArgs{ConfigFile: "/path/to/cfg"})
 	assertArgsEqual("-Jjump", sshArgs{ProxyJump: "jump"})
 	assertArgsEqual("-J abc,def", sshArgs{ProxyJump: "abc,def"})
 	assertArgsEqual("-o RemoteCommand=none -oServerAliveInterval=5",

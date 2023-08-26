@@ -43,13 +43,10 @@ import (
 	"time"
 
 	"github.com/skeema/knownhosts"
-	"github.com/trzsz/ssh_config"
 	"github.com/trzsz/trzsz-go/trzsz"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/term"
 )
-
-var userHomeDir string
 
 var enableDebugLogging bool
 
@@ -61,7 +58,7 @@ func debug(format string, a ...any) {
 }
 
 func warning(format string, a ...any) {
-	fmt.Fprintf(os.Stderr, fmt.Sprintf("\033[0;33m%s\033[0m\r\n", format), a...)
+	fmt.Fprintf(os.Stderr, fmt.Sprintf("\033[0;33mWarning: %s\033[0m\r\n", format), a...)
 }
 
 type loginParam struct {
@@ -113,7 +110,7 @@ func getLoginParam(args *sshArgs) (*loginParam, error) {
 	args.Destination = destHost
 
 	// login host
-	hostName := ssh_config.Get(destHost, "HostName")
+	hostName := getConfig(destHost, "HostName")
 	if hostName != "" {
 		param.host = hostName
 	} else {
@@ -126,7 +123,7 @@ func getLoginParam(args *sshArgs) (*loginParam, error) {
 	} else if destUser != "" {
 		param.user = destUser
 	} else {
-		userName := ssh_config.Get(destHost, "User")
+		userName := getConfig(destHost, "User")
 		if userName != "" {
 			param.user = userName
 		} else {
@@ -144,7 +141,7 @@ func getLoginParam(args *sshArgs) (*loginParam, error) {
 	} else if destPort != "" {
 		param.port = destPort
 	} else {
-		port := ssh_config.Get(destHost, "Port")
+		port := getConfig(destHost, "Port")
 		if port != "" {
 			param.port = port
 		} else {
@@ -165,11 +162,11 @@ func getLoginParam(args *sshArgs) (*loginParam, error) {
 	} else if args.ProxyJump != "" {
 		param.proxy = strings.Split(args.ProxyJump, ",")
 	} else {
-		proxy := ssh_config.Get(destHost, "ProxyJump")
+		proxy := getConfig(destHost, "ProxyJump")
 		if proxy != "" {
 			param.proxy = strings.Split(proxy, ",")
 		} else {
-			command := ssh_config.Get(destHost, "ProxyCommand")
+			command := getConfig(destHost, "ProxyCommand")
 			if command != "" {
 				param.command = command
 			}
@@ -262,7 +259,7 @@ func addHostKey(path, host string, remote net.Addr, key ssh.PublicKey) error {
 		return nil
 	}
 
-	warning("Warning: Permanently added '%s' (%s) to the list of known hosts.", host, key.Type())
+	warning("Permanently added '%s' (%s) to the list of known hosts.", host, key.Type())
 	return nil
 }
 
@@ -388,9 +385,7 @@ func isFileExist(path string) bool {
 }
 
 func getSigner(dest string, path string) (ssh.Signer, error) {
-	if !isFileExist(path) && (strings.HasPrefix(path, "~/") || strings.HasPrefix(path, "~\\")) {
-		path = filepath.Join(userHomeDir, path[2:])
-	}
+	path = resolveHomeDir(path)
 	privateKey, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read private key [%s] failed: %v", path, err)
@@ -398,7 +393,7 @@ func getSigner(dest string, path string) (ssh.Signer, error) {
 	signer, err := ssh.ParsePrivateKey(privateKey)
 	if err != nil {
 		if e, ok := err.(*ssh.PassphraseMissingError); ok {
-			if passphrase := readPasswordConfig(dest, "passphrase"); passphrase != "" {
+			if passphrase := getExConfig(dest, "Passphrase"); passphrase != "" {
 				signer, err = ssh.ParsePrivateKeyWithPassphrase(privateKey, []byte(passphrase))
 			} else {
 				return newPassphraseSigner(path, privateKey, e)
@@ -446,53 +441,13 @@ func readSecret(prompt string) (secret []byte, err error) {
 	return
 }
 
-var readPasswordConfig = func() func(dest string, key string) string {
-	var once sync.Once
-	var cfg *ssh_config.Config
-	return func(dest string, key string) string {
-		once.Do(func() {
-			path := filepath.Join(userHomeDir, ".ssh", "password")
-			if !isFileExist(path) {
-				debug("%s does not exist", path)
-				return
-			}
-			file, err := os.Open(path)
-			if err != nil {
-				debug("open %s failed: %v", path, err)
-				return
-			}
-			debug("open %s success", path)
-			defer file.Close()
-			cfg, err = ssh_config.Decode(file)
-			if err != nil {
-				debug("decode %s failed: %v", path, err)
-				return
-			}
-			debug("decode %s success", path)
-		})
-		if cfg != nil {
-			value, err := cfg.Get(dest, key)
-			if err != nil {
-				debug("read %s configuration for [%s] failed: %v", key, dest, err)
-				return ""
-			}
-			if value != "" {
-				debug("read %s configuration for [%s] success", key, dest)
-				return value
-			}
-		}
-		debug("no %s configuration for [%s]", key, dest)
-		return ""
-	}
-}()
-
 func getPasswordAuthMethod(args *sshArgs, host, user string) ssh.AuthMethod {
 	idx := 0
 	rememberPassword := false
 	return ssh.RetryableAuthMethod(ssh.PasswordCallback(func() (string, error) {
 		idx++
 		if idx == 1 {
-			if password := readPasswordConfig(args.Destination, "password"); password != "" {
+			if password := getExConfig(args.Destination, "Password"); password != "" {
 				rememberPassword = true
 				debug("trying the password configuration for %s", args.Destination)
 				return password, nil
@@ -511,13 +466,13 @@ func getPasswordAuthMethod(args *sshArgs, host, user string) ssh.AuthMethod {
 func readQuestionAnswerConfig(dest string, idx int, question string) string {
 	qhex := hex.EncodeToString([]byte(question))
 	debug("the hex code for question '%s' is %s", question, qhex)
-	if answer := readPasswordConfig(dest, qhex); answer != "" {
+	if answer := getExConfig(dest, qhex); answer != "" {
 		return answer
 	}
 
 	qkey := fmt.Sprintf("QuestionAnswer%d", idx)
 	debug("the configuration key for question '%s' is %s", question, qkey)
-	if answer := readPasswordConfig(dest, qkey); answer != "" {
+	if answer := getExConfig(dest, qkey); answer != "" {
 		return answer
 	}
 
@@ -555,26 +510,14 @@ var getDefaultSigners = func() func() []ssh.Signer {
 	var signers []ssh.Signer
 	return func() []ssh.Signer {
 		once.Do(func() {
-			identity := ssh_config.Default("IdentityFile")
-			if strings.HasPrefix(identity, "~/") || strings.HasPrefix(identity, "~\\") {
-				identity = filepath.Join(userHomeDir, identity[2:])
-			}
-			if isFileExist(identity) {
-				signer, err := getSigner(filepath.Base(identity), identity)
-				if err != nil {
-					warning("Warning: %s", err)
-				} else {
-					signers = append(signers, signer)
-				}
-			}
-			for _, name := range []string{"id_rsa", "id_ecdsa", "id_ecdsa_sk", "id_ed25519", "id_ed25519_sk"} {
+			for _, name := range []string{"id_rsa", "id_ecdsa", "id_ecdsa_sk", "id_ed25519", "id_ed25519_sk", "identity"} {
 				path := filepath.Join(userHomeDir, ".ssh", name)
 				if !isFileExist(path) {
 					continue
 				}
 				signer, err := getSigner(name, path)
 				if err != nil {
-					warning("Warning: %s", err)
+					warning("%s", err)
 				} else {
 					signers = append(signers, signer)
 				}
@@ -595,8 +538,8 @@ func getAuthMethods(args *sshArgs, host, user string) ([]ssh.AuthMethod, error) 
 			signers = append(signers, signer)
 		}
 	} else {
-		identities := ssh_config.GetAll(args.Destination, "IdentityFile")
-		if len(identities) <= 0 || len(identities) == 1 && identities[0] == ssh_config.Default("IdentityFile") {
+		identities := getAllConfig(args.Destination, "IdentityFile")
+		if len(identities) == 0 {
 			signers = getDefaultSigners()
 		} else {
 			for _, identity := range identities {
@@ -834,7 +777,7 @@ func keepAlive(client *ssh.Client, args *sshArgs) {
 		if err == nil && value > 0 {
 			return value
 		}
-		value, err = strconv.Atoi(ssh_config.Get(args.Destination, option))
+		value, err = strconv.Atoi(getConfig(args.Destination, option))
 		if err == nil && value > 0 {
 			return value
 		}
@@ -905,7 +848,6 @@ func wrapStdIO(serverIn io.WriteCloser, serverOut io.Reader) {
 func cleanupForGC() {
 	getDefaultSigners = nil
 	getHostKeyCallback = nil
-	readPasswordConfig = nil
 }
 
 func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session, err error) {
@@ -920,13 +862,6 @@ func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session
 		}
 		cleanupForGC()
 	}()
-
-	// init user home
-	userHomeDir, err = os.UserHomeDir()
-	if err != nil {
-		err = fmt.Errorf("user home dir failed: %v", err)
-		return
-	}
 
 	// ssh login
 	client, err = sshConnect(args, nil, "")
@@ -1007,6 +942,10 @@ func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session
 			trzszFilter.SetTerminalColumns(int32(width))
 			_ = session.WindowChange(height, width)
 		})
+
+		// setup default paths
+		trzszFilter.SetDefaultUploadPath(userConfig.defaultUploadPath)
+		trzszFilter.SetDefaultDownloadPath(userConfig.defaultDownloadPath)
 	}
 
 	return

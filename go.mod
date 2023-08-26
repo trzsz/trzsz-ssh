@@ -10,8 +10,8 @@ require (
 	github.com/stretchr/testify v1.8.4
 	github.com/trzsz/go-arg v1.5.2
 	github.com/trzsz/promptui v0.10.3
-	github.com/trzsz/ssh_config v1.3.1
-	github.com/trzsz/trzsz-go v1.1.5
+	github.com/trzsz/ssh_config v1.3.2
+	github.com/trzsz/trzsz-go v1.1.6-0.20230819142016-6c37e8d0a49b
 	golang.org/x/crypto v0.12.0
 	golang.org/x/sys v0.11.0
 	golang.org/x/term v0.11.0

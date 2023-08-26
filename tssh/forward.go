@@ -38,7 +38,6 @@ import (
 	"time"
 
 	"github.com/armon/go-socks5"
-	"github.com/trzsz/ssh_config"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -195,7 +194,7 @@ func parseForwardArg(s string) (*forwardCfg, error) {
 }
 
 func isGatewayPorts(args *sshArgs) bool {
-	return args.Gateway || strings.ToLower(ssh_config.Get(args.Destination, "GatewayPorts")) == "yes"
+	return args.Gateway || strings.ToLower(getConfig(args.Destination, "GatewayPorts")) == "yes"
 }
 
 func listenOnLocal(args *sshArgs, addr *string, port string) (listeners []net.Listener, errs []error) {
@@ -383,7 +382,7 @@ func sshForward(client *ssh.Client, args *sshArgs) error {
 	for _, b := range args.DynamicForward.binds {
 		dynamicForward(client, b, args)
 	}
-	for _, s := range ssh_config.GetAll(args.Destination, "DynamicForward") {
+	for _, s := range getAllConfig(args.Destination, "DynamicForward") {
 		b, err := parseBindCfg(s)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "dynamic forward failed: %v\r\n", err)
@@ -396,7 +395,7 @@ func sshForward(client *ssh.Client, args *sshArgs) error {
 	for _, f := range args.LocalForward.cfgs {
 		localForward(client, f, args)
 	}
-	for _, s := range ssh_config.GetAll(args.Destination, "LocalForward") {
+	for _, s := range getAllConfig(args.Destination, "LocalForward") {
 		f, err := parseForwardCfg(s)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "local forward failed: %v\r\n", err)
@@ -409,7 +408,7 @@ func sshForward(client *ssh.Client, args *sshArgs) error {
 	for _, f := range args.RemoteForward.cfgs {
 		remoteForward(client, f, args)
 	}
-	for _, s := range ssh_config.GetAll(args.Destination, "RemoteForward") {
+	for _, s := range getAllConfig(args.Destination, "RemoteForward") {
 		f, err := parseForwardCfg(s)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "remote forward failed: %v\r\n", err)
