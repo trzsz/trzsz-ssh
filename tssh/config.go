@@ -132,6 +132,10 @@ func parseTsshConfig() {
 }
 
 func initUserConfig(configFile string) error {
+	cleanupAfterLogined = append(cleanupAfterLogined, func() {
+		userConfig = nil
+	})
+
 	var err error
 	userHomeDir, err = os.UserHomeDir()
 	if err != nil {

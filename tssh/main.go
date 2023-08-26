@@ -72,6 +72,7 @@ func background(args *sshArgs, dest string) (bool, error) {
 }
 
 var onExitFuncs []func()
+var cleanupAfterLogined []func()
 
 func parseRemoteCommand(args *sshArgs) (string, error) {
 	command := args.Option.get("RemoteCommand")
@@ -245,7 +246,9 @@ func TsshMain() int {
 	}
 
 	// cleanup for GC
-	userConfig = nil
+	for i := len(cleanupAfterLogined) - 1; i >= 0; i-- {
+		cleanupAfterLogined[i]()
+	}
 
 	// no command
 	if args.NoCommand {
