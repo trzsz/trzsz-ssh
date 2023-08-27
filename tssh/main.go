@@ -35,7 +35,7 @@ import (
 	"github.com/trzsz/go-arg"
 )
 
-const kTsshVersion = "0.1.10"
+const kTsshVersion = "0.1.11"
 
 func background(args *sshArgs, dest string) (bool, error) {
 	if v := os.Getenv("TRZSZ-SSH-BACKGROUND"); v == "TRUE" {
