@@ -329,3 +329,17 @@ func appendPromptHosts(hosts []*sshHost, cfgHosts ...*ssh_config.Host) []*sshHos
 	}
 	return hosts
 }
+
+func getOptionConfig(args *sshArgs, option string) string {
+	if value := args.Option.get(option); value != "" {
+		return value
+	}
+	return getConfig(args.Destination, option)
+}
+
+func getExOptionConfig(args *sshArgs, option string) string {
+	if value := args.Option.get(option); value != "" {
+		return value
+	}
+	return getExConfig(args.Destination, option)
+}

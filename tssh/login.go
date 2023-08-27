@@ -441,6 +441,11 @@ func readSecret(prompt string) (secret []byte, err error) {
 }
 
 func getPasswordAuthMethod(args *sshArgs, host, user string) ssh.AuthMethod {
+	if strings.ToLower(getOptionConfig(args, "PasswordAuthentication")) == "no" {
+		debug("disable auth method: password authentication")
+		return nil
+	}
+
 	idx := 0
 	rememberPassword := false
 	return ssh.RetryableAuthMethod(ssh.PasswordCallback(func() (string, error) {
@@ -479,6 +484,11 @@ func readQuestionAnswerConfig(dest string, idx int, question string) string {
 }
 
 func getKeyboardInteractiveAuthMethod(args *sshArgs, host, user string) ssh.AuthMethod {
+	if strings.ToLower(getOptionConfig(args, "KbdInteractiveAuthentication")) == "no" {
+		debug("disable auth method: keyboard interactive authentication")
+		return nil
+	}
+
 	idx := 0
 	questionSet := make(map[string]struct{})
 	return ssh.RetryableAuthMethod(ssh.KeyboardInteractive(
@@ -555,7 +565,12 @@ func getAgentSigners() []*sshSigner {
 	return wrappers
 }
 
-func getAuthMethods(args *sshArgs, host, user string) ([]ssh.AuthMethod, error) {
+func getPublicKeysAuthMethod(args *sshArgs) ssh.AuthMethod {
+	if strings.ToLower(getOptionConfig(args, "PubkeyAuthentication")) == "no" {
+		debug("disable auth method: public key authentication")
+		return nil
+	}
+
 	var pubKeySigners []ssh.Signer
 	fingerprints := make(map[string]struct{})
 	addPubKeySigners := func(signers []*sshSigner) {
@@ -575,7 +590,8 @@ func getAuthMethods(args *sshArgs, host, user string) ([]ssh.AuthMethod, error) 
 		for _, identity := range args.Identity.values {
 			signer, err := getSigner(args.Destination, identity)
 			if err != nil {
-				return nil, err
+				warning("%s", err)
+				continue
 			}
 			addPubKeySigners([]*sshSigner{signer})
 		}
@@ -587,23 +603,35 @@ func getAuthMethods(args *sshArgs, host, user string) ([]ssh.AuthMethod, error) 
 			for _, identity := range identities {
 				signer, err := getSigner(args.Destination, identity)
 				if err != nil {
-					return nil, err
+					warning("%s", err)
+					continue
 				}
 				addPubKeySigners([]*sshSigner{signer})
 			}
 		}
 	}
 
-	var authMethods []ssh.AuthMethod
-	if len(pubKeySigners) > 0 {
-		authMethods = append(authMethods, ssh.PublicKeys(pubKeySigners...))
+	if len(pubKeySigners) == 0 {
+		return nil
 	}
+	return ssh.PublicKeys(pubKeySigners...)
+}
 
-	authMethods = append(authMethods,
-		getKeyboardInteractiveAuthMethod(args, host, user),
-		getPasswordAuthMethod(args, host, user))
-
-	return authMethods, nil
+func getAuthMethods(args *sshArgs, host, user string) []ssh.AuthMethod {
+	var authMethods []ssh.AuthMethod
+	if authMethod := getPublicKeysAuthMethod(args); authMethod != nil {
+		debug("add auth method: public key authentication")
+		authMethods = append(authMethods, authMethod)
+	}
+	if authMethod := getKeyboardInteractiveAuthMethod(args, host, user); authMethod != nil {
+		debug("add auth method: keyboard interactive authentication")
+		authMethods = append(authMethods, authMethod)
+	}
+	if authMethod := getPasswordAuthMethod(args, host, user); authMethod != nil {
+		debug("add auth method: password authentication")
+		authMethods = append(authMethods, authMethod)
+	}
+	return authMethods
 }
 
 type cmdAddr struct {
@@ -736,10 +764,7 @@ func sshConnect(args *sshArgs, client *ssh.Client, proxy string) (*ssh.Client, e
 	if err != nil {
 		return nil, err
 	}
-	authMethods, err := getAuthMethods(args, param.host, param.user)
-	if err != nil {
-		return nil, err
-	}
+	authMethods := getAuthMethods(args, param.host, param.user)
 	cb, kh, err := getHostKeyCallback()
 	if err != nil {
 		return nil, err
@@ -815,12 +840,8 @@ func sshConnect(args *sshArgs, client *ssh.Client, proxy string) (*ssh.Client, e
 
 func keepAlive(client *ssh.Client, args *sshArgs) {
 	getOptionValue := func(option string) int {
-		value, err := strconv.Atoi(args.Option.get(option))
-		if err == nil && value > 0 {
-			return value
-		}
-		value, err = strconv.Atoi(getConfig(args.Destination, option))
-		if err == nil && value > 0 {
+		value, err := strconv.Atoi(getOptionConfig(args, option))
+		if err != nil {
 			return value
 		}
 		return 0
@@ -851,23 +872,23 @@ func keepAlive(client *ssh.Client, args *sshArgs) {
 	}
 }
 
-func wrapStdIO(serverIn io.WriteCloser, serverOut io.Reader) {
-	go func() {
-		defer serverIn.Close()
-		win := runtime.GOOS == "windows"
+func wrapStdIO(serverIn io.WriteCloser, serverOut io.Reader, tty bool) {
+	win := runtime.GOOS == "windows"
+	forwardIO := func(reader io.Reader, writer io.WriteCloser, oldVal, newVal []byte) {
+		defer writer.Close()
 		buffer := make([]byte, 32*1024)
 		for {
-			n, err := os.Stdin.Read(buffer)
+			n, err := reader.Read(buffer)
 			if n > 0 {
 				buf := buffer[:n]
-				if win {
-					buf = bytes.ReplaceAll(buf, []byte("\r\n"), []byte("\n"))
+				if win && !tty {
+					buf = bytes.ReplaceAll(buf, oldVal, newVal)
 				}
 				w := 0
 				for w < len(buf) {
-					n, err := serverIn.Write(buf[w:])
+					n, err := writer.Write(buf[w:])
 					if err != nil {
-						warning("write to server failed: %v", err)
+						warning("wrap stdio write failed: %v", err)
 						return
 					}
 					w += n
@@ -877,14 +898,13 @@ func wrapStdIO(serverIn io.WriteCloser, serverOut io.Reader) {
 				break
 			}
 			if err != nil {
-				warning("read from stdin failed: %v", err)
+				warning("wrap stdio read failed: %v", err)
 				return
 			}
 		}
-	}()
-	go func() {
-		_, _ = io.Copy(os.Stdout, serverOut)
-	}()
+	}
+	go forwardIO(os.Stdin, serverIn, []byte("\r\n"), []byte("\n"))
+	go forwardIO(serverOut, os.Stdout, []byte("\n"), []byte("\r\n"))
 }
 
 func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session, err error) {
@@ -940,7 +960,7 @@ func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session
 
 	// no tty
 	if !tty {
-		wrapStdIO(serverIn, serverOut)
+		wrapStdIO(serverIn, serverOut, tty)
 		return
 	}
 
@@ -955,6 +975,13 @@ func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session
 		return
 	}
 
+	// disable trzsz ( trz / tsz )
+	if strings.ToLower(getExOptionConfig(args, "EnableTrzsz")) == "no" {
+		wrapStdIO(serverIn, serverOut, tty)
+		onTerminalResize(func(width, height int) { _ = session.WindowChange(height, width) })
+		return
+	}
+
 	// support trzsz ( trz / tsz )
 	trzsz.SetAffectedByWindows(false)
 	if args.Relay || isNoGUI() {
@@ -962,6 +989,7 @@ func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session
 		trzsz.NewTrzszRelay(os.Stdin, os.Stdout, serverIn, serverOut, trzsz.TrzszOptions{
 			DetectTraceLog: args.TraceLog,
 		})
+		onTerminalResize(func(width, height int) { _ = session.WindowChange(height, width) })
 	} else {
 		// create a TrzszFilter to support trzsz ( trz / tsz )
 		//
