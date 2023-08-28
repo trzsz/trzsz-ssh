@@ -13,9 +13,10 @@ const AGENT_PIPE_ID = `\\.\pipe\openssh-ssh-agent`
 
 func getAgentSigners() []*sshSigner {
 	pipeId := AGENT_PIPE_ID
-	// get enviroment override
+
+	// if avaialable, use env:SSH_AUTH_SOCK as pipe id
 	if socket := os.Getenv("SSH_AUTH_SOCK"); socket != "" {
-		pipeId = AGENT_PIPE_ID
+		pipeId = socket
 	}
 
 	// test named pipe existance
