@@ -2,6 +2,7 @@ package tssh
 
 import (
 	"os"
+	"time"
 
 	"github.com/natefinch/npipe"
 	"golang.org/x/crypto/ssh/agent"
@@ -26,7 +27,7 @@ func getAgentSigners() []*sshSigner {
 	}
 
 	// connect to named pipe
-	conn, err := npipe.Dial(pipeId)
+	conn, err := npipe.DialTimeout(pipeId, time.Second)
 	if err != nil {
 		debug("open ssh agent on named pipe '%s' failed: %v", pipeId, err)
 		return nil

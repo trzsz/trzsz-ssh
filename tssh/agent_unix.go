@@ -5,6 +5,7 @@ package tssh
 import (
 	"net"
 	"os"
+	"time"
 
 	"golang.org/x/crypto/ssh/agent"
 )
@@ -15,7 +16,7 @@ func getAgentSigners() []*sshSigner {
 		return nil
 	}
 
-	conn, err := net.Dial("unix", socket)
+	conn, err := net.DialTimeout("unix", socket, time.Second)
 	if err != nil {
 		debug("open ssh agent [%s] failed: %v", socket, err)
 		return nil
