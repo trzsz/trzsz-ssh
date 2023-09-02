@@ -70,6 +70,7 @@ type tsshConfig struct {
 	sysConfig           *ssh_config.Config
 	exConfig            *ssh_config.Config
 	allHosts            []*sshHost
+	wildcardPatterns    []*ssh_config.Pattern
 }
 
 var userConfig = &tsshConfig{}
@@ -133,6 +134,11 @@ func parseTsshConfig() {
 
 func initUserConfig(configFile string) error {
 	cleanupAfterLogined = append(cleanupAfterLogined, func() {
+		userConfig.config = nil
+		userConfig.sysConfig = nil
+		userConfig.exConfig = nil
+		userConfig.allHosts = nil
+		userConfig.wildcardPatterns = nil
 		userConfig = nil
 	})
 
@@ -313,6 +319,9 @@ func appendPromptHosts(hosts []*sshHost, cfgHosts ...*ssh_config.Host) []*sshHos
 		for _, pattern := range host.Patterns {
 			alias := pattern.String()
 			if strings.ContainsRune(alias, '*') || strings.ContainsRune(alias, '?') {
+				if alias != "*" && !pattern.Not() {
+					userConfig.wildcardPatterns = append(userConfig.wildcardPatterns, pattern)
+				}
 				continue
 			}
 			hosts = append(hosts, &sshHost{

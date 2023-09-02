@@ -651,6 +651,12 @@ func predictDestination(dest string) (string, bool, error) {
 		}
 	}
 
+	for _, pattern := range userConfig.wildcardPatterns {
+		if pattern.Regex().MatchString(dest) {
+			return dest, false, nil
+		}
+	}
+
 	match := false
 	keywords := strings.Fields(strings.ToLower(dest))
 	for _, host := range hosts {
