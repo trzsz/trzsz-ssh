@@ -12,7 +12,7 @@ require (
 	github.com/trzsz/go-arg v1.5.2
 	github.com/trzsz/promptui v0.10.3
 	github.com/trzsz/ssh_config v1.3.3
-	github.com/trzsz/trzsz-go v1.1.6-0.20230819142016-6c37e8d0a49b
+	github.com/trzsz/trzsz-go v1.1.6-0.20230903153817-767c161acdc1
 	golang.org/x/crypto v0.12.0
 	golang.org/x/sys v0.11.0
 	golang.org/x/term v0.11.0

@@ -694,6 +694,7 @@ func execProxyCommand(param *loginParam) (net.Conn, string, error) {
 func dialWithTimeout(client *ssh.Client, network, addr string) (conn net.Conn, err error) {
 	done := make(chan struct{}, 1)
 	go func() {
+		defer close(done)
 		conn, err = client.Dial(network, addr)
 		done <- struct{}{}
 	}()
@@ -717,6 +718,7 @@ func (c *connWithTimeout) Read(b []byte) (n int, err error) {
 	}
 	done := make(chan struct{}, 1)
 	go func() {
+		defer close(done)
 		n, err = c.Conn.Read(b)
 		done <- struct{}{}
 	}()
@@ -985,6 +987,12 @@ func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session
 		// setup default paths
 		trzszFilter.SetDefaultUploadPath(userConfig.defaultUploadPath)
 		trzszFilter.SetDefaultDownloadPath(userConfig.defaultDownloadPath)
+
+		// setup tunnel connect
+		trzszFilter.SetTunnelConnector(func(port int) net.Conn {
+			conn, _ := client.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+			return conn
+		})
 	}
 
 	return
