@@ -38,8 +38,9 @@ import (
 	"golang.org/x/term"
 )
 
-type terminalMode struct {
-	state *term.State
+type stdinState struct {
+	state    *term.State
+	settings *string
 }
 
 const CP_UTF8 uint32 = 65001
@@ -154,10 +155,14 @@ func sttySize() (int, int, error) {
 	return cols, rows, nil
 }
 
-func setupTerminalMode() (*terminalMode, error) {
+func setupVirtualTerminal() error {
 	// enable virtual terminal
-	if err := enableVirtualTerminal(); err != nil && !sttyExecutable() {
-		return nil, fmt.Errorf("enable virtual terminal failed: %v", err)
+	if err := enableVirtualTerminal(); err != nil {
+		if !sttyExecutable() {
+			return fmt.Errorf("enable virtual terminal failed: %v", err)
+		}
+		promptCursorIcon = ">>"
+		promptSelectedIcon = "++"
 	}
 
 	// set code page to UTF8
@@ -170,32 +175,36 @@ func setupTerminalMode() (*terminalMode, error) {
 		setConsoleOutputCP(outCP)
 	})
 
-	state, err := term.MakeRaw(int(os.Stdin.Fd()))
-	if err != nil {
-		if !sttyExecutable() {
-			return nil, fmt.Errorf("terminal make raw failed: %v", err)
-		}
-		settings, err := sttySettings()
-		if err != nil {
-			return nil, fmt.Errorf("get stty settings failed: %v", err)
-		}
-		onExitFuncs = append(onExitFuncs, func() {
-			sttyReset(settings)
-		})
-		if err := sttyMakeRaw(); err != nil {
-			return nil, fmt.Errorf("stty make raw failed: %v", err)
-		}
-		promptCursorIcon = ">>"
-		promptSelectedIcon = "++"
-	}
-
-	return &terminalMode{state}, nil
+	return nil
 }
 
-func resetTerminalMode(tm *terminalMode) {
-	if tm.state != nil {
-		_ = term.Restore(int(os.Stdin.Fd()), tm.state)
-		tm.state = nil
+func makeStdinRaw() (*stdinState, error) {
+	state, err := term.MakeRaw(int(os.Stdin.Fd()))
+	if err == nil {
+		return &stdinState{state, nil}, nil
+	}
+
+	if !sttyExecutable() {
+		return nil, fmt.Errorf("terminal make raw failed: %v", err)
+	}
+	settings, err := sttySettings()
+	if err != nil {
+		return nil, fmt.Errorf("get stty settings failed: %v", err)
+	}
+	if err := sttyMakeRaw(); err != nil {
+		return nil, fmt.Errorf("stty make raw failed: %v", err)
+	}
+	return &stdinState{nil, &settings}, nil
+}
+
+func resetStdin(s *stdinState) {
+	if s.state != nil {
+		_ = term.Restore(int(os.Stdin.Fd()), s.state)
+		s.state = nil
+	}
+	if s.settings != nil {
+		sttyReset(*s.settings)
+		s.settings = nil
 	}
 }
 
@@ -221,7 +230,7 @@ func onTerminalResize(setTerminalSize func(int, int)) {
 	go func() {
 		columns, rows, _ := getTerminalSize()
 		for {
-			time.Sleep(1 * time.Second)
+			time.Sleep(time.Second)
 			width, height, err := getTerminalSize()
 			if err != nil {
 				continue
@@ -251,11 +260,5 @@ func getKeyboardInput() (*os.File, func(), error) {
 	}
 	file := os.NewFile(uintptr(handle), "CONIN$")
 
-	state, err := term.MakeRaw(int(file.Fd()))
-	if err != nil {
-		_ = file.Close()
-		return nil, nil, fmt.Errorf("CONIN$ make raw failed: %v", err)
-	}
-
-	return file, func() { _ = term.Restore(int(file.Fd()), state); _ = file.Close() }, nil
+	return file, func() { _ = file.Close() }, nil
 }

@@ -39,22 +39,26 @@ import (
 	"golang.org/x/term"
 )
 
-type terminalMode struct {
+type stdinState struct {
 	state *term.State
 }
 
-func setupTerminalMode() (*terminalMode, error) {
+func setupVirtualTerminal() error {
+	return nil
+}
+
+func makeStdinRaw() (*stdinState, error) {
 	state, err := term.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {
 		return nil, fmt.Errorf("terminal make raw failed: %v", err)
 	}
-	return &terminalMode{state}, nil
+	return &stdinState{state}, nil
 }
 
-func resetTerminalMode(tm *terminalMode) {
-	if tm.state != nil {
-		_ = term.Restore(int(os.Stdin.Fd()), tm.state)
-		tm.state = nil
+func resetStdin(s *stdinState) {
+	if s.state != nil {
+		_ = term.Restore(int(os.Stdin.Fd()), s.state)
+		s.state = nil
 	}
 }
 
@@ -84,19 +88,12 @@ func getKeyboardInput() (*os.File, func(), error) {
 		return os.Stdin, func() {}, nil
 	}
 
-	path := "/dev/tty"
-	file, err := os.Open(path)
+	file, err := os.Open("/dev/tty")
 	if err != nil {
 		return nil, nil, err
 	}
 
-	state, err := term.MakeRaw(int(file.Fd()))
-	if err != nil {
-		_ = file.Close()
-		return nil, nil, fmt.Errorf("%s make raw failed: %v", path, err)
-	}
-
-	return file, func() { _ = term.Restore(int(file.Fd()), state); _ = file.Close() }, nil
+	return file, func() { _ = file.Close() }, nil
 }
 
 func isSshTmuxEnv() bool {

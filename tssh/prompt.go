@@ -474,6 +474,9 @@ func (p *sshPrompt) userConfirm(buf []byte) bool {
 func (p *sshPrompt) wrapStdin() {
 	defer p.selector.Stdin.Close()
 	defer p.pipeOut.Close()
+	if state, _ := makeStdinRaw(); state != nil {
+		defer resetStdin(state)
+	}
 	buffer := make([]byte, 100)
 	for {
 		n, err := os.Stdin.Read(buffer)

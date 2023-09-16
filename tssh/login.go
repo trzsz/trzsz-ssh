@@ -26,6 +26,7 @@ SOFTWARE.
 package tssh
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/x509"
 	"encoding/hex"
@@ -34,7 +35,6 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"os/signal"
 	"os/user"
 	"path/filepath"
 	"runtime"
@@ -133,7 +133,11 @@ func getLoginParam(args *sshArgs) (*loginParam, error) {
 			if err != nil {
 				return nil, fmt.Errorf("get current user failed: %v", err)
 			}
-			param.user = currentUser.Username
+			userName = currentUser.Username
+			if idx := strings.LastIndexByte(userName, '\\'); idx >= 0 {
+				userName = userName[idx+1:]
+			}
+			param.user = userName
 		}
 	}
 
@@ -187,37 +191,6 @@ func createKnownHosts(path string) error {
 	return nil
 }
 
-func readLineFromRawIO(stdin *os.File) (string, error) {
-	defer fmt.Fprintf(os.Stderr, "\r\n")
-	buffer := new(bytes.Buffer)
-	buf := make([]byte, 100)
-	for {
-		n, err := stdin.Read(buf)
-		if err != nil {
-			return "", nil
-		}
-		data := buf[:n]
-		if bytes.ContainsRune(data, '\x03') {
-			fmt.Fprintf(os.Stderr, "^C")
-			return "", fmt.Errorf("interrupt")
-		}
-		for _, b := range data {
-			if b == '\r' || b == '\n' {
-				return string(bytes.TrimSpace(buffer.Bytes())), nil
-			}
-			if b == '\x7f' {
-				if buffer.Len() > 0 {
-					buffer.Truncate(buffer.Len() - 1)
-					fmt.Fprintf(os.Stderr, "\b \b")
-				}
-			} else if b >= ' ' && b <= '~' {
-				buffer.WriteByte(b)
-				fmt.Fprintf(os.Stderr, "%s", string(b))
-			}
-		}
-	}
-}
-
 func addHostKey(path, host string, remote net.Addr, key ssh.PublicKey) error {
 	fingerprint := ssh.FingerprintSHA256(key)
 	fmt.Fprintf(os.Stderr, "The authenticity of host '%s' can't be established.\r\n"+
@@ -229,12 +202,14 @@ func addHostKey(path, host string, remote net.Addr, key ssh.PublicKey) error {
 	}
 	defer closer()
 
+	reader := bufio.NewReader(stdin)
 	fmt.Fprintf(os.Stderr, "Are you sure you want to continue connecting (yes/no/[fingerprint])? ")
 	for {
-		input, err := readLineFromRawIO(stdin)
+		input, err := reader.ReadString('\n')
 		if err != nil {
 			return err
 		}
+		input = strings.TrimSpace(input)
 		if input == fingerprint {
 			break
 		}
@@ -410,35 +385,14 @@ func getSigner(dest string, path string) (*sshSigner, error) {
 func readSecret(prompt string) (secret []byte, err error) {
 	fmt.Fprintf(os.Stderr, "%s", prompt)
 	defer fmt.Fprintf(os.Stderr, "\r\n")
-	errch := make(chan error, 1)
-	defer close(errch)
 
-	sigch := make(chan os.Signal, 1)
-	signal.Notify(sigch, os.Interrupt)
-	go func() {
-		for range sigch {
-			errch <- fmt.Errorf("interrupt")
-		}
-	}()
-	defer func() { signal.Stop(sigch); close(sigch) }()
+	stdin, closer, err := getKeyboardInput()
+	if err != nil {
+		return nil, err
+	}
+	defer closer()
 
-	go func() {
-		stdin, closer, err := getKeyboardInput()
-		if err != nil {
-			errch <- err
-			return
-		}
-		defer closer()
-		pw, err := term.ReadPassword(int(stdin.Fd()))
-		if err != nil {
-			errch <- err
-			return
-		}
-		secret = pw
-		errch <- nil
-	}()
-	err = <-errch
-	return
+	return term.ReadPassword(int(stdin.Fd()))
 }
 
 func getPasswordAuthMethod(args *sshArgs, host, user string) ssh.AuthMethod {
@@ -710,7 +664,7 @@ func dialWithTimeout(client *ssh.Client, network, addr string) (conn net.Conn, e
 		done <- struct{}{}
 	}()
 	select {
-	case <-time.After(3 * time.Second):
+	case <-time.After(10 * time.Second):
 		err = fmt.Errorf("dial [%s] timeout", addr)
 	case <-done:
 	}
@@ -755,7 +709,7 @@ func sshConnect(args *sshArgs, client *ssh.Client, proxy string) (*ssh.Client, e
 	config := &ssh.ClientConfig{
 		User:              param.user,
 		Auth:              authMethods,
-		Timeout:           3 * time.Second,
+		Timeout:           10 * time.Second,
 		HostKeyCallback:   cb,
 		HostKeyAlgorithms: kh.HostKeyAlgorithms(param.addr),
 		BannerCallback: func(banner string) error {
@@ -878,6 +832,10 @@ func wrapStdIO(serverIn io.WriteCloser, serverOut io.Reader, tty bool) {
 				}
 			}
 			if err == io.EOF {
+				if win && tty {
+					_, _ = writer.Write([]byte{0x1A}) // ctrl + z
+					continue
+				}
 				break
 			}
 			if err != nil {

@@ -366,7 +366,7 @@ func remoteForward(client *ssh.Client, f *forwardCfg, args *sshArgs) {
 					fmt.Fprintf(os.Stderr, "remote forward accept failed: %v\r\n", err)
 					continue
 				}
-				local, err := net.DialTimeout("tcp", localAddr, 3*time.Second)
+				local, err := net.DialTimeout("tcp", localAddr, 10*time.Second)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "remote forward dial [%s] failed: %v\r\n", localAddr, err)
 					remote.Close()

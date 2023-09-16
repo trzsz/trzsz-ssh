@@ -73,7 +73,20 @@ func background(args *sshArgs, dest string) (bool, error) {
 }
 
 var onExitFuncs []func()
+
+func cleanupOnExit() {
+	for i := len(onExitFuncs) - 1; i >= 0; i-- {
+		onExitFuncs[i]()
+	}
+}
+
 var cleanupAfterLogined []func()
+
+func cleanupForGC() {
+	for i := len(cleanupAfterLogined) - 1; i >= 0; i-- {
+		cleanupAfterLogined[i]()
+	}
+}
 
 func parseRemoteCommand(args *sshArgs) (string, error) {
 	command := args.Option.get("RemoteCommand")
@@ -147,11 +160,7 @@ func TsshMain() int {
 	}
 
 	// cleanup on exit
-	defer func() {
-		for i := len(onExitFuncs) - 1; i >= 0; i-- {
-			onExitFuncs[i]()
-		}
-	}()
+	defer cleanupOnExit()
 
 	// print message after stdin reset
 	var err error
@@ -163,17 +172,14 @@ func TsshMain() int {
 
 	// init user config
 	if err = initUserConfig(args.ConfigFile); err != nil {
-		return -1
+		return 1
 	}
 
-	// setup terminal
-	var mode *terminalMode
+	// setup virtual terminal on Windows
 	if isTerminal {
-		mode, err = setupTerminalMode()
-		if err != nil {
-			return 1
+		if err = setupVirtualTerminal(); err != nil {
+			return 2
 		}
-		defer resetTerminalMode(mode)
 	}
 
 	// choose ssh alias
@@ -182,7 +188,7 @@ func TsshMain() int {
 	if args.Destination == "" {
 		if !isTerminal {
 			parser.WriteHelp(os.Stderr)
-			return 2
+			return 3
 		}
 		dest, quit, err = chooseAlias("")
 	} else {
@@ -193,7 +199,7 @@ func TsshMain() int {
 		return 0
 	}
 	if err != nil {
-		return 3
+		return 4
 	}
 
 	// run as background
@@ -201,7 +207,7 @@ func TsshMain() int {
 		var parent bool
 		parent, err = background(&args, dest)
 		if err != nil {
-			return 4
+			return 5
 		}
 		if parent {
 			return 0
@@ -212,22 +218,17 @@ func TsshMain() int {
 	// parse cmd and tty
 	command, tty, err := parseCmdAndTTY(&args)
 	if err != nil {
-		return 5
+		return 6
 	}
 
 	// ssh login
 	client, session, err := sshLogin(&args, tty)
 	if err != nil {
-		return 6
+		return 7
 	}
 	defer client.Close()
 	if session != nil {
 		defer session.Close()
-	}
-
-	// reset terminal if no login tty
-	if mode != nil && (!tty || args.StdioForward != "" || args.NoCommand) {
-		resetTerminalMode(mode)
 	}
 
 	// stdio forward
@@ -235,26 +236,25 @@ func TsshMain() int {
 		var wg *sync.WaitGroup
 		wg, err = stdioForward(client, args.StdioForward)
 		if err != nil {
-			return 7
+			return 8
 		}
+		cleanupForGC()
 		wg.Wait()
 		return 0
 	}
 
 	// ssh forward
 	if err = sshForward(client, &args); err != nil {
-		return 8
+		return 9
 	}
 
 	// cleanup for GC
-	for i := len(cleanupAfterLogined) - 1; i >= 0; i-- {
-		cleanupAfterLogined[i]()
-	}
+	cleanupForGC()
 
 	// no command
 	if args.NoCommand {
 		if client.Wait() != nil {
-			return 9
+			return 10
 		}
 		return 0
 	}
@@ -263,21 +263,31 @@ func TsshMain() int {
 	if command != "" {
 		if err = session.Start(command); err != nil {
 			err = fmt.Errorf("start command [%s] failed: %v", command, err)
-			return 10
+			return 11
 		}
 	} else {
 		if err = session.Shell(); err != nil {
 			err = fmt.Errorf("start shell failed: %v", err)
-			return 11
+			return 12
 		}
+	}
+
+	// make stdin raw
+	if isTerminal && tty {
+		var state *stdinState
+		state, err = makeStdinRaw()
+		if err != nil {
+			return 13
+		}
+		defer resetStdin(state)
 	}
 
 	// wait for exit
 	if session.Wait() != nil {
-		return 12
+		return 14
 	}
 	if args.Background && client.Wait() != nil {
-		return 13
+		return 15
 	}
 	return 0
 }
