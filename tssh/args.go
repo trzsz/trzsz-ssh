@@ -2,6 +2,7 @@
 MIT License
 
 Copyright (c) 2023 Lonny Wong <lonnywong@qq.com>
+Copyright (c) 2023 [Contributors](https://github.com/trzsz/trzsz-ssh/graphs/contributors)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -50,6 +51,8 @@ type sshArgs struct {
 	Destination    string      `arg:"positional" help:"alias in ~/.ssh/config, or [user@]hostname[:port]"`
 	Command        string      `arg:"positional" help:"command to execute instead of a login shell"`
 	Argument       []string    `arg:"positional" help:"command arguments separated by spaces"`
+	ForwardAgent   bool        `arg:"-A,--" help:"enable forwarding the ssh agent connection"`
+	NoForwardAgent bool        `arg:"-a,--" help:"disable forwarding the ssh agent connection"`
 	DisableTTY     bool        `arg:"-T,--" help:"disable pseudo-terminal allocation"`
 	ForceTTY       bool        `arg:"-t,--" help:"force pseudo-terminal allocation"`
 	Gateway        bool        `arg:"-g,--" help:"forwarding allows remote hosts to connect"`

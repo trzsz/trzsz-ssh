@@ -2,6 +2,7 @@
 MIT License
 
 Copyright (c) 2023 Lonny Wong <lonnywong@qq.com>
+Copyright (c) 2023 [Contributors](https://github.com/trzsz/trzsz-ssh/graphs/contributors)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -45,6 +46,7 @@ import (
 	"github.com/skeema/knownhosts"
 	"github.com/trzsz/trzsz-go/trzsz"
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/term"
 )
 
@@ -554,7 +556,16 @@ func getPublicKeysAuthMethod(args *sshArgs) ssh.AuthMethod {
 		}
 	}
 
-	addPubKeySigners(getAgentSigners())
+	if agentClient := getAgentClient(); agentClient != nil {
+		signers, err := agentClient.Signers()
+		if err != nil {
+			warning("get ssh agent signers failed: %v", err)
+		} else {
+			for _, signer := range signers {
+				addPubKeySigners([]*sshSigner{{path: "ssh-agent", pubKey: signer.PublicKey(), signer: signer}})
+			}
+		}
+	}
 
 	if len(args.Identity.values) > 0 {
 		for _, identity := range args.Identity.values {
@@ -879,6 +890,26 @@ func wrapStdIO(serverIn io.WriteCloser, serverOut io.Reader, tty bool) {
 	go forwardIO(serverOut, os.Stdout, []byte("\n"), []byte("\r\n"))
 }
 
+func sshAgentForward(args *sshArgs, client *ssh.Client, session *ssh.Session) {
+	agentClient := getAgentClient()
+	if agentClient == nil {
+		return
+	}
+	if args.NoForwardAgent || !args.ForwardAgent && strings.ToLower(getOptionConfig(args, "ForwardAgent")) != "yes" {
+		closeAgentClient()
+		return
+	}
+	if err := agent.ForwardToAgent(client, agentClient); err != nil {
+		warning("forward to agent failed: %v", err)
+		return
+	}
+	if err := agent.RequestAgentForwarding(session); err != nil {
+		warning("request agent forwarding failed: %v", err)
+		return
+	}
+	debug("request ssh agent forwarding success")
+}
+
 func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session, err error) {
 	defer func() {
 		if err != nil {
@@ -929,6 +960,9 @@ func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session
 		err = fmt.Errorf("stdout pipe failed: %v", err)
 		return
 	}
+
+	// ssh agent forward
+	sshAgentForward(args, client, session)
 
 	// no tty
 	if !tty {

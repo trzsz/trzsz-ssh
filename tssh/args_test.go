@@ -2,6 +2,7 @@
 MIT License
 
 Copyright (c) 2023 Lonny Wong <lonnywong@qq.com>
+Copyright (c) 2023 [Contributors](https://github.com/trzsz/trzsz-ssh/graphs/contributors)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -50,6 +51,8 @@ func TestSshArgs(t *testing.T) {
 
 	assertArgsEqual("", sshArgs{})
 	assertArgsEqual("-V", sshArgs{Ver: true})
+	assertArgsEqual("-A", sshArgs{ForwardAgent: true})
+	assertArgsEqual("-a", sshArgs{NoForwardAgent: true})
 	assertArgsEqual("-T", sshArgs{DisableTTY: true})
 	assertArgsEqual("-t", sshArgs{ForceTTY: true})
 	assertArgsEqual("-g", sshArgs{Gateway: true})

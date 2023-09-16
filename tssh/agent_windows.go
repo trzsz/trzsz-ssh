@@ -1,53 +1,75 @@
 package tssh
 
+/*
+MIT License
+
+Copyright (c) 2023 Lonny Wong <lonnywong@qq.com>
+Copyright (c) 2023 [Contributors](https://github.com/trzsz/trzsz-ssh/graphs/contributors)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
+
 import (
 	"os"
+	"sync"
 	"time"
 
 	"github.com/natefinch/npipe"
 	"golang.org/x/crypto/ssh/agent"
 )
 
-// AGENT_PIPE_ID is the default pipe id for openssh ssh-agent on windows.
-const AGENT_PIPE_ID = `\\.\pipe\openssh-ssh-agent`
+var (
+	agentOnce   sync.Once
+	agentConn   *npipe.PipeConn
+	agentClient agent.ExtendedAgent
+)
 
-func getAgentSigners() []*sshSigner {
-	pipeId := AGENT_PIPE_ID
-
-	// if avaialable, use env:SSH_AUTH_SOCK as pipe id
-	if socket := os.Getenv("SSH_AUTH_SOCK"); socket != "" {
-		pipeId = socket
-	}
-
-	// test named pipe existance
-	if _, err := os.Stat(pipeId); err != nil {
-		if !os.IsNotExist(err) {
-			debug("failed to access named pipe '%s': %v", pipeId, err)
+func getAgentClient() agent.ExtendedAgent {
+	agentOnce.Do(func() {
+		name := `\\.\pipe\openssh-ssh-agent`
+		if sock := os.Getenv("SSH_AUTH_SOCK"); sock != "" {
+			name = sock
 		}
-		return nil
-	}
 
-	// connect to named pipe
-	conn, err := npipe.DialTimeout(pipeId, time.Second)
-	if err != nil {
-		debug("open ssh agent on named pipe '%s' failed: %v", pipeId, err)
-		return nil
-	}
+		if !isFileExist(name) {
+			debug("ssh agent named pipe [%s] does not exist", name)
+			return
+		}
 
-	client := agent.NewClient(conn)
-	cleanupAfterLogined = append(cleanupAfterLogined, func() {
-		conn.Close()
+		var err error
+		agentConn, err = npipe.DialTimeout(name, time.Second)
+		if err != nil {
+			debug("dial ssh agent named pipe [%s] failed: %v", name, err)
+			return
+		}
+
+		agentClient = agent.NewClient(agentConn)
+		debug("new ssh agent client [%s] success", name)
 	})
 
-	signers, err := client.Signers()
-	if err != nil {
-		debug("get ssh agent signers failed: %v", err)
-		return nil
-	}
+	return agentClient
+}
 
-	wrappers := make([]*sshSigner, 0, len(signers))
-	for _, signer := range signers {
-		wrappers = append(wrappers, &sshSigner{path: "ssh-agent", pubKey: signer.PublicKey(), signer: signer})
+func closeAgentClient() {
+	if agentConn != nil {
+		agentConn.Close()
+		agentConn = nil
 	}
-	return wrappers
+	agentClient = nil
 }
