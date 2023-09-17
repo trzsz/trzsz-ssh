@@ -7,15 +7,15 @@ require (
 	github.com/chzyer/readline v1.5.1
 	github.com/mattn/go-isatty v0.0.19
 	github.com/natefinch/npipe v0.0.0-20160621034901-c1b8fa8bdcce
-	github.com/skeema/knownhosts v1.2.0
+	github.com/skeema/knownhosts v1.2.1-0.20230916192230-09454b7d5683
 	github.com/stretchr/testify v1.8.4
 	github.com/trzsz/go-arg v1.5.2
 	github.com/trzsz/promptui v0.10.3
 	github.com/trzsz/ssh_config v1.3.3
-	github.com/trzsz/trzsz-go v1.1.6-0.20230903153817-767c161acdc1
-	golang.org/x/crypto v0.12.0
-	golang.org/x/sys v0.11.0
-	golang.org/x/term v0.11.0
+	github.com/trzsz/trzsz-go v1.1.6-0.20230917131507-3c175df078af
+	golang.org/x/crypto v0.13.0
+	golang.org/x/sys v0.12.0
+	golang.org/x/term v0.12.0
 )
 
 require (
@@ -31,9 +31,9 @@ require (
 	github.com/ncruces/zenity v0.10.10 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/randall77/makefat v0.0.0-20210315173500-7ddd0e42c844 // indirect
-	golang.org/x/image v0.11.0 // indirect
-	golang.org/x/net v0.14.0 // indirect
-	golang.org/x/text v0.12.0 // indirect
+	golang.org/x/image v0.12.0 // indirect
+	golang.org/x/net v0.15.0 // indirect
+	golang.org/x/text v0.13.0 // indirect
 	gopkg.in/natefinch/npipe.v2 v2.0.0-20160621034901-c1b8fa8bdcce // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

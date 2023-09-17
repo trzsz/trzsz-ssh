@@ -656,7 +656,7 @@ func execProxyCommand(param *loginParam) (net.Conn, string, error) {
 	return &cmdPipe{stdin: cmdIn, stdout: cmdOut, addr: param.addr}, command, nil
 }
 
-func dialWithTimeout(client *ssh.Client, network, addr string) (conn net.Conn, err error) {
+func dialWithTimeout(client *ssh.Client, network, addr string, timeout time.Duration) (conn net.Conn, err error) {
 	done := make(chan struct{}, 1)
 	go func() {
 		defer close(done)
@@ -664,7 +664,7 @@ func dialWithTimeout(client *ssh.Client, network, addr string) (conn net.Conn, e
 		done <- struct{}{}
 	}()
 	select {
-	case <-time.After(10 * time.Second):
+	case <-time.After(timeout):
 		err = fmt.Errorf("dial [%s] timeout", addr)
 	case <-done:
 	}
@@ -720,7 +720,7 @@ func sshConnect(args *sshArgs, client *ssh.Client, proxy string) (*ssh.Client, e
 
 	proxyConnect := func(client *ssh.Client, proxy string) (*ssh.Client, error) {
 		debug("login to [%s], addr: %s", args.Destination, param.addr)
-		conn, err := dialWithTimeout(client, "tcp", param.addr)
+		conn, err := dialWithTimeout(client, "tcp", param.addr, 10*time.Second)
 		if err != nil {
 			return nil, fmt.Errorf("proxy [%s] dial tcp [%s] failed: %v", proxy, param.addr, err)
 		}
@@ -950,10 +950,16 @@ func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session
 	trzsz.SetAffectedByWindows(false)
 	if args.Relay || isNoGUI() {
 		// run as a relay
-		trzsz.NewTrzszRelay(os.Stdin, os.Stdout, serverIn, serverOut, trzsz.TrzszOptions{
+		trzszRelay := trzsz.NewTrzszRelay(os.Stdin, os.Stdout, serverIn, serverOut, trzsz.TrzszOptions{
 			DetectTraceLog: args.TraceLog,
 		})
+		// reset terminal size on resize
 		onTerminalResize(func(width, height int) { _ = session.WindowChange(height, width) })
+		// setup tunnel connect
+		trzszRelay.SetTunnelConnector(func(port int) net.Conn {
+			conn, _ := dialWithTimeout(client, "tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second)
+			return conn
+		})
 	} else {
 		// create a TrzszFilter to support trzsz ( trz / tsz )
 		//
@@ -982,7 +988,7 @@ func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session
 
 		// setup tunnel connect
 		trzszFilter.SetTunnelConnector(func(port int) net.Conn {
-			conn, _ := client.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+			conn, _ := dialWithTimeout(client, "tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second)
 			return conn
 		})
 	}

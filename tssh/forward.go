@@ -245,7 +245,7 @@ func listenOnRemote(args *sshArgs, client *ssh.Client, addr *string, port string
 }
 
 func stdioForward(client *ssh.Client, addr string) (*sync.WaitGroup, error) {
-	conn, err := dialWithTimeout(client, "tcp", addr)
+	conn, err := dialWithTimeout(client, "tcp", addr, 10*time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("stdio forward failed: %v", err)
 	}
@@ -280,7 +280,7 @@ func dynamicForward(client *ssh.Client, b *bindCfg, args *sshArgs) {
 	server, err := socks5.New(&socks5.Config{
 		Resolver: &sshResolver{},
 		Dial: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			return dialWithTimeout(client, network, addr)
+			return dialWithTimeout(client, network, addr, 10*time.Second)
 		},
 		Logger: log.New(io.Discard, "", log.LstdFlags),
 	})
@@ -336,7 +336,7 @@ func localForward(client *ssh.Client, f *forwardCfg, args *sshArgs) {
 					fmt.Fprintf(os.Stderr, "local forward accept failed: %v\r\n", err)
 					continue
 				}
-				remote, err := dialWithTimeout(client, "tcp", remoteAddr)
+				remote, err := dialWithTimeout(client, "tcp", remoteAddr, 10*time.Second)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "local forward dial [%s] failed: %v\r\n", remoteAddr, err)
 					local.Close()
