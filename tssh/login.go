@@ -635,10 +635,8 @@ func execProxyCommand(param *loginParam) (net.Conn, string, error) {
 	if !strings.ContainsAny(command, "'\"\\") {
 		tokens := strings.Fields(command)
 		cmd = exec.Command(tokens[0], tokens[1:]...)
-	} else if runtime.GOOS == "windows" {
-		cmd = exec.Command("cmd", "/c", command)
 	} else {
-		cmd = exec.Command("sh", "-c", command)
+		cmd = createProxyCommand(command)
 	}
 
 	cmdIn, err := cmd.StdinPipe()
