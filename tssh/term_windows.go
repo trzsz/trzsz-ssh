@@ -262,3 +262,7 @@ func getKeyboardInput() (*os.File, func(), error) {
 
 	return file, func() { _ = file.Close() }, nil
 }
+
+func splitCommandLine(command string) ([]string, error) {
+	return windows.DecomposeCommandLine(command)
+}

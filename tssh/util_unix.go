@@ -31,7 +31,6 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"os/exec"
 	"strconv"
 )
 
@@ -89,8 +88,4 @@ func isNoGUI() bool {
 		return false
 	}
 	return isDockerEnv() || isRemoteSshEnv(os.Getppid()) || isSshTmuxEnv()
-}
-
-func createProxyCommand(command string) *exec.Cmd {
-	return exec.Command("sh", "-c", command)
 }

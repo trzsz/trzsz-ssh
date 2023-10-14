@@ -28,7 +28,6 @@ package tssh
 import (
 	"bytes"
 	"os"
-	"os/exec"
 
 	"golang.org/x/sys/unix"
 )
@@ -66,8 +65,4 @@ func isNoGUI() bool {
 		return false
 	}
 	return isDockerEnv() || isRemoteSshEnv(os.Getppid()) || isSshTmuxEnv()
-}
-
-func createProxyCommand(command string) *exec.Cmd {
-	return exec.Command("sh", "-c", command)
 }

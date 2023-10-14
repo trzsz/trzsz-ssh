@@ -36,6 +36,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/google/shlex"
 	"golang.org/x/term"
 )
 
@@ -114,4 +115,8 @@ func isSshTmuxEnv() bool {
 	}
 
 	return isRemoteSshEnv(pid)
+}
+
+func splitCommandLine(command string) ([]string, error) {
+	return shlex.Split(command)
 }

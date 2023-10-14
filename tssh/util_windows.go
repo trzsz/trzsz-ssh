@@ -26,11 +26,8 @@ SOFTWARE.
 package tssh
 
 import (
-	"fmt"
 	"os"
-	"os/exec"
 	"strings"
-	"syscall"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -64,10 +61,4 @@ func isNoGUI() bool {
 		pid = int(pbi.InheritedFromUniqueProcessId)
 	}
 	return false
-}
-
-func createProxyCommand(command string) *exec.Cmd {
-	cmd := exec.Command("cmd.exe")
-	cmd.SysProcAttr = &syscall.SysProcAttr{CmdLine: fmt.Sprintf("/c %s", command)}
-	return cmd
 }

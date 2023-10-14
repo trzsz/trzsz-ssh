@@ -631,13 +631,16 @@ func execProxyCommand(param *loginParam) (net.Conn, string, error) {
 	command = strings.ReplaceAll(command, "%r", param.user)
 	debug("exec proxy command: %s", command)
 
-	var cmd *exec.Cmd
-	if !strings.ContainsAny(command, "'\"\\") {
-		tokens := strings.Fields(command)
-		cmd = exec.Command(tokens[0], tokens[1:]...)
-	} else {
-		cmd = createProxyCommand(command)
+	argv, err := splitCommandLine(command)
+	if err != nil || len(argv) == 0 {
+		return nil, command, fmt.Errorf("split proxy command failed: %v", err)
 	}
+	if enableDebugLogging {
+		for i, arg := range argv {
+			debug("proxy command argv[%d] = %s", i, arg)
+		}
+	}
+	cmd := exec.Command(argv[0], argv[1:]...)
 
 	cmdIn, err := cmd.StdinPipe()
 	if err != nil {

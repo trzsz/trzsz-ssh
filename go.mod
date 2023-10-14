@@ -5,6 +5,7 @@ go 1.20
 require (
 	github.com/armon/go-socks5 v0.0.0-20160902184237-e75332964ef5
 	github.com/chzyer/readline v1.5.1
+	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
 	github.com/mattn/go-isatty v0.0.19
 	github.com/natefinch/npipe v0.0.0-20160621034901-c1b8fa8bdcce
 	github.com/skeema/knownhosts v1.2.1-0.20230916192230-09454b7d5683
