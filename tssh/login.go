@@ -973,7 +973,7 @@ func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session
 		//   os.Stderr └────────┘                  stderr                   └────────┘
 		trzszFilter := trzsz.NewTrzszFilter(os.Stdin, os.Stdout, serverIn, serverOut, trzsz.TrzszOptions{
 			TerminalColumns: int32(width),
-			DetectDragFile:  args.DragFile,
+			DetectDragFile:  args.DragFile || strings.ToLower(getExOptionConfig(args, "EnableDragFile")) == "yes",
 			DetectTraceLog:  args.TraceLog,
 		})
 
