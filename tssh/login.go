@@ -940,6 +940,18 @@ func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session
 		return
 	}
 
+	// make stdin raw
+	if isTerminal {
+		var state *stdinState
+		state, err = makeStdinRaw()
+		if err != nil {
+			return
+		}
+		onExitFuncs = append(onExitFuncs, func() {
+			resetStdin(state)
+		})
+	}
+
 	// disable trzsz ( trz / tsz )
 	if strings.ToLower(getExOptionConfig(args, "EnableTrzsz")) == "no" {
 		wrapStdIO(serverIn, serverOut, tty)

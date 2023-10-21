@@ -272,22 +272,12 @@ func TsshMain() int {
 		}
 	}
 
-	// make stdin raw
-	if isTerminal && tty {
-		var state *stdinState
-		state, err = makeStdinRaw()
-		if err != nil {
-			return 13
-		}
-		defer resetStdin(state)
-	}
-
 	// wait for exit
 	if session.Wait() != nil {
-		return 14
+		return 13
 	}
 	if args.Background && client.Wait() != nil {
-		return 15
+		return 14
 	}
 	return 0
 }
