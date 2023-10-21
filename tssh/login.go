@@ -369,7 +369,7 @@ func getSigner(dest string, path string) (*sshSigner, error) {
 	signer, err := ssh.ParsePrivateKey(privateKey)
 	if err != nil {
 		if e, ok := err.(*ssh.PassphraseMissingError); ok {
-			if passphrase := getExConfig(dest, "Passphrase"); passphrase != "" {
+			if passphrase := getSecretConfig(dest, "Passphrase"); passphrase != "" {
 				signer, err = ssh.ParsePrivateKeyWithPassphrase(privateKey, []byte(passphrase))
 			} else {
 				return newPassphraseSigner(path, privateKey, e)
@@ -406,7 +406,7 @@ func getPasswordAuthMethod(args *sshArgs, host, user string) ssh.AuthMethod {
 	return ssh.RetryableAuthMethod(ssh.PasswordCallback(func() (string, error) {
 		idx++
 		if idx == 1 {
-			if password := getExConfig(args.Destination, "Password"); password != "" {
+			if password := getSecretConfig(args.Destination, "Password"); password != "" {
 				rememberPassword = true
 				debug("trying the password configuration for %s", args.Destination)
 				return password, nil
@@ -425,13 +425,13 @@ func getPasswordAuthMethod(args *sshArgs, host, user string) ssh.AuthMethod {
 func readQuestionAnswerConfig(dest string, idx int, question string) string {
 	qhex := hex.EncodeToString([]byte(question))
 	debug("the hex code for question '%s' is %s", question, qhex)
-	if answer := getExConfig(dest, qhex); answer != "" {
+	if answer := getSecretConfig(dest, qhex); answer != "" {
 		return answer
 	}
 
 	qkey := fmt.Sprintf("QuestionAnswer%d", idx)
 	debug("the configuration key for question '%s' is %s", question, qkey)
-	if answer := getExConfig(dest, qkey); answer != "" {
+	if answer := getSecretConfig(dest, qkey); answer != "" {
 		return answer
 	}
 

@@ -73,6 +73,7 @@ type sshArgs struct {
 	TraceLog       bool        `arg:"--tracelog" help:"enable trzsz detect trace logs for debugging"`
 	Relay          bool        `arg:"--relay" help:"force trzsz run as a relay on the jump server"`
 	Debug          bool        `arg:"--debug" help:"verbose mode for debugging, same as ssh's -vvv"`
+	EncSecret      bool        `arg:"--enc-secret" help:"encode secret for configuration(~/.ssh/password)"`
 }
 
 func (sshArgs) Description() string {

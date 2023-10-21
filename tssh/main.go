@@ -178,10 +178,9 @@ func TsshMain() int {
 	var args sshArgs
 	parser := arg.MustParse(&args)
 
-	// compatible with -V option
-	if args.Ver {
-		fmt.Println(args.Version())
-		return 0
+	// execute tools
+	if args.Ver || args.EncSecret {
+		return execTools(&args)
 	}
 
 	// debug log
