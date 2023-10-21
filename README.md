@@ -279,6 +279,34 @@ _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\
   DefaultDownloadPath = ~/Downloads
   ```
 
+## 其他功能
+
+- 使用 `-f` 后台运行时，可以一并加上 `--reconnect` 参数，这样在后台进程因连接断开等而退出时，会自动重新连接。
+
+- 使用 `--dragfile` 启用拖拽上传功能，想默认启用则可以在 `ExConfigPath` 配置的文件（ 默认是 `~/.ssh/password` ）中配置：
+
+  ```
+  Host *
+    EnableDragFile Yes
+  ```
+
+- 使用 `-oEnableTrzsz=No` 禁用 trzsz 功能，想默认禁用则可以在 `ExConfigPath` 配置的文件（ 默认是 `~/.ssh/password` ）中配置：
+
+  ```
+  Host server1
+    EnableTrzsz No
+  ```
+
+- 上文说的“记住密码”和“记住答案”，只要在配置项前面加上 `enc` 则可以配置密文，防止被人窥屏。密文可以解决密码含有`#`的问题。
+
+  运行 `tssh --enc-secret`，输入密码或答案的明文（ 不会回显 ），可得到用于配置的密文（ 相同密码每次加密的结果不同 ）：
+
+  ```
+  Host server2
+    encPassword de88c4dbdc95d85303682734e2397c4d8dd29bfff09ec53580f31dd40291fc8c7755
+    encQuestionAnswer1 93956f6e7e9f2aef3af7d6a61f7046dddf14aa4bbd9845dbb836fe3782b62ac0d89f
+  ```
+
 ## 快捷键
 
 | 操作      | 全局快捷键                      | 非搜索快捷键 | 快捷键描述      |
@@ -319,9 +347,4 @@ _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\
 
 ## 赞助打赏
 
-请作者喝一杯咖啡 ☕ ?
-
-![sponsor wechat qrcode](https://trzsz.github.io/images/sponsor_wechat.jpg)
-![sponsor alipay qrcode](https://trzsz.github.io/images/sponsor_alipay.jpg)
-
-感谢 [@mx4994](https://github.com/mx4994) ！
+[❤️ 赞助 trzsz ❤️](https://github.com/trzsz)，请作者喝杯咖啡 ☕ ? 谢谢您们的支持！
