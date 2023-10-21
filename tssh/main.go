@@ -31,6 +31,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/mattn/go-isatty"
 	"github.com/trzsz/go-arg"
@@ -42,7 +43,18 @@ func background(args *sshArgs, dest string) (bool, error) {
 	if v := os.Getenv("TRZSZ-SSH-BACKGROUND"); v == "TRUE" {
 		return false, nil
 	}
-	env := append(os.Environ(), "TRZSZ-SSH-BACKGROUND=TRUE")
+
+	monitor := false
+	if v := os.Getenv("TRZSZ-SSH-BG-MONITOR"); v == "TRUE" {
+		monitor = true
+	}
+	env := os.Environ()
+	if args.Reconnect && !monitor {
+		env = append(env, "TRZSZ-SSH-BG-MONITOR=TRUE")
+	} else {
+		env = append(env, "TRZSZ-SSH-BACKGROUND=TRUE")
+	}
+
 	newArgs := os.Args
 	if args.Destination == "" {
 		newArgs = append(newArgs, dest)
@@ -60,16 +72,34 @@ func background(args *sshArgs, dest string) (bool, error) {
 		}
 		newArgs[idx] = dest
 	}
-	cmd := exec.Cmd{
-		Path:   os.Args[0],
-		Args:   newArgs,
-		Env:    env,
-		Stderr: os.Stderr,
+
+	sleepTime := time.Duration(0)
+	for {
+		cmd := exec.Cmd{
+			Path:   os.Args[0],
+			Args:   newArgs,
+			Env:    env,
+			Stderr: os.Stderr,
+		}
+
+		if err := cmd.Start(); err != nil {
+			return true, fmt.Errorf("run in background failed: %v", err)
+		}
+		if !monitor {
+			return true, nil
+		}
+
+		beginTime := time.Now()
+		_ = cmd.Wait()
+		if time.Since(beginTime) < 10*time.Second {
+			if sleepTime < 10*time.Second {
+				sleepTime += time.Second
+			}
+			time.Sleep(sleepTime)
+		} else {
+			sleepTime = 0
+		}
 	}
-	if err := cmd.Start(); err != nil {
-		return true, fmt.Errorf("run in background failed: %v", err)
-	}
-	return true, nil
 }
 
 var onExitFuncs []func()

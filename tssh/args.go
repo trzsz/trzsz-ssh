@@ -68,6 +68,7 @@ type sshArgs struct {
 	DynamicForward bindArgs    `arg:"-D,--" placeholder:"[bind_addr:]port" help:"dynamic port forwarding ( socks5 proxy )"`
 	LocalForward   forwardArgs `arg:"-L,--" placeholder:"[bind_addr:]port:host:hostport" help:"local port forwarding"`
 	RemoteForward  forwardArgs `arg:"-R,--" placeholder:"[bind_addr:]port:host:hostport" help:"remote port forwarding"`
+	Reconnect      bool        `arg:"--reconnect" help:"reconnect when background(-f) process exits"`
 	DragFile       bool        `arg:"--dragfile" help:"enable drag files and directories to upload"`
 	TraceLog       bool        `arg:"--tracelog" help:"enable trzsz detect trace logs for debugging"`
 	Relay          bool        `arg:"--relay" help:"force trzsz run as a relay on the jump server"`

@@ -100,6 +100,7 @@ func TestSshArgs(t *testing.T) {
 	assertArgsEqual("-R 8003/::1/9003 -R *:8004:[fe80::6358:bbae:26f8:7859]:9004", sshArgs{RemoteForward: forwardArgs{
 		[]*forwardCfg{{nil, 8003, "::1", 9003}, newForwardCfg("*", 8004, "fe80::6358:bbae:26f8:7859", 9004)}}})
 
+	assertArgsEqual("--reconnect", sshArgs{Reconnect: true})
 	assertArgsEqual("--dragfile", sshArgs{DragFile: true})
 	assertArgsEqual("--tracelog", sshArgs{TraceLog: true})
 	assertArgsEqual("--relay", sshArgs{Relay: true})
