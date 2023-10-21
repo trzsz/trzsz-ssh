@@ -794,20 +794,22 @@ func keepAlive(client *ssh.Client, args *sshArgs) {
 		serverAliveCountMax = 3
 	}
 
-	t := time.NewTicker(time.Duration(serverAliveInterval) * time.Second)
-	defer t.Stop()
-	n := 0
-	for range t.C {
-		if _, _, err := client.SendRequest("keepalive@trzsz-ssh", true, nil); err != nil {
-			n++
-			if n >= serverAliveCountMax {
-				client.Close()
-				return
+	go func() {
+		t := time.NewTicker(time.Duration(serverAliveInterval) * time.Second)
+		defer t.Stop()
+		n := 0
+		for range t.C {
+			if _, _, err := client.SendRequest("keepalive@trzsz-ssh", true, nil); err != nil {
+				n++
+				if n >= serverAliveCountMax {
+					client.Close()
+					return
+				}
+			} else {
+				n = 0
 			}
-		} else {
-			n = 0
 		}
-	}
+	}()
 }
 
 func wrapStdIO(serverIn io.WriteCloser, serverOut io.Reader, tty bool) {
@@ -893,7 +895,7 @@ func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session
 	}
 
 	// keep alive
-	go keepAlive(client, args)
+	keepAlive(client, args)
 
 	// no command
 	if args.NoCommand || args.StdioForward != "" {
