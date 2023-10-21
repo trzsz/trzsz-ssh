@@ -1,3 +1,5 @@
+//go:build windows
+
 /*
 MIT License
 
@@ -30,7 +32,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -117,20 +118,7 @@ func (m *wtMgr) openPanes(hosts []*sshHost) {
 	}
 }
 
-func getWindowsTerminalManager() terminalManager {
-	if runtime.GOOS != "windows" {
-		return nil
-	}
-	if isNoGUI() {
-		return nil
-	}
-	if !commandExistsOnWindows("wt.exe") {
-		return nil
-	}
-	return &wtMgr{}
-}
-
-func commandExistsOnWindows(exe string) bool {
+func commandExists(exe string) bool {
 	path := os.Getenv("Path")
 	for _, p := range strings.Split(path, ";") {
 		if isFileExist(filepath.Join(p, exe)) {
@@ -138,4 +126,25 @@ func commandExistsOnWindows(exe string) bool {
 		}
 	}
 	return false
+}
+
+func getWindowsTerminalManager() terminalManager {
+	if isNoGUI() {
+		debug("no graphical user interface (GUI)")
+		return nil
+	}
+	if !commandExists("wt.exe") {
+		debug("no executable wt.exe")
+		return nil
+	}
+	debug("running in windows terminal")
+	return &wtMgr{}
+}
+
+func getTmuxManager() terminalManager {
+	return nil
+}
+
+func getIterm2Manager() terminalManager {
+	return nil
 }

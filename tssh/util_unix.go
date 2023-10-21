@@ -89,3 +89,7 @@ func isNoGUI() bool {
 	}
 	return isDockerEnv() || isRemoteSshEnv(os.Getppid()) || isSshTmuxEnv()
 }
+
+func getIterm2Manager() terminalManager {
+	return nil
+}

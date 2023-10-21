@@ -1,3 +1,5 @@
+//go:build !windows
+
 /*
 MIT License
 
@@ -106,17 +108,24 @@ func (m *tmuxMgr) splitWindow(alias, axes, target, percentage string) string {
 	return strings.TrimSpace(string(out))
 }
 
-func getTmuxManager() terminalManager {
-	if os.Getenv("TMUX") == "" {
-		return nil
-	}
-	if !commandExists("tmux") {
-		return nil
-	}
-	return &tmuxMgr{}
-}
-
 func commandExists(cmd string) bool {
 	_, err := exec.LookPath(cmd)
 	return err == nil
+}
+
+func getTmuxManager() terminalManager {
+	if os.Getenv("TMUX") == "" {
+		debug("no TMUX environment variable")
+		return nil
+	}
+	if !commandExists("tmux") {
+		debug("no executable tmux")
+		return nil
+	}
+	debug("running in tmux")
+	return &tmuxMgr{}
+}
+
+func getWindowsTerminalManager() terminalManager {
+	return nil
 }

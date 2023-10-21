@@ -45,9 +45,13 @@ func getTerminalManager() terminalManager {
 	if mgr := getTmuxManager(); mgr != nil {
 		return mgr
 	}
+	if mgr := getIterm2Manager(); mgr != nil {
+		return mgr
+	}
 	if mgr := getWindowsTerminalManager(); mgr != nil {
 		return mgr
 	}
+	debug("doesn't support multiple selections")
 	return nil
 }
 
