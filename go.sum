@@ -36,8 +36,6 @@ github.com/klauspost/compress v1.17.1 h1:NE3C767s2ak2bweCZo3+rdP4U/HoyVXLv/X9f2g
 github.com/klauspost/compress v1.17.1/go.mod h1:ntbaceVETuRiXiv4DpjP66DpAtAGkEQskQzEyD//IeE=
 github.com/mattn/go-isatty v0.0.20 h1:xfD0iDuEKnDkl03q4limB+vH+GxLEtL/jb4xVJSWWEY=
 github.com/mattn/go-isatty v0.0.20/go.mod h1:W+V8PltTTMOvKvAeJH7IuucS94S2C6jfK/D7dTCTo3Y=
-github.com/natefinch/npipe v0.0.0-20160621034901-c1b8fa8bdcce h1:TqjP/BTDrwN7zP9xyXVuLsMBXYMt6LLYi55PlrIcq8U=
-github.com/natefinch/npipe v0.0.0-20160621034901-c1b8fa8bdcce/go.mod h1:ifHPsLndGGzvgzcaXUvzmt6LxKT4pJ+uzEhtnMt+f7A=
 github.com/ncruces/zenity v0.10.10 h1:V/rtAhr5QLdDThahOkm7EYlnw4RuEsf7oN+Xb6lz1j0=
 github.com/ncruces/zenity v0.10.10/go.mod h1:k3k4hJ4Wt1MUbeV48y+Gbl7Fp9skfGszN/xtKmuvhZk=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
@@ -55,6 +53,8 @@ github.com/trzsz/go-arg v1.5.2 h1:zGxCuTKvtC3jBf7HbvNk0HooUjv8uKAy2mY+bHVhRas=
 github.com/trzsz/go-arg v1.5.2/go.mod h1:IC6Z/FiVH7uYvcbp1/gJhDYCFPS/GkL0APYakVvgY4I=
 github.com/trzsz/iterm2 v0.1.0 h1:oMoxJPoeemSFvFhlz+2o9tL1HKmDDRztCdUsJGH64YI=
 github.com/trzsz/iterm2 v0.1.0/go.mod h1:PMI+3JcT7J9D0T6e3mOWv8ICYdrrNZwuge3Tm7zDLws=
+github.com/trzsz/npipe v0.1.0 h1:9/He1oey9scgy0SWNqMygT30ZeEbPApLTybaeoareiI=
+github.com/trzsz/npipe v0.1.0/go.mod h1:SvsmyY6zmu0Btm8AW3Hpi9c3BB+Yn5z6K1MgLLXo1s0=
 github.com/trzsz/promptui v0.10.3 h1:uhcLQsLZqMxEtGiYoeM2lR/Hd4pSxoYsd2eFctH8MCs=
 github.com/trzsz/promptui v0.10.3/go.mod h1:GMZtu6ZTzU73CBFkzGtmB4wnTROIAbv4GFA74fV8V8g=
 github.com/trzsz/ssh_config v1.3.3 h1:FodC5NBpnBSI2CJqU62d0Ya3yTUHWDpbWKugKX0LXZs=
@@ -85,8 +85,6 @@ google.golang.org/protobuf v1.31.0 h1:g0LDEJHgrBl9N9r17Ru3sqWhkIx2NB67okBHPwC7hs
 google.golang.org/protobuf v1.31.0/go.mod h1:HV8QOd/L58Z+nl8r43ehVNZIU/HEI6OcFqwMG9pJV4I=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405 h1:yhCVgyC4o1eVCa2tZl7eS0r+SDo693bJlVdllGtEeKM=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
-gopkg.in/natefinch/npipe.v2 v2.0.0-20160621034901-c1b8fa8bdcce h1:+JknDZhAj8YMt7GC73Ei8pv4MzjDUNPHgQWJdtMAaDU=
-gopkg.in/natefinch/npipe.v2 v2.0.0-20160621034901-c1b8fa8bdcce/go.mod h1:5AcXVHNjg+BDxry382+8OKon8SEWiKktQR07RKPsv1c=
 gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
 gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
 gopkg.in/yaml.v3 v3.0.1/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=

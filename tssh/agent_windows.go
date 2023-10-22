@@ -30,7 +30,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/natefinch/npipe"
+	"github.com/trzsz/npipe"
 	"golang.org/x/crypto/ssh/agent"
 )
 

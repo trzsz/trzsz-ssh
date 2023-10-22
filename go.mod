@@ -8,11 +8,11 @@ require (
 	github.com/chzyer/readline v1.5.1
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
 	github.com/mattn/go-isatty v0.0.20
-	github.com/natefinch/npipe v0.0.0-20160621034901-c1b8fa8bdcce
 	github.com/skeema/knownhosts v1.2.1
 	github.com/stretchr/testify v1.8.4
 	github.com/trzsz/go-arg v1.5.2
 	github.com/trzsz/iterm2 v0.1.0
+	github.com/trzsz/npipe v0.1.0
 	github.com/trzsz/promptui v0.10.3
 	github.com/trzsz/ssh_config v1.3.3
 	github.com/trzsz/trzsz-go v1.1.6
@@ -39,6 +39,5 @@ require (
 	golang.org/x/net v0.17.0 // indirect
 	golang.org/x/text v0.13.0 // indirect
 	google.golang.org/protobuf v1.31.0 // indirect
-	gopkg.in/natefinch/npipe.v2 v2.0.0-20160621034901-c1b8fa8bdcce // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
