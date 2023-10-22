@@ -15,7 +15,7 @@ require (
 	github.com/trzsz/iterm2 v0.1.0
 	github.com/trzsz/promptui v0.10.3
 	github.com/trzsz/ssh_config v1.3.3
-	github.com/trzsz/trzsz-go v1.1.6-0.20230917131507-3c175df078af
+	github.com/trzsz/trzsz-go v1.1.6
 	golang.org/x/crypto v0.14.0
 	golang.org/x/sys v0.13.0
 	golang.org/x/term v0.13.0
@@ -32,7 +32,6 @@ require (
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/josephspurrier/goversioninfo v1.4.0 // indirect
 	github.com/klauspost/compress v1.17.1 // indirect
-	github.com/manifoldco/promptui v0.9.0 // indirect
 	github.com/ncruces/zenity v0.10.10 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/randall77/makefat v0.0.0-20210315173500-7ddd0e42c844 // indirect
