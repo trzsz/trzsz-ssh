@@ -379,10 +379,25 @@ func remoteForward(client *ssh.Client, f *forwardCfg, args *sshArgs) {
 }
 
 func sshForward(client *ssh.Client, args *sshArgs) error {
-	// dynamic forward
+	// command dynamic forward
 	for _, b := range args.DynamicForward.binds {
 		dynamicForward(client, b, args)
 	}
+	// command local forward
+	for _, f := range args.LocalForward.cfgs {
+		localForward(client, f, args)
+	}
+	// command remote forward
+	for _, f := range args.RemoteForward.cfgs {
+		remoteForward(client, f, args)
+	}
+
+	// clear all forwardings
+	if strings.ToLower(args.Option.get("ClearAllForwardings")) == "yes" {
+		return nil
+	}
+
+	// config dynamic forward
 	for _, s := range getAllConfig(args.Destination, "DynamicForward") {
 		b, err := parseBindCfg(s)
 		if err != nil {
@@ -392,10 +407,7 @@ func sshForward(client *ssh.Client, args *sshArgs) error {
 		dynamicForward(client, b, args)
 	}
 
-	// local forward
-	for _, f := range args.LocalForward.cfgs {
-		localForward(client, f, args)
-	}
+	// config local forward
 	for _, s := range getAllConfig(args.Destination, "LocalForward") {
 		f, err := parseForwardCfg(s)
 		if err != nil {
@@ -405,10 +417,7 @@ func sshForward(client *ssh.Client, args *sshArgs) error {
 		localForward(client, f, args)
 	}
 
-	// remote forward
-	for _, f := range args.RemoteForward.cfgs {
-		remoteForward(client, f, args)
-	}
+	// config remote forward
 	for _, s := range getAllConfig(args.Destination, "RemoteForward") {
 		f, err := parseForwardCfg(s)
 		if err != nil {

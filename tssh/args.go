@@ -74,6 +74,7 @@ type sshArgs struct {
 	Relay          bool        `arg:"--relay" help:"force trzsz run as a relay on the jump server"`
 	Debug          bool        `arg:"--debug" help:"verbose mode for debugging, same as ssh's -vvv"`
 	EncSecret      bool        `arg:"--enc-secret" help:"encode secret for configuration(~/.ssh/password)"`
+	originalDest   string
 }
 
 func (sshArgs) Description() string {

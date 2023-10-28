@@ -645,7 +645,7 @@ func fastLookupHost(host string) bool {
 }
 
 func predictDestination(dest string) (string, bool, error) {
-	if strings.ContainsRune(dest, '.') || strings.ContainsRune(dest, ':') {
+	if strings.ContainsAny(dest, ".:[]@") {
 		return dest, false, nil
 	}
 

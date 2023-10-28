@@ -243,6 +243,7 @@ func TsshMain() int {
 		}
 	}
 	args.Destination = dest
+	args.originalDest = dest
 
 	// start ssh program
 	if err = sshStart(&args); err != nil {

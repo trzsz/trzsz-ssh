@@ -56,7 +56,7 @@ func debug(format string, a ...any) {
 	fmt.Fprintf(os.Stderr, fmt.Sprintf("\033[0;36mdebug:\033[0m %s\r\n", format), a...)
 }
 
-func warning(format string, a ...any) {
+var warning = func(format string, a ...any) {
 	fmt.Fprintf(os.Stderr, fmt.Sprintf("\033[0;33mWarning: %s\033[0m\r\n", format), a...)
 }
 
@@ -318,7 +318,9 @@ func (s *sshSigner) Sign(rand io.Reader, data []byte) (*ssh.Signature, error) {
 	if err := s.initSigner(); err != nil {
 		return nil, err
 	}
-	debug("sign without algorithm: %s", ssh.FingerprintSHA256(s.pubKey))
+	if enableDebugLogging {
+		debug("sign without algorithm: %s", ssh.FingerprintSHA256(s.pubKey))
+	}
 	return s.signer.Sign(rand, data)
 }
 
@@ -327,10 +329,14 @@ func (s *sshSigner) SignWithAlgorithm(rand io.Reader, data []byte, algorithm str
 		return nil, err
 	}
 	if signer, ok := s.signer.(ssh.AlgorithmSigner); ok {
-		debug("sign with algorithm [%s]: %s", algorithm, ssh.FingerprintSHA256(s.pubKey))
+		if enableDebugLogging {
+			debug("sign with algorithm [%s]: %s", algorithm, ssh.FingerprintSHA256(s.pubKey))
+		}
 		return signer.SignWithAlgorithm(rand, data, algorithm)
 	}
-	debug("sign without algorithm: %s", ssh.FingerprintSHA256(s.pubKey))
+	if enableDebugLogging {
+		debug("sign without algorithm: %s", ssh.FingerprintSHA256(s.pubKey))
+	}
 	return s.signer.Sign(rand, data)
 }
 
@@ -500,7 +506,9 @@ func getPublicKeysAuthMethod(args *sshArgs) ssh.AuthMethod {
 		for _, signer := range signers {
 			fingerprint := ssh.FingerprintSHA256(signer.PublicKey())
 			if _, ok := fingerprints[fingerprint]; !ok {
-				debug("will attempt key: %s %s %s", signer.path, signer.pubKey.Type(), ssh.FingerprintSHA256(signer.pubKey))
+				if enableDebugLogging {
+					debug("will attempt key: %s %s %s", signer.path, signer.pubKey.Type(), ssh.FingerprintSHA256(signer.pubKey))
+				}
 				fingerprints[fingerprint] = struct{}{}
 				pubKeySigners = append(pubKeySigners, signer)
 			}
@@ -621,11 +629,8 @@ func (p *cmdPipe) Close() error {
 	return err2
 }
 
-func execProxyCommand(param *loginParam) (net.Conn, string, error) {
-	command := param.command
-	command = strings.ReplaceAll(command, "%h", param.host)
-	command = strings.ReplaceAll(command, "%p", param.port)
-	command = strings.ReplaceAll(command, "%r", param.user)
+func execProxyCommand(args *sshArgs, param *loginParam) (net.Conn, string, error) {
+	command := resolveHomeDir(expandTokens(param.command, args, param, "%hnpr"))
 	debug("exec proxy command: %s", command)
 
 	argv, err := splitCommandLine(command)
@@ -694,15 +699,20 @@ func (c *connWithTimeout) Read(b []byte) (n int, err error) {
 	return
 }
 
-func sshConnect(args *sshArgs, client *ssh.Client, proxy string) (*ssh.Client, error) {
+func sshConnect(args *sshArgs, client *ssh.Client, proxy string) (*ssh.Client, bool, error) {
 	param, err := getLoginParam(args)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
+
+	if client := connectViaControl(args, param); client != nil {
+		return client, true, nil
+	}
+
 	authMethods := getAuthMethods(args, param.host, param.user)
 	cb, kh, err := getHostKeyCallback()
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	config := &ssh.ClientConfig{
 		User:              param.user,
@@ -716,18 +726,18 @@ func sshConnect(args *sshArgs, client *ssh.Client, proxy string) (*ssh.Client, e
 		},
 	}
 
-	proxyConnect := func(client *ssh.Client, proxy string) (*ssh.Client, error) {
+	proxyConnect := func(client *ssh.Client, proxy string) (*ssh.Client, bool, error) {
 		debug("login to [%s], addr: %s", args.Destination, param.addr)
 		conn, err := dialWithTimeout(client, "tcp", param.addr, 10*time.Second)
 		if err != nil {
-			return nil, fmt.Errorf("proxy [%s] dial tcp [%s] failed: %v", proxy, param.addr, err)
+			return nil, false, fmt.Errorf("proxy [%s] dial tcp [%s] failed: %v", proxy, param.addr, err)
 		}
 		ncc, chans, reqs, err := ssh.NewClientConn(&connWithTimeout{conn, config.Timeout, true}, param.addr, config)
 		if err != nil {
-			return nil, fmt.Errorf("proxy [%s] new conn [%s] failed: %v", proxy, param.addr, err)
+			return nil, false, fmt.Errorf("proxy [%s] new conn [%s] failed: %v", proxy, param.addr, err)
 		}
 		debug("login to [%s] success", args.Destination)
-		return ssh.NewClient(ncc, chans, reqs), nil
+		return ssh.NewClient(ncc, chans, reqs), false, nil
 	}
 
 	// has parent client
@@ -738,16 +748,16 @@ func sshConnect(args *sshArgs, client *ssh.Client, proxy string) (*ssh.Client, e
 	// proxy command
 	if param.command != "" {
 		debug("login to [%s], addr: %s", args.Destination, param.addr)
-		conn, cmd, err := execProxyCommand(param)
+		conn, cmd, err := execProxyCommand(args, param)
 		if err != nil {
-			return nil, fmt.Errorf("exec proxy command [%s] failed: %v", cmd, err)
+			return nil, false, fmt.Errorf("exec proxy command [%s] failed: %v", cmd, err)
 		}
 		ncc, chans, reqs, err := ssh.NewClientConn(conn, param.addr, config)
 		if err != nil {
-			return nil, fmt.Errorf("proxy command [%s] new conn [%s] failed: %v", cmd, param.addr, err)
+			return nil, false, fmt.Errorf("proxy command [%s] new conn [%s] failed: %v", cmd, param.addr, err)
 		}
 		debug("login to [%s] success", args.Destination)
-		return ssh.NewClient(ncc, chans, reqs), nil
+		return ssh.NewClient(ncc, chans, reqs), false, nil
 	}
 
 	// no proxy
@@ -755,22 +765,22 @@ func sshConnect(args *sshArgs, client *ssh.Client, proxy string) (*ssh.Client, e
 		debug("login to [%s], addr: %s", args.Destination, param.addr)
 		conn, err := net.DialTimeout("tcp", param.addr, config.Timeout)
 		if err != nil {
-			return nil, fmt.Errorf("dial tcp [%s] failed: %v", param.addr, err)
+			return nil, false, fmt.Errorf("dial tcp [%s] failed: %v", param.addr, err)
 		}
 		ncc, chans, reqs, err := ssh.NewClientConn(&connWithTimeout{conn, config.Timeout, true}, param.addr, config)
 		if err != nil {
-			return nil, fmt.Errorf("new conn [%s] failed: %v", param.addr, err)
+			return nil, false, fmt.Errorf("new conn [%s] failed: %v", param.addr, err)
 		}
 		debug("login to [%s] success", args.Destination)
-		return ssh.NewClient(ncc, chans, reqs), nil
+		return ssh.NewClient(ncc, chans, reqs), false, nil
 	}
 
 	// has proxies
 	var proxyClient *ssh.Client
 	for _, proxy = range param.proxy {
-		proxyClient, err = sshConnect(&sshArgs{Destination: proxy}, proxyClient, proxy)
+		proxyClient, _, err = sshConnect(&sshArgs{Destination: proxy}, proxyClient, proxy)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 	}
 	return proxyConnect(proxyClient, proxy)
@@ -813,12 +823,12 @@ func keepAlive(client *ssh.Client, args *sshArgs) {
 }
 
 func sshAgentForward(args *sshArgs, client *ssh.Client, session *ssh.Session) {
-	agentClient := getAgentClient()
-	if agentClient == nil {
-		return
-	}
 	if args.NoForwardAgent || !args.ForwardAgent && strings.ToLower(getOptionConfig(args, "ForwardAgent")) != "yes" {
 		closeAgentClient()
+		return
+	}
+	agentClient := getAgentClient()
+	if agentClient == nil {
 		return
 	}
 	if err := agent.ForwardToAgent(client, agentClient); err != nil {
@@ -850,13 +860,16 @@ func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session
 	})
 
 	// ssh login
-	client, err = sshConnect(args, nil, "")
+	var control bool
+	client, control, err = sshConnect(args, nil, "")
 	if err != nil {
 		return
 	}
 
 	// keep alive
-	keepAlive(client, args)
+	if !control {
+		keepAlive(client, args)
+	}
 
 	// no command
 	if args.NoCommand || args.StdioForward != "" {
