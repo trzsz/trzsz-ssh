@@ -27,7 +27,6 @@ package tssh
 
 import (
 	"bufio"
-	"bytes"
 	"crypto/x509"
 	"encoding/hex"
 	"fmt"
@@ -37,14 +36,12 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/skeema/knownhosts"
-	"github.com/trzsz/trzsz-go/trzsz"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/term"
@@ -729,6 +726,7 @@ func sshConnect(args *sshArgs, client *ssh.Client, proxy string) (*ssh.Client, e
 		if err != nil {
 			return nil, fmt.Errorf("proxy [%s] new conn [%s] failed: %v", proxy, param.addr, err)
 		}
+		debug("login to [%s] success", args.Destination)
 		return ssh.NewClient(ncc, chans, reqs), nil
 	}
 
@@ -748,6 +746,7 @@ func sshConnect(args *sshArgs, client *ssh.Client, proxy string) (*ssh.Client, e
 		if err != nil {
 			return nil, fmt.Errorf("proxy command [%s] new conn [%s] failed: %v", cmd, param.addr, err)
 		}
+		debug("login to [%s] success", args.Destination)
 		return ssh.NewClient(ncc, chans, reqs), nil
 	}
 
@@ -762,6 +761,7 @@ func sshConnect(args *sshArgs, client *ssh.Client, proxy string) (*ssh.Client, e
 		if err != nil {
 			return nil, fmt.Errorf("new conn [%s] failed: %v", param.addr, err)
 		}
+		debug("login to [%s] success", args.Destination)
 		return ssh.NewClient(ncc, chans, reqs), nil
 	}
 
@@ -812,45 +812,6 @@ func keepAlive(client *ssh.Client, args *sshArgs) {
 	}()
 }
 
-func wrapStdIO(serverIn io.WriteCloser, serverOut io.Reader, tty bool) {
-	win := runtime.GOOS == "windows"
-	forwardIO := func(reader io.Reader, writer io.WriteCloser, oldVal, newVal []byte) {
-		defer writer.Close()
-		buffer := make([]byte, 32*1024)
-		for {
-			n, err := reader.Read(buffer)
-			if n > 0 {
-				buf := buffer[:n]
-				if win && !tty {
-					buf = bytes.ReplaceAll(buf, oldVal, newVal)
-				}
-				w := 0
-				for w < len(buf) {
-					n, err := writer.Write(buf[w:])
-					if err != nil {
-						warning("wrap stdio write failed: %v", err)
-						return
-					}
-					w += n
-				}
-			}
-			if err == io.EOF {
-				if win && tty {
-					_, _ = writer.Write([]byte{0x1A}) // ctrl + z
-					continue
-				}
-				break
-			}
-			if err != nil {
-				warning("wrap stdio read failed: %v", err)
-				return
-			}
-		}
-	}
-	go forwardIO(os.Stdin, serverIn, []byte("\r\n"), []byte("\n"))
-	go forwardIO(serverOut, os.Stdout, []byte("\n"), []byte("\r\n"))
-}
-
 func sshAgentForward(args *sshArgs, client *ssh.Client, session *ssh.Session) {
 	agentClient := getAgentClient()
 	if agentClient == nil {
@@ -871,7 +832,7 @@ func sshAgentForward(args *sshArgs, client *ssh.Client, session *ssh.Session) {
 	debug("request ssh agent forwarding success")
 }
 
-func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session, err error) {
+func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session, serverIn io.WriteCloser, serverOut io.Reader, err error) {
 	defer func() {
 		if err != nil {
 			if session != nil {
@@ -911,12 +872,12 @@ func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session
 	session.Stderr = os.Stderr
 
 	// session input and output
-	serverIn, err := session.StdinPipe()
+	serverIn, err = session.StdinPipe()
 	if err != nil {
 		err = fmt.Errorf("stdin pipe failed: %v", err)
 		return
 	}
-	serverOut, err := session.StdoutPipe()
+	serverOut, err = session.StdoutPipe()
 	if err != nil {
 		err = fmt.Errorf("stdout pipe failed: %v", err)
 		return
@@ -925,9 +886,8 @@ func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session
 	// ssh agent forward
 	sshAgentForward(args, client, session)
 
-	// no tty
-	if !tty {
-		wrapStdIO(serverIn, serverOut, tty)
+	// not terminal or not tty
+	if !isTerminal || !tty {
 		return
 	}
 
@@ -940,72 +900,6 @@ func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session
 	if err = session.RequestPty("xterm-256color", height, width, ssh.TerminalModes{}); err != nil {
 		err = fmt.Errorf("request pty failed: %v", err)
 		return
-	}
-
-	// make stdin raw
-	if isTerminal {
-		var state *stdinState
-		state, err = makeStdinRaw()
-		if err != nil {
-			return
-		}
-		onExitFuncs = append(onExitFuncs, func() {
-			resetStdin(state)
-		})
-	}
-
-	// disable trzsz ( trz / tsz )
-	if strings.ToLower(getExOptionConfig(args, "EnableTrzsz")) == "no" {
-		wrapStdIO(serverIn, serverOut, tty)
-		onTerminalResize(func(width, height int) { _ = session.WindowChange(height, width) })
-		return
-	}
-
-	// support trzsz ( trz / tsz )
-	trzsz.SetAffectedByWindows(false)
-	if args.Relay || isNoGUI() {
-		// run as a relay
-		trzszRelay := trzsz.NewTrzszRelay(os.Stdin, os.Stdout, serverIn, serverOut, trzsz.TrzszOptions{
-			DetectTraceLog: args.TraceLog,
-		})
-		// reset terminal size on resize
-		onTerminalResize(func(width, height int) { _ = session.WindowChange(height, width) })
-		// setup tunnel connect
-		trzszRelay.SetTunnelConnector(func(port int) net.Conn {
-			conn, _ := dialWithTimeout(client, "tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second)
-			return conn
-		})
-	} else {
-		// create a TrzszFilter to support trzsz ( trz / tsz )
-		//
-		//   os.Stdin  ┌────────┐   os.Stdin   ┌─────────────┐   ServerIn   ┌────────┐
-		// ───────────►│        ├─────────────►│             ├─────────────►│        │
-		//             │        │              │ TrzszFilter │              │        │
-		// ◄───────────│ Client │◄─────────────┤             │◄─────────────┤ Server │
-		//   os.Stdout │        │   os.Stdout  └─────────────┘   ServerOut  │        │
-		// ◄───────────│        │◄──────────────────────────────────────────┤        │
-		//   os.Stderr └────────┘                  stderr                   └────────┘
-		trzszFilter := trzsz.NewTrzszFilter(os.Stdin, os.Stdout, serverIn, serverOut, trzsz.TrzszOptions{
-			TerminalColumns: int32(width),
-			DetectDragFile:  args.DragFile || strings.ToLower(getExOptionConfig(args, "EnableDragFile")) == "yes",
-			DetectTraceLog:  args.TraceLog,
-		})
-
-		// reset terminal size on resize
-		onTerminalResize(func(width, height int) {
-			trzszFilter.SetTerminalColumns(int32(width))
-			_ = session.WindowChange(height, width)
-		})
-
-		// setup default paths
-		trzszFilter.SetDefaultUploadPath(userConfig.defaultUploadPath)
-		trzszFilter.SetDefaultDownloadPath(userConfig.defaultDownloadPath)
-
-		// setup tunnel connect
-		trzszFilter.SetTunnelConnector(func(port int) net.Conn {
-			conn, _ := dialWithTimeout(client, "tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second)
-			return conn
-		})
 	}
 
 	return

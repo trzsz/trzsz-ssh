@@ -244,16 +244,24 @@ func TsshMain() int {
 	}
 	args.Destination = dest
 
-	// parse cmd and tty
-	command, tty, err := parseCmdAndTTY(&args)
-	if err != nil {
+	// start ssh program
+	if err = sshStart(&args); err != nil {
 		return 6
+	}
+	return 0
+}
+
+func sshStart(args *sshArgs) error {
+	// parse cmd and tty
+	command, tty, err := parseCmdAndTTY(args)
+	if err != nil {
+		return err
 	}
 
 	// ssh login
-	client, session, err := sshLogin(&args, tty)
+	client, session, serverIn, serverOut, err := sshLogin(args, tty)
 	if err != nil {
-		return 7
+		return err
 	}
 	defer client.Close()
 	if session != nil {
@@ -265,48 +273,55 @@ func TsshMain() int {
 		var wg *sync.WaitGroup
 		wg, err = stdioForward(client, args.StdioForward)
 		if err != nil {
-			return 8
+			return err
 		}
 		cleanupForGC()
 		wg.Wait()
-		return 0
+		return nil
 	}
 
 	// ssh forward
-	if err = sshForward(client, &args); err != nil {
-		return 9
+	if err := sshForward(client, args); err != nil {
+		return err
 	}
-
-	// cleanup for GC
-	cleanupForGC()
 
 	// no command
 	if args.NoCommand {
-		if client.Wait() != nil {
-			return 10
-		}
-		return 0
+		cleanupForGC()
+		_ = client.Wait()
+		return nil
 	}
 
 	// run command or start shell
 	if command != "" {
-		if err = session.Start(command); err != nil {
-			err = fmt.Errorf("start command [%s] failed: %v", command, err)
-			return 11
+		if err := session.Start(command); err != nil {
+			return fmt.Errorf("start command [%s] failed: %v", command, err)
 		}
 	} else {
-		if err = session.Shell(); err != nil {
-			err = fmt.Errorf("start shell failed: %v", err)
-			return 12
+		if err := session.Shell(); err != nil {
+			return fmt.Errorf("start shell failed: %v", err)
 		}
 	}
 
-	// wait for exit
-	if session.Wait() != nil {
-		return 13
+	// make stdin raw
+	if isTerminal && tty {
+		state, err := makeStdinRaw()
+		if err != nil {
+			return err
+		}
+		defer resetStdin(state)
 	}
-	if args.Background && client.Wait() != nil {
-		return 14
+
+	// enable trzsz
+	if err := enableTrzsz(args, client, session, serverIn, serverOut, tty); err != nil {
+		return err
 	}
-	return 0
+
+	// cleanup and wait for exit
+	cleanupForGC()
+	_ = session.Wait()
+	if args.Background {
+		_ = client.Wait()
+	}
+	return nil
 }
