@@ -39,6 +39,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/mitchellh/go-homedir"
 	"github.com/trzsz/ssh_config"
 )
 
@@ -151,7 +152,13 @@ func initUserConfig(configFile string) error {
 	var err error
 	userHomeDir, err = os.UserHomeDir()
 	if err != nil {
-		return fmt.Errorf("user home dir failed: %v", err)
+		debug("user home dir failed: %v", err)
+		if userHomeDir, err = homedir.Dir(); err != nil {
+			debug("obtain home dir failed: %v", err)
+		}
+	}
+	if userHomeDir == "" {
+		warning("Failed to obtain the home directory. Using the current directory as the home directory.")
 	}
 
 	if configFile != "" {

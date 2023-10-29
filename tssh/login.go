@@ -179,15 +179,6 @@ func getLoginParam(args *sshArgs) (*loginParam, error) {
 	return param, nil
 }
 
-func createKnownHosts(path string) error {
-	file, err := os.OpenFile(path, os.O_CREATE, 0600)
-	if err != nil {
-		return fmt.Errorf("create [%s] failed: %v", path, err)
-	}
-	defer file.Close()
-	return nil
-}
-
 func addHostKey(path, host string, remote net.Addr, key ssh.PublicKey) error {
 	fingerprint := ssh.FingerprintSHA256(key)
 	fmt.Fprintf(os.Stderr, "The authenticity of host '%s' can't be established.\r\n"+
@@ -237,46 +228,69 @@ func addHostKey(path, host string, remote net.Addr, key ssh.PublicKey) error {
 	return nil
 }
 
-var getHostKeyCallback = func() func() (ssh.HostKeyCallback, knownhosts.HostKeyCallback, error) {
-	var err error
-	var once sync.Once
-	var cb ssh.HostKeyCallback
-	var kh knownhosts.HostKeyCallback
-	return func() (ssh.HostKeyCallback, knownhosts.HostKeyCallback, error) {
-		once.Do(func() {
-			path := filepath.Join(userHomeDir, ".ssh", "known_hosts")
-			if err = createKnownHosts(path); err != nil {
-				return
+func getHostKeyCallback(args *sshArgs) (ssh.HostKeyCallback, knownhosts.HostKeyCallback, error) {
+	primaryPath := ""
+	var files []string
+	userFile := getOptionConfig(args, "UserKnownHostsFile")
+	if userFile != "" && strings.ToLower(userFile) != "none" {
+		for _, path := range strings.Fields(userFile) {
+			path = resolveHomeDir(path)
+			if primaryPath == "" {
+				primaryPath = path
 			}
-			kh, err = knownhosts.New(path)
-			if err != nil {
-				err = fmt.Errorf("new knownhosts [%s] failed: %v", path, err)
-				return
+			if isFileExist(path) {
+				files = append(files, path)
+				debug("add UserKnownHostsFile: %s", path)
+			} else {
+				debug("UserKnownHostsFile [%s] does not exist", path)
 			}
-			cb = func(host string, remote net.Addr, key ssh.PublicKey) error {
-				err := kh(host, remote, key)
-				if knownhosts.IsHostKeyChanged(err) {
-					fmt.Fprintf(os.Stderr, "\033[0;31m@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\r\n"+
-						"@    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @\r\n"+
-						"@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\r\n"+
-						"IT IS POSSIBLE THAT SOMEONE IS DOING SOMETHING NASTY!\r\n"+
-						"Someone could be eavesdropping on you right now (man-in-the-middle attack)!\033[0m\r\n"+
-						"It is also possible that a host key has just been changed.\r\n"+
-						"The fingerprint for the %s key sent by the remote host is\r\n"+
-						"%s\r\n"+
-						"Please contact your system administrator.\r\n"+
-						"Add correct host key in %s to get rid of this message.\r\n",
-						key.Type(), ssh.FingerprintSHA256(key), path)
-					return err
-				} else if knownhosts.IsHostUnknown(err) {
-					return addHostKey(path, host, remote, key)
-				}
-				return err
-			}
-		})
-		return cb, kh, err
+		}
 	}
-}()
+	globalFile := getOptionConfig(args, "GlobalKnownHostsFile")
+	if globalFile != "" {
+		for _, path := range strings.Fields(globalFile) {
+			path = resolveHomeDir(path)
+			if isFileExist(path) {
+				files = append(files, path)
+				debug("add GlobalKnownHostsFile: %s", path)
+			} else {
+				debug("GlobalKnownHostsFile [%s] does not exist", path)
+			}
+		}
+	}
+
+	kh, err := knownhosts.New(files...)
+	if err != nil {
+		return nil, nil, fmt.Errorf("new knownhosts failed: %v", err)
+	}
+
+	cb := func(host string, remote net.Addr, key ssh.PublicKey) error {
+		err := kh(host, remote, key)
+		if knownhosts.IsHostKeyChanged(err) {
+			path := primaryPath
+			if path == "" {
+				path = "~/.ssh/known_hosts"
+			}
+			fmt.Fprintf(os.Stderr, "\033[0;31m@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\r\n"+
+				"@    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @\r\n"+
+				"@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\r\n"+
+				"IT IS POSSIBLE THAT SOMEONE IS DOING SOMETHING NASTY!\r\n"+
+				"Someone could be eavesdropping on you right now (man-in-the-middle attack)!\033[0m\r\n"+
+				"It is also possible that a host key has just been changed.\r\n"+
+				"The fingerprint for the %s key sent by the remote host is\r\n"+
+				"%s\r\n"+
+				"Please contact your system administrator.\r\n"+
+				"Add correct host key in %s to get rid of this message.\r\n",
+				key.Type(), ssh.FingerprintSHA256(key), path)
+			return err
+		} else if knownhosts.IsHostUnknown(err) && primaryPath != "" {
+			return addHostKey(primaryPath, host, remote, key)
+		}
+		return err
+	}
+
+	return cb, kh, err
+}
 
 type sshSigner struct {
 	path   string
@@ -710,7 +724,7 @@ func sshConnect(args *sshArgs, client *ssh.Client, proxy string) (*ssh.Client, b
 	}
 
 	authMethods := getAuthMethods(args, param.host, param.user)
-	cb, kh, err := getHostKeyCallback()
+	cb, kh, err := getHostKeyCallback(args)
 	if err != nil {
 		return nil, false, err
 	}
@@ -856,7 +870,6 @@ func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session
 
 	cleanupAfterLogined = append(cleanupAfterLogined, func() {
 		getDefaultSigners = nil
-		getHostKeyCallback = nil
 	})
 
 	// ssh login
