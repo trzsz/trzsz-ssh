@@ -26,6 +26,7 @@ SOFTWARE.
 package tssh
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 )
@@ -86,15 +87,28 @@ func (sshArgs) Version() string {
 }
 
 func (o *sshOption) UnmarshalText(b []byte) error {
-	s := string(b)
-	pos := strings.Index(s, "=")
-	if pos < 1 || strings.TrimSpace(s[pos+1:]) == "" {
+	s := string(bytes.TrimSpace(b))
+	pos := strings.IndexRune(s, '=')
+	if pos >= 0 {
+		p := strings.IndexAny(strings.TrimRight(s[:pos], " \t"), " \t")
+		if p > 0 {
+			pos = p
+		}
+	} else {
+		pos = strings.IndexAny(s, " \t")
+	}
+	if pos < 0 {
+		return fmt.Errorf("invalid option: %s", s)
+	}
+	key := strings.TrimSpace(s[:pos])
+	value := strings.TrimSpace(s[pos+1:])
+	if key == "" || value == "" {
 		return fmt.Errorf("invalid option: %s", s)
 	}
 	if o.options == nil {
 		o.options = make(map[string]string)
 	}
-	o.options[strings.ToLower(strings.TrimSpace(s[:pos]))] = strings.TrimSpace(s[pos+1:])
+	o.options[strings.ToLower(key)] = value
 	return nil
 }
 

@@ -359,6 +359,14 @@ func getOptionConfig(args *sshArgs, option string) string {
 	return getConfig(args.Destination, option)
 }
 
+func getAllOptionConfig(args *sshArgs, option string) []string {
+	values := getAllConfig(args.Destination, option)
+	if value := args.Option.get(option); value != "" {
+		values = append(values, value)
+	}
+	return values
+}
+
 func getExOptionConfig(args *sshArgs, option string) string {
 	if value := args.Option.get(option); value != "" {
 		return value

@@ -131,3 +131,68 @@ func TestSshArgs(t *testing.T) {
 	assertArgsError("-L", "missing value for -L")
 	assertArgsError("-R", "missing value for -R")
 }
+
+func TestSshOption(t *testing.T) {
+	assert := assert.New(t)
+	assertRemoteCommand := func(optionArg, optionValue string) {
+		t.Helper()
+		var args sshArgs
+		p, err := arg.NewParser(arg.Config{}, &args)
+		assert.Nil(err)
+		err = p.Parse([]string{optionArg})
+		assert.Nil(err)
+		assert.Equal(sshArgs{Option: sshOption{map[string]string{"remotecommand": optionValue}}}, args)
+	}
+
+	assertRemoteCommand("-oRemoteCommand echo abc", "echo abc")
+	assertRemoteCommand("-o RemoteCommand echo abc", "echo abc")
+	assertRemoteCommand("-o\tRemoteCommand\techo\tabc", "echo\tabc")
+
+	assertRemoteCommand("-oRemoteCommand echo = abc", "echo = abc")
+	assertRemoteCommand("-o RemoteCommand  echo  =  abc  ", "echo  =  abc")
+	assertRemoteCommand("-o\tRemoteCommand \techo \t= \tabc \t", "echo \t= \tabc")
+
+	assertRemoteCommand("-oRemoteCommand=echo abc", "echo abc")
+	assertRemoteCommand("-o RemoteCommand = echo abc ", "echo abc")
+	assertRemoteCommand("-o\tRemoteCommand\t=\techo abc ", "echo abc")
+
+	assertRemoteCommand("-oRemoteCommand  =  echo  abc  ", "echo  abc")
+	assertRemoteCommand("-o  RemoteCommand  =  echo  abc  ", "echo  abc")
+	assertRemoteCommand("-o \tRemoteCommand \t= \techo \tabc\t ", "echo \tabc")
+
+	assertRemoteCommand("-oRemoteCommand  =  echo = abc  ", "echo = abc")
+	assertRemoteCommand("-o RemoteCommand  =  echo = abc  ", "echo = abc")
+	assertRemoteCommand("-o \tRemoteCommand\t =\t echo\t =\t abc \t", "echo\t =\t abc")
+
+	assertInvalidOption := func(optionArg string) {
+		t.Helper()
+		var args sshArgs
+		p, err := arg.NewParser(arg.Config{}, &args)
+		assert.Nil(err)
+		err = p.Parse([]string{optionArg})
+		assert.NotNil(err)
+		if err != nil {
+			assert.Contains(err.Error(), "invalid option")
+		}
+	}
+
+	assertInvalidOption("-oRemoteCommand")
+	assertInvalidOption("-oRemoteCommand ")
+	assertInvalidOption("-oRemoteCommand \t ")
+	assertInvalidOption("-oRemoteCommand=")
+	assertInvalidOption("-oRemoteCommand = ")
+	assertInvalidOption("-oRemoteCommand \t = \t ")
+
+	assertInvalidOption("-o \t RemoteCommand")
+	assertInvalidOption("-o \t RemoteCommand ")
+	assertInvalidOption("-o \t RemoteCommand \t ")
+	assertInvalidOption("-o \t RemoteCommand=")
+	assertInvalidOption("-o \t RemoteCommand = ")
+	assertInvalidOption("-o \t RemoteCommand \t = \t ")
+
+	assertInvalidOption("-o=RemoteCommand")
+	assertInvalidOption("-o =RemoteCommand")
+	assertInvalidOption("-o= RemoteCommand")
+	assertInvalidOption("-o = RemoteCommand")
+	assertInvalidOption("-o\t=\tRemoteCommand")
+}

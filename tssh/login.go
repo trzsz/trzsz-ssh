@@ -895,7 +895,11 @@ func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session
 		err = fmt.Errorf("ssh new session failed: %v", err)
 		return
 	}
-	session.Stderr = os.Stderr
+
+	// send and set env
+	if err = sendAndSetEnv(args, session); err != nil {
+		return
+	}
 
 	// session input and output
 	serverIn, err = session.StdinPipe()
@@ -908,6 +912,7 @@ func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session
 		err = fmt.Errorf("stdout pipe failed: %v", err)
 		return
 	}
+	session.Stderr = os.Stderr
 
 	// ssh agent forward
 	sshAgentForward(args, client, session)
