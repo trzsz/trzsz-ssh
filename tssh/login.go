@@ -529,7 +529,7 @@ func getPublicKeysAuthMethod(args *sshArgs) ssh.AuthMethod {
 		}
 	}
 
-	if agentClient := getAgentClient(); agentClient != nil {
+	if agentClient := getAgentClient(args); agentClient != nil {
 		signers, err := agentClient.Signers()
 		if err != nil {
 			warning("get ssh agent signers failed: %v", err)
@@ -838,15 +838,15 @@ func keepAlive(client *ssh.Client, args *sshArgs) {
 
 func sshAgentForward(args *sshArgs, client *ssh.Client, session *ssh.Session) {
 	if args.NoForwardAgent || !args.ForwardAgent && strings.ToLower(getOptionConfig(args, "ForwardAgent")) != "yes" {
-		closeAgentClient()
 		return
 	}
-	agentClient := getAgentClient()
-	if agentClient == nil {
+	addr := resolveHomeDir(getAgentAddr(args))
+	if addr == "" {
+		warning("forward agent but the socket address is not set")
 		return
 	}
-	if err := agent.ForwardToAgent(client, agentClient); err != nil {
-		warning("forward to agent failed: %v", err)
+	if err := forwardToRemote(client, addr); err != nil {
+		warning("forward to agent [%s] failed: %v", addr, err)
 		return
 	}
 	if err := agent.RequestAgentForwarding(session); err != nil {
@@ -915,7 +915,9 @@ func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session
 	session.Stderr = os.Stderr
 
 	// ssh agent forward
-	sshAgentForward(args, client, session)
+	if !control {
+		sshAgentForward(args, client, session)
+	}
 
 	// not terminal or not tty
 	if !isTerminal || !tty {

@@ -26,11 +26,15 @@ SOFTWARE.
 */
 
 import (
+	"fmt"
+	"io"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/trzsz/npipe"
+	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 )
 
@@ -40,36 +44,94 @@ var (
 	agentClient agent.ExtendedAgent
 )
 
-func getAgentClient() agent.ExtendedAgent {
-	agentOnce.Do(func() {
-		name := `\\.\pipe\openssh-ssh-agent`
-		if sock := os.Getenv("SSH_AUTH_SOCK"); sock != "" {
-			name = sock
+func getAgentAddr(args *sshArgs) string {
+	if addr := getOptionConfig(args, "IdentityAgent"); addr != "" {
+		if strings.ToLower(addr) == "none" {
+			return ""
 		}
+		return addr
+	}
+	if addr := os.Getenv("SSH_AUTH_SOCK"); addr != "" {
+		return addr
+	}
+	if addr := `\\.\pipe\openssh-ssh-agent`; isFileExist(addr) {
+		return addr
+	}
+	return ""
+}
 
-		if !isFileExist(name) {
-			debug("ssh agent named pipe [%s] does not exist", name)
+func getAgentClient(args *sshArgs) agent.ExtendedAgent {
+	agentOnce.Do(func() {
+		addr := getAgentAddr(args)
+		if addr == "" {
+			debug("ssh agent named pipe is not set")
 			return
 		}
 
 		var err error
-		agentConn, err = npipe.DialTimeout(name, time.Second)
+		agentConn, err = npipe.DialTimeout(addr, time.Second)
 		if err != nil {
-			debug("dial ssh agent named pipe [%s] failed: %v", name, err)
+			debug("dial ssh agent named pipe [%s] failed: %v", addr, err)
 			return
 		}
 
 		agentClient = agent.NewClient(agentConn)
-		debug("new ssh agent client [%s] success", name)
-	})
+		debug("new ssh agent client [%s] success", addr)
 
+		cleanupAfterLogined = append(cleanupAfterLogined, func() {
+			agentConn.Close()
+			agentConn = nil
+			agentClient = nil
+		})
+	})
 	return agentClient
 }
 
-func closeAgentClient() {
-	if agentConn != nil {
-		agentConn.Close()
-		agentConn = nil
+const channelType = "auth-agent@openssh.com"
+
+func forwardToRemote(client *ssh.Client, addr string) error {
+	channels := client.HandleChannelOpen(channelType)
+	if channels == nil {
+		return fmt.Errorf("agent: already have handler for %s", channelType)
 	}
-	agentClient = nil
+	conn, err := npipe.DialTimeout(addr, time.Second)
+	if err != nil {
+		return err
+	}
+	conn.Close()
+
+	go func() {
+		for ch := range channels {
+			channel, reqs, err := ch.Accept()
+			if err != nil {
+				continue
+			}
+			go ssh.DiscardRequests(reqs)
+			go forwardNamedPipe(channel, addr)
+		}
+	}()
+	return nil
+}
+
+func forwardNamedPipe(channel ssh.Channel, addr string) {
+	conn, err := npipe.DialTimeout(addr, time.Second)
+	if err != nil {
+		return
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		io.Copy(conn, channel)
+		wg.Done()
+	}()
+	go func() {
+		io.Copy(channel, conn)
+		channel.CloseWrite()
+		wg.Done()
+	}()
+
+	wg.Wait()
+	conn.Close()
+	channel.Close()
 }

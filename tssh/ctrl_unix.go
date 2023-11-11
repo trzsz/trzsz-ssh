@@ -191,9 +191,12 @@ func startControlMaster(args *sshArgs) {
 		return
 	}
 
-	cmdArgs := []string{"-a", "-T", "-oClearAllForwardings=yes", "-oRemoteCommand=none", "-oConnectTimeout=5"}
+	cmdArgs := []string{"-T", "-oClearAllForwardings=yes", "-oRemoteCommand=none", "-oConnectTimeout=5"}
 	if args.Debug {
 		cmdArgs = append(cmdArgs, "-v")
+	}
+	if !args.NoForwardAgent && args.ForwardAgent {
+		cmdArgs = append(cmdArgs, "-A")
 	}
 	if args.LoginName != "" {
 		cmdArgs = append(cmdArgs, "-l", args.LoginName)
@@ -219,6 +222,8 @@ func startControlMaster(args *sshArgs) {
 			cmdArgs = append(cmdArgs, fmt.Sprintf("-oControlPath=%s", value))
 		case "controlpersist":
 			cmdArgs = append(cmdArgs, fmt.Sprintf("-oControlPersist=%s", value))
+		case "forwardagent":
+			cmdArgs = append(cmdArgs, fmt.Sprintf("-oForwardAgent=%s", value))
 		}
 	}
 

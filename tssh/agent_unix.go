@@ -30,9 +30,11 @@ package tssh
 import (
 	"net"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
+	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 )
 
@@ -42,32 +44,43 @@ var (
 	agentClient agent.ExtendedAgent
 )
 
-func getAgentClient() agent.ExtendedAgent {
+func getAgentAddr(args *sshArgs) string {
+	if addr := getOptionConfig(args, "IdentityAgent"); addr != "" {
+		if strings.ToLower(addr) == "none" {
+			return ""
+		}
+		return addr
+	}
+	return os.Getenv("SSH_AUTH_SOCK")
+}
+
+func getAgentClient(args *sshArgs) agent.ExtendedAgent {
 	agentOnce.Do(func() {
-		sock := os.Getenv("SSH_AUTH_SOCK")
-		if sock == "" {
-			debug("no ssh agent environment variable SSH_AUTH_SOCK")
+		addr := resolveHomeDir(getAgentAddr(args))
+		if addr == "" {
+			debug("ssh agent unix socket is not set")
 			return
 		}
 
 		var err error
-		agentConn, err = net.DialTimeout("unix", sock, time.Second)
+		agentConn, err = net.DialTimeout("unix", addr, time.Second)
 		if err != nil {
-			debug("dial ssh agent unix socket [%s] failed: %v", sock, err)
+			debug("dial ssh agent unix socket [%s] failed: %v", addr, err)
 			return
 		}
 
 		agentClient = agent.NewClient(agentConn)
-		debug("new ssh agent client [%s] success", sock)
-	})
+		debug("new ssh agent client [%s] success", addr)
 
+		cleanupAfterLogined = append(cleanupAfterLogined, func() {
+			agentConn.Close()
+			agentConn = nil
+			agentClient = nil
+		})
+	})
 	return agentClient
 }
 
-func closeAgentClient() {
-	if agentConn != nil {
-		agentConn.Close()
-		agentConn = nil
-	}
-	agentClient = nil
+func forwardToRemote(client *ssh.Client, addr string) error {
+	return agent.ForwardToRemote(client, addr)
 }
