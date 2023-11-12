@@ -331,6 +331,16 @@ _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\
 
 ## 故障排除
 
+- 在 Warp 终端，分块 Blocks 的功能需要将 `tssh` 重命名为 `ssh`，推荐建个软链接（ 对更新友好 ）：
+
+  ```
+  sudo ln -sv $(which tssh) /usr/local/bin/ssh
+  ```
+
+  - `--dragfile` 参数可能会让 Warp 分块功能失效，请参考前文配置 `EnableDragFile` 来启用拖拽功能。
+
+  - 拖拽文件或目录进入 Warp 终端后，可能不会立即触发上传，需要多按一次回车键，才会上传。
+
 - 如果你在使用 Windows7 或者旧版本的 Windows10 等，遇到 `enable virtual terminal failed` 的错误。
 
   - 可以尝试在 [Cygwin](https://www.cygwin.com/)、[MSYS2](https://www.msys2.org/) 或 [Git Bash](https://www.atlassian.com/git/tutorials/git-bash) 内使用 `tssh`。
