@@ -191,7 +191,8 @@ func startControlMaster(args *sshArgs) {
 		return
 	}
 
-	cmdArgs := []string{"-T", "-oClearAllForwardings=yes", "-oRemoteCommand=none", "-oConnectTimeout=5"}
+	cmdArgs := []string{"-T", "-oRemoteCommand=none", "-oConnectTimeout=5"}
+
 	if args.Debug {
 		cmdArgs = append(cmdArgs, "-v")
 	}
@@ -204,9 +205,6 @@ func startControlMaster(args *sshArgs) {
 	if args.Port != 0 {
 		cmdArgs = append(cmdArgs, "-p", strconv.Itoa(args.Port))
 	}
-	for _, identity := range args.Identity.values {
-		cmdArgs = append(cmdArgs, "-i", identity)
-	}
 	if args.ConfigFile != "" {
 		cmdArgs = append(cmdArgs, "-F", args.ConfigFile)
 	}
@@ -214,16 +212,29 @@ func startControlMaster(args *sshArgs) {
 		cmdArgs = append(cmdArgs, "-J", args.ProxyJump)
 	}
 
-	for key, value := range args.Option.options {
+	for _, identity := range args.Identity.values {
+		cmdArgs = append(cmdArgs, "-i", identity)
+	}
+	for _, b := range args.DynamicForward.binds {
+		cmdArgs = append(cmdArgs, "-D", b.argument)
+	}
+	for _, f := range args.LocalForward.cfgs {
+		cmdArgs = append(cmdArgs, "-L", f.argument)
+	}
+	for _, f := range args.RemoteForward.cfgs {
+		cmdArgs = append(cmdArgs, "-R", f.argument)
+	}
+
+	for key, values := range args.Option.options {
 		switch key {
-		case "controlmaster":
-			cmdArgs = append(cmdArgs, fmt.Sprintf("-oControlMaster=%s", value))
-		case "controlpath":
-			cmdArgs = append(cmdArgs, fmt.Sprintf("-oControlPath=%s", value))
-		case "controlpersist":
-			cmdArgs = append(cmdArgs, fmt.Sprintf("-oControlPersist=%s", value))
-		case "forwardagent":
-			cmdArgs = append(cmdArgs, fmt.Sprintf("-oForwardAgent=%s", value))
+		case "remotecommand":
+			break
+		case "enabletrzsz", "enabledragfile":
+			break
+		default:
+			for _, value := range values {
+				cmdArgs = append(cmdArgs, fmt.Sprintf("-o%s=%s", key, value))
+			}
 		}
 	}
 

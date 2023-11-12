@@ -354,20 +354,22 @@ func (s *sshSigner) SignWithAlgorithm(rand io.Reader, data []byte, algorithm str
 	return s.signer.Sign(rand, data)
 }
 
-func newPassphraseSigner(path string, priKey []byte, err *ssh.PassphraseMissingError) (*sshSigner, error) {
+func newPassphraseSigner(path string, priKey []byte, err *ssh.PassphraseMissingError) *sshSigner {
 	pubKey := err.PublicKey
 	if pubKey == nil {
 		pubPath := path + ".pub"
 		pubData, err := os.ReadFile(pubPath)
 		if err != nil {
-			return nil, fmt.Errorf("read public key [%s] failed: %v", pubPath, err)
+			warning("read public key [%s] failed: %v", pubPath, err)
+			return nil
 		}
 		pubKey, _, _, _, err = ssh.ParseAuthorizedKey(pubData)
 		if err != nil {
-			return nil, fmt.Errorf("parse public key [%s] failed: %v", pubPath, err)
+			warning("parse public key [%s] failed: %v", pubPath, err)
+			return nil
 		}
 	}
-	return &sshSigner{path: path, priKey: priKey, pubKey: pubKey}, nil
+	return &sshSigner{path: path, priKey: priKey, pubKey: pubKey}
 }
 
 func isFileExist(path string) bool {
@@ -377,11 +379,12 @@ func isFileExist(path string) bool {
 	return true
 }
 
-func getSigner(dest string, path string) (*sshSigner, error) {
+func getSigner(dest string, path string) *sshSigner {
 	path = resolveHomeDir(path)
 	privateKey, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("read private key [%s] failed: %v", path, err)
+		warning("read private key [%s] failed: %v", path, err)
+		return nil
 	}
 	signer, err := ssh.ParsePrivateKey(privateKey)
 	if err != nil {
@@ -393,10 +396,11 @@ func getSigner(dest string, path string) (*sshSigner, error) {
 			}
 		}
 		if err != nil {
-			return nil, fmt.Errorf("parse private key [%s] failed: %v", path, err)
+			warning("parse private key [%s] failed: %v", path, err)
+			return nil
 		}
 	}
-	return &sshSigner{path: path, pubKey: signer.PublicKey(), signer: signer}, nil
+	return &sshSigner{path: path, pubKey: signer.PublicKey(), signer: signer}
 }
 
 func readSecret(prompt string) (secret []byte, err error) {
@@ -496,10 +500,7 @@ var getDefaultSigners = func() func() []*sshSigner {
 				if !isFileExist(path) {
 					continue
 				}
-				signer, err := getSigner(name, path)
-				if err != nil {
-					warning("%s", err)
-				} else {
+				if signer := getSigner(name, path); signer != nil {
 					signers = append(signers, signer)
 				}
 			}
@@ -540,26 +541,12 @@ func getPublicKeysAuthMethod(args *sshArgs) ssh.AuthMethod {
 		}
 	}
 
-	if len(args.Identity.values) > 0 {
-		for _, identity := range args.Identity.values {
-			signer, err := getSigner(args.Destination, identity)
-			if err != nil {
-				warning("%s", err)
-				continue
-			}
-			addPubKeySigners([]*sshSigner{signer})
-		}
+	identities := append(args.Identity.values, getAllOptionConfig(args, "IdentityFile")...)
+	if len(identities) == 0 {
+		addPubKeySigners(getDefaultSigners())
 	} else {
-		identities := getAllConfig(args.Destination, "IdentityFile")
-		if len(identities) == 0 {
-			addPubKeySigners(getDefaultSigners())
-		} else {
-			for _, identity := range identities {
-				signer, err := getSigner(args.Destination, identity)
-				if err != nil {
-					warning("%s", err)
-					continue
-				}
+		for _, identity := range identities {
+			if signer := getSigner(args.Destination, identity); signer != nil {
 				addPubKeySigners([]*sshSigner{signer})
 			}
 		}
@@ -884,8 +871,20 @@ func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session
 		keepAlive(client, args)
 	}
 
+	// stdio forward
+	if args.StdioForward != "" {
+		return
+	}
+
+	// ssh forward
+	if !control {
+		if err = sshForward(client, args); err != nil {
+			return
+		}
+	}
+
 	// no command
-	if args.NoCommand || args.StdioForward != "" {
+	if args.NoCommand {
 		return
 	}
 

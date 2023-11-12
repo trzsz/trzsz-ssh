@@ -281,11 +281,6 @@ func sshStart(args *sshArgs) error {
 		return nil
 	}
 
-	// ssh forward
-	if err := sshForward(client, args); err != nil {
-		return err
-	}
-
 	// no command
 	if args.NoCommand {
 		cleanupForGC()

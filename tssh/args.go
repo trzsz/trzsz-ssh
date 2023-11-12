@@ -32,7 +32,7 @@ import (
 )
 
 type sshOption struct {
-	options map[string]string
+	options map[string][]string
 }
 
 type multiStr struct {
@@ -106,15 +106,26 @@ func (o *sshOption) UnmarshalText(b []byte) error {
 		return fmt.Errorf("invalid option: %s", s)
 	}
 	if o.options == nil {
-		o.options = make(map[string]string)
+		o.options = make(map[string][]string)
 	}
-	o.options[strings.ToLower(key)] = value
+	o.options[strings.ToLower(key)] = append(o.options[strings.ToLower(key)], value)
 	return nil
 }
 
 func (o *sshOption) get(option string) string {
 	if o.options == nil {
 		return ""
+	}
+	values := o.options[strings.ToLower(option)]
+	if len(values) == 0 {
+		return ""
+	}
+	return values[0]
+}
+
+func (o *sshOption) getAll(option string) []string {
+	if o.options == nil {
+		return nil
 	}
 	return o.options[strings.ToLower(option)]
 }

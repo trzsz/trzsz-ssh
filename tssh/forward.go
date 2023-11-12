@@ -43,11 +43,13 @@ import (
 )
 
 type bindCfg struct {
-	addr *string
-	port int
+	argument string
+	addr     *string
+	port     int
 }
 
 type forwardCfg struct {
+	argument string
 	bindAddr *string
 	bindPort int
 	destHost string
@@ -74,7 +76,7 @@ func parseBindCfg(s string) (*bindCfg, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid bind specification [%s]: %v", s, err)
 		}
-		return &bindCfg{addr, p}, nil
+		return &bindCfg{s, addr, p}, nil
 	}
 
 	if portOnlyRegexp.MatchString(s) {
@@ -117,7 +119,7 @@ func parseForwardCfg(s string) (*forwardCfg, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid forward config [%s]: %v", s, err)
 		}
-		return &forwardCfg{bindCfg.addr, bindCfg.port, host, dPort}, nil
+		return &forwardCfg{s, bindCfg.addr, bindCfg.port, host, dPort}, nil
 	}
 
 	dest := tokens[1]
@@ -155,7 +157,7 @@ func parseForwardArg(s string) (*forwardCfg, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid forward specification [%s]: %v", s, err)
 		}
-		return &forwardCfg{bindAddr, bPort, destHost, dPort}, nil
+		return &forwardCfg{s, bindAddr, bPort, destHost, dPort}, nil
 	}
 
 	tokens := strings.Split(s, "/")
@@ -198,12 +200,13 @@ func isGatewayPorts(args *sshArgs) bool {
 	return args.Gateway || strings.ToLower(getConfig(args.Destination, "GatewayPorts")) == "yes"
 }
 
-func listenOnLocal(args *sshArgs, addr *string, port string) (listeners []net.Listener, errs []error) {
+func listenOnLocal(args *sshArgs, addr *string, port string) (listeners []net.Listener) {
 	listen := func(network, address string) {
 		listener, err := net.Listen(network, address)
 		if err != nil {
-			errs = append(errs, fmt.Errorf("listen on '%s' failed: %v", address, err))
+			debug("forward listen on local '%s' failed: %v", address, err)
 		} else {
+			debug("forward listen on local '%s' success", address)
 			listeners = append(listeners, listener)
 		}
 	}
@@ -221,12 +224,13 @@ func listenOnLocal(args *sshArgs, addr *string, port string) (listeners []net.Li
 	return
 }
 
-func listenOnRemote(args *sshArgs, client *ssh.Client, addr *string, port string) (listeners []net.Listener, errs []error) {
+func listenOnRemote(args *sshArgs, client *ssh.Client, addr *string, port string) (listeners []net.Listener) {
 	listen := func(network, address string) {
 		listener, err := client.Listen(network, address)
 		if err != nil {
-			errs = append(errs, fmt.Errorf("listen on '%s' failed: %v", address, err))
+			debug("forward listen on remote '%s' failed: %v", address, err)
 		} else {
+			debug("forward listen on remote '%s' success", address)
 			listeners = append(listeners, listener)
 		}
 	}
@@ -285,18 +289,27 @@ func dynamicForward(client *ssh.Client, b *bindCfg, args *sshArgs) {
 		Logger: log.New(io.Discard, "", log.LstdFlags),
 	})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "dynamic forward failed: %v\r\n", err)
+		warning("dynamic forward failed: %v", err)
 		return
 	}
 
-	listeners, errs := listenOnLocal(args, b.addr, strconv.Itoa(b.port))
-	for _, err := range errs {
-		fmt.Fprintf(os.Stderr, "dynamic forward listen failed: %v\r\n", err)
-	}
-	for _, listener := range listeners {
+	for _, listener := range listenOnLocal(args, b.addr, strconv.Itoa(b.port)) {
 		go func(listener net.Listener) {
-			if err := server.Serve(listener); err != nil {
-				fmt.Fprintf(os.Stderr, "dynamic forward serve failed: %v\r\n", err)
+			defer listener.Close()
+			for {
+				conn, err := listener.Accept()
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					debug("dynamic forward accept failed: %v", err)
+					continue
+				}
+				go func() {
+					if err := server.ServeConn(conn); err != nil {
+						debug("dynamic forward serve failed: %v", err)
+					}
+				}()
 			}
 		}(listener)
 	}
@@ -319,12 +332,8 @@ func netForward(local, remote net.Conn) {
 }
 
 func localForward(client *ssh.Client, f *forwardCfg, args *sshArgs) {
-	listeners, errs := listenOnLocal(args, f.bindAddr, strconv.Itoa(f.bindPort))
-	for _, err := range errs {
-		fmt.Fprintf(os.Stderr, "local forward listen failed: %v\r\n", err)
-	}
 	remoteAddr := joinHostPort(f.destHost, strconv.Itoa(f.destPort))
-	for _, listener := range listeners {
+	for _, listener := range listenOnLocal(args, f.bindAddr, strconv.Itoa(f.bindPort)) {
 		go func(listener net.Listener) {
 			defer listener.Close()
 			for {
@@ -333,12 +342,12 @@ func localForward(client *ssh.Client, f *forwardCfg, args *sshArgs) {
 					break
 				}
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "local forward accept failed: %v\r\n", err)
+					debug("local forward accept failed: %v", err)
 					continue
 				}
 				remote, err := dialWithTimeout(client, "tcp", remoteAddr, 10*time.Second)
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "local forward dial [%s] failed: %v\r\n", remoteAddr, err)
+					debug("local forward dial [%s] failed: %v", remoteAddr, err)
 					local.Close()
 					continue
 				}
@@ -349,12 +358,8 @@ func localForward(client *ssh.Client, f *forwardCfg, args *sshArgs) {
 }
 
 func remoteForward(client *ssh.Client, f *forwardCfg, args *sshArgs) {
-	listeners, errs := listenOnRemote(args, client, f.bindAddr, strconv.Itoa(f.bindPort))
-	for _, err := range errs {
-		fmt.Fprintf(os.Stderr, "remote forward listen failed: %v\r\n", err)
-	}
 	localAddr := joinHostPort(f.destHost, strconv.Itoa(f.destPort))
-	for _, listener := range listeners {
+	for _, listener := range listenOnRemote(args, client, f.bindAddr, strconv.Itoa(f.bindPort)) {
 		go func(listener net.Listener) {
 			defer listener.Close()
 			for {
@@ -363,12 +368,12 @@ func remoteForward(client *ssh.Client, f *forwardCfg, args *sshArgs) {
 					break
 				}
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "remote forward accept failed: %v\r\n", err)
+					debug("remote forward accept failed: %v", err)
 					continue
 				}
 				local, err := net.DialTimeout("tcp", localAddr, 10*time.Second)
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "remote forward dial [%s] failed: %v\r\n", localAddr, err)
+					debug("remote forward dial [%s] failed: %v", localAddr, err)
 					remote.Close()
 					continue
 				}
@@ -379,49 +384,45 @@ func remoteForward(client *ssh.Client, f *forwardCfg, args *sshArgs) {
 }
 
 func sshForward(client *ssh.Client, args *sshArgs) error {
-	// command dynamic forward
-	for _, b := range args.DynamicForward.binds {
-		dynamicForward(client, b, args)
-	}
-	// command local forward
-	for _, f := range args.LocalForward.cfgs {
-		localForward(client, f, args)
-	}
-	// command remote forward
-	for _, f := range args.RemoteForward.cfgs {
-		remoteForward(client, f, args)
-	}
-
 	// clear all forwardings
-	if strings.ToLower(args.Option.get("ClearAllForwardings")) == "yes" {
+	if strings.ToLower(getOptionConfig(args, "ClearAllForwardings")) == "yes" {
 		return nil
 	}
 
-	// config dynamic forward
-	for _, s := range getAllConfig(args.Destination, "DynamicForward") {
+	// dynamic forward
+	for _, b := range args.DynamicForward.binds {
+		dynamicForward(client, b, args)
+	}
+	for _, s := range getAllOptionConfig(args, "DynamicForward") {
 		b, err := parseBindCfg(s)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "dynamic forward failed: %v\r\n", err)
+			warning("dynamic forward failed: %v", err)
 			continue
 		}
 		dynamicForward(client, b, args)
 	}
 
-	// config local forward
-	for _, s := range getAllConfig(args.Destination, "LocalForward") {
+	// local forward
+	for _, f := range args.LocalForward.cfgs {
+		localForward(client, f, args)
+	}
+	for _, s := range getAllOptionConfig(args, "LocalForward") {
 		f, err := parseForwardCfg(s)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "local forward failed: %v\r\n", err)
+			warning("local forward failed: %v", err)
 			continue
 		}
 		localForward(client, f, args)
 	}
 
-	// config remote forward
-	for _, s := range getAllConfig(args.Destination, "RemoteForward") {
+	// remote forward
+	for _, f := range args.RemoteForward.cfgs {
+		remoteForward(client, f, args)
+	}
+	for _, s := range getAllOptionConfig(args, "RemoteForward") {
 		f, err := parseForwardCfg(s)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "remote forward failed: %v\r\n", err)
+			warning("remote forward failed: %v", err)
 			continue
 		}
 		remoteForward(client, f, args)

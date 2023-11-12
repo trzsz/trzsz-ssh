@@ -33,32 +33,33 @@ import (
 
 func TestParseBindCfg(t *testing.T) {
 	assert := assert.New(t)
-	assertBindCfg := func(arg string, expected *bindCfg) {
+	assertBindCfgNil := func(arg string, addr *string, port int) {
 		t.Helper()
 		cfg, err := parseBindCfg(arg)
 		assert.Nil(err)
-		assert.Equal(expected, cfg)
+		assert.Equal(&bindCfg{arg, addr, port}, cfg)
 	}
-	newBindArg := func(addr string, port int) *bindCfg {
-		return &bindCfg{&addr, port}
+	assertBindCfg := func(arg string, addr string, port int) {
+		t.Helper()
+		assertBindCfgNil(arg, &addr, port)
 	}
 
-	assertBindCfg("8000", &bindCfg{nil, 8000})
-	assertBindCfg("9000", &bindCfg{nil, 9000})
-	assertBindCfg(":8000", newBindArg("", 8000))
-	assertBindCfg("*:8001", newBindArg("*", 8001))
+	assertBindCfgNil("8000", nil, 8000)
+	assertBindCfgNil("9000", nil, 9000)
+	assertBindCfg(":8000", "", 8000)
+	assertBindCfg("*:8001", "*", 8001)
 
-	assertBindCfg("0.0.0.0:8001", newBindArg("0.0.0.0", 8001))
-	assertBindCfg("127.0.0.1:8002", newBindArg("127.0.0.1", 8002))
-	assertBindCfg("localhost:8003", newBindArg("localhost", 8003))
+	assertBindCfg("0.0.0.0:8001", "0.0.0.0", 8001)
+	assertBindCfg("127.0.0.1:8002", "127.0.0.1", 8002)
+	assertBindCfg("localhost:8003", "localhost", 8003)
 
-	assertBindCfg("::1/8001", newBindArg("::1", 8001))
-	assertBindCfg("fe80::6358:bbae:26f8:7859/8002", newBindArg("fe80::6358:bbae:26f8:7859", 8002))
-	assertBindCfg("12a5:00c8:dae6:bd0a:8312:07f8:bc94:a1d9/8003", newBindArg("12a5:00c8:dae6:bd0a:8312:07f8:bc94:a1d9", 8003))
+	assertBindCfg("::1/8001", "::1", 8001)
+	assertBindCfg("fe80::6358:bbae:26f8:7859/8002", "fe80::6358:bbae:26f8:7859", 8002)
+	assertBindCfg("12a5:00c8:dae6:bd0a:8312:07f8:bc94:a1d9/8003", "12a5:00c8:dae6:bd0a:8312:07f8:bc94:a1d9", 8003)
 
-	assertBindCfg("[::1]:8001", newBindArg("::1", 8001))
-	assertBindCfg("[fe80::6358:bbae:26f8:7859]:8002", newBindArg("fe80::6358:bbae:26f8:7859", 8002))
-	assertBindCfg("[12a5:00c8:dae6:bd0a:8312:07f8:bc94:a1d9]:8003", newBindArg("12a5:00c8:dae6:bd0a:8312:07f8:bc94:a1d9", 8003))
+	assertBindCfg("[::1]:8001", "::1", 8001)
+	assertBindCfg("[fe80::6358:bbae:26f8:7859]:8002", "fe80::6358:bbae:26f8:7859", 8002)
+	assertBindCfg("[12a5:00c8:dae6:bd0a:8312:07f8:bc94:a1d9]:8003", "12a5:00c8:dae6:bd0a:8312:07f8:bc94:a1d9", 8003)
 
 	assertCfgError := func(arg, errMsg string) {
 		t.Helper()
@@ -82,45 +83,46 @@ func TestParseBindCfg(t *testing.T) {
 
 func TestParseForwardCfg(t *testing.T) {
 	assert := assert.New(t)
-	assertForwardCfg := func(arg string, expected *forwardCfg) {
+	assertForwardCfgNil := func(arg string, bindAddr *string, bindPort int, destHost string, destPort int) {
 		t.Helper()
 		cfg, err := parseForwardCfg(arg)
 		assert.Nil(err)
-		assert.Equal(expected, cfg)
+		assert.Equal(&forwardCfg{arg, bindAddr, bindPort, destHost, destPort}, cfg)
 	}
-	newForwardCfg := func(bindAddr string, bindPort int, destHost string, destPort int) *forwardCfg {
-		return &forwardCfg{&bindAddr, bindPort, destHost, destPort}
+	assertForwardCfg := func(arg string, bindAddr string, bindPort int, destHost string, destPort int) {
+		t.Helper()
+		assertForwardCfgNil(arg, &bindAddr, bindPort, destHost, destPort)
 	}
 
-	assertForwardCfg("8000 localhost:9000", &forwardCfg{nil, 8000, "localhost", 9000})
-	assertForwardCfg("8001 127.0.0.1:9001", &forwardCfg{nil, 8001, "127.0.0.1", 9001})
-	assertForwardCfg("8000 ::1/9000", &forwardCfg{nil, 8000, "::1", 9000})
-	assertForwardCfg("8000 [::1]:9000", &forwardCfg{nil, 8000, "::1", 9000})
-	assertForwardCfg("8000 fe80::6358:bbae:26f8:7859/9000", &forwardCfg{nil, 8000, "fe80::6358:bbae:26f8:7859", 9000})
-	assertForwardCfg("8000 [fe80::6358:bbae:26f8:7859]:9000", &forwardCfg{nil, 8000, "fe80::6358:bbae:26f8:7859", 9000})
+	assertForwardCfgNil("8000 localhost:9000", nil, 8000, "localhost", 9000)
+	assertForwardCfgNil("8001 127.0.0.1:9001", nil, 8001, "127.0.0.1", 9001)
+	assertForwardCfgNil("8000 ::1/9000", nil, 8000, "::1", 9000)
+	assertForwardCfgNil("8000 [::1]:9000", nil, 8000, "::1", 9000)
+	assertForwardCfgNil("8000 fe80::6358:bbae:26f8:7859/9000", nil, 8000, "fe80::6358:bbae:26f8:7859", 9000)
+	assertForwardCfgNil("8000 [fe80::6358:bbae:26f8:7859]:9000", nil, 8000, "fe80::6358:bbae:26f8:7859", 9000)
 
-	assertForwardCfg(":8001 localhost:9001", newForwardCfg("", 8001, "localhost", 9001))
-	assertForwardCfg(":8002 [::1]:9002", newForwardCfg("", 8002, "::1", 9002))
-	assertForwardCfg("*:8003 127.0.0.1:9003", newForwardCfg("*", 8003, "127.0.0.1", 9003))
-	assertForwardCfg("*:8004 [fe80::6358:bbae:26f8:7859]:9004", newForwardCfg("*", 8004, "fe80::6358:bbae:26f8:7859", 9004))
+	assertForwardCfg(":8001 localhost:9001", "", 8001, "localhost", 9001)
+	assertForwardCfg(":8002 [::1]:9002", "", 8002, "::1", 9002)
+	assertForwardCfg("*:8003 127.0.0.1:9003", "*", 8003, "127.0.0.1", 9003)
+	assertForwardCfg("*:8004 [fe80::6358:bbae:26f8:7859]:9004", "*", 8004, "fe80::6358:bbae:26f8:7859", 9004)
 
-	assertForwardCfg("127.0.0.1:8001\tlocalhost:9001", newForwardCfg("127.0.0.1", 8001, "localhost", 9001))
-	assertForwardCfg("localhost:8002\t127.0.0.1:9002", newForwardCfg("localhost", 8002, "127.0.0.1", 9002))
-	assertForwardCfg("127.0.0.1:8003\t[::1]:9003", newForwardCfg("127.0.0.1", 8003, "::1", 9003))
-	assertForwardCfg("localhost:8004\t[fe80::6358:bbae:26f8:7859]:9004", newForwardCfg("localhost", 8004, "fe80::6358:bbae:26f8:7859", 9004))
-	assertForwardCfg("[::1]:8005\tlocalhost:9005", newForwardCfg("::1", 8005, "localhost", 9005))
-	assertForwardCfg("[fe80::6358:bbae:26f8:7859]:8006\t127.0.0.1:9006", newForwardCfg("fe80::6358:bbae:26f8:7859", 8006, "127.0.0.1", 9006))
-	assertForwardCfg("[12a5:00c8:dae6:bd0a:8312:07f8:bc94:a1d9]:8007\t[::1]:9007", newForwardCfg("12a5:00c8:dae6:bd0a:8312:07f8:bc94:a1d9", 8007, "::1", 9007))
+	assertForwardCfg("127.0.0.1:8001\tlocalhost:9001", "127.0.0.1", 8001, "localhost", 9001)
+	assertForwardCfg("localhost:8002\t127.0.0.1:9002", "localhost", 8002, "127.0.0.1", 9002)
+	assertForwardCfg("127.0.0.1:8003\t[::1]:9003", "127.0.0.1", 8003, "::1", 9003)
+	assertForwardCfg("localhost:8004\t[fe80::6358:bbae:26f8:7859]:9004", "localhost", 8004, "fe80::6358:bbae:26f8:7859", 9004)
+	assertForwardCfg("[::1]:8005\tlocalhost:9005", "::1", 8005, "localhost", 9005)
+	assertForwardCfg("[fe80::6358:bbae:26f8:7859]:8006\t127.0.0.1:9006", "fe80::6358:bbae:26f8:7859", 8006, "127.0.0.1", 9006)
+	assertForwardCfg("[12a5:00c8:dae6:bd0a:8312:07f8:bc94:a1d9]:8007\t[::1]:9007", "12a5:00c8:dae6:bd0a:8312:07f8:bc94:a1d9", 8007, "::1", 9007)
 
-	assertForwardCfg("127.0.0.1/8001 \t localhost/9001", newForwardCfg("127.0.0.1", 8001, "localhost", 9001))
-	assertForwardCfg("localhost/8002 \t 127.0.0.1/9002", newForwardCfg("localhost", 8002, "127.0.0.1", 9002))
-	assertForwardCfg("127.0.0.1/8003 \t ::1/9003", newForwardCfg("127.0.0.1", 8003, "::1", 9003))
-	assertForwardCfg("localhost/8004 \t fe80::6358:bbae:26f8:7859/9004", newForwardCfg("localhost", 8004, "fe80::6358:bbae:26f8:7859", 9004))
-	assertForwardCfg("::1/8005 \t localhost/9005", newForwardCfg("::1", 8005, "localhost", 9005))
-	assertForwardCfg("fe80::6358:bbae:26f8:7859/8006 \t 127.0.0.1/9006", newForwardCfg("fe80::6358:bbae:26f8:7859", 8006, "127.0.0.1", 9006))
-	assertForwardCfg("12a5:00c8:dae6:bd0a:8312:07f8:bc94:a1d9/8007 \t ::1/9007", newForwardCfg("12a5:00c8:dae6:bd0a:8312:07f8:bc94:a1d9", 8007, "::1", 9007))
-	assertForwardCfg("/8008 \t localhost/9008", newForwardCfg("", 8008, "localhost", 9008))
-	assertForwardCfg("*/8009 \t fe80::6358:bbae:26f8:7859/9009", newForwardCfg("*", 8009, "fe80::6358:bbae:26f8:7859", 9009))
+	assertForwardCfg("127.0.0.1/8001 \t localhost/9001", "127.0.0.1", 8001, "localhost", 9001)
+	assertForwardCfg("localhost/8002 \t 127.0.0.1/9002", "localhost", 8002, "127.0.0.1", 9002)
+	assertForwardCfg("127.0.0.1/8003 \t ::1/9003", "127.0.0.1", 8003, "::1", 9003)
+	assertForwardCfg("localhost/8004 \t fe80::6358:bbae:26f8:7859/9004", "localhost", 8004, "fe80::6358:bbae:26f8:7859", 9004)
+	assertForwardCfg("::1/8005 \t localhost/9005", "::1", 8005, "localhost", 9005)
+	assertForwardCfg("fe80::6358:bbae:26f8:7859/8006 \t 127.0.0.1/9006", "fe80::6358:bbae:26f8:7859", 8006, "127.0.0.1", 9006)
+	assertForwardCfg("12a5:00c8:dae6:bd0a:8312:07f8:bc94:a1d9/8007 \t ::1/9007", "12a5:00c8:dae6:bd0a:8312:07f8:bc94:a1d9", 8007, "::1", 9007)
+	assertForwardCfg("/8008 \t localhost/9008", "", 8008, "localhost", 9008)
+	assertForwardCfg("*/8009 \t fe80::6358:bbae:26f8:7859/9009", "*", 8009, "fe80::6358:bbae:26f8:7859", 9009)
 
 	assertArgError := func(arg, errMsg string) {
 		t.Helper()
@@ -146,45 +148,46 @@ func TestParseForwardCfg(t *testing.T) {
 
 func TestParseForwardArg(t *testing.T) {
 	assert := assert.New(t)
-	assertForwardCfg := func(arg string, expected *forwardCfg) {
+	assertForwardCfgNil := func(arg string, bindAddr *string, bindPort int, destHost string, destPort int) {
 		t.Helper()
 		cfg, err := parseForwardArg(arg)
 		assert.Nil(err)
-		assert.Equal(expected, cfg)
+		assert.Equal(&forwardCfg{arg, bindAddr, bindPort, destHost, destPort}, cfg)
 	}
-	newForwardCfg := func(bindAddr string, bindPort int, destHost string, destPort int) *forwardCfg {
-		return &forwardCfg{&bindAddr, bindPort, destHost, destPort}
+	assertForwardCfg := func(arg string, bindAddr string, bindPort int, destHost string, destPort int) {
+		t.Helper()
+		assertForwardCfgNil(arg, &bindAddr, bindPort, destHost, destPort)
 	}
 
-	assertForwardCfg("8000:localhost:9000", &forwardCfg{nil, 8000, "localhost", 9000})
-	assertForwardCfg("8001:127.0.0.1:9001", &forwardCfg{nil, 8001, "127.0.0.1", 9001})
-	assertForwardCfg("8000/::1/9000", &forwardCfg{nil, 8000, "::1", 9000})
-	assertForwardCfg("8000:[::1]:9000", &forwardCfg{nil, 8000, "::1", 9000})
-	assertForwardCfg("8000/fe80::6358:bbae:26f8:7859/9000", &forwardCfg{nil, 8000, "fe80::6358:bbae:26f8:7859", 9000})
-	assertForwardCfg("8000:[fe80::6358:bbae:26f8:7859]:9000", &forwardCfg{nil, 8000, "fe80::6358:bbae:26f8:7859", 9000})
+	assertForwardCfgNil("8000:localhost:9000", nil, 8000, "localhost", 9000)
+	assertForwardCfgNil("8001:127.0.0.1:9001", nil, 8001, "127.0.0.1", 9001)
+	assertForwardCfgNil("8000/::1/9000", nil, 8000, "::1", 9000)
+	assertForwardCfgNil("8000:[::1]:9000", nil, 8000, "::1", 9000)
+	assertForwardCfgNil("8000/fe80::6358:bbae:26f8:7859/9000", nil, 8000, "fe80::6358:bbae:26f8:7859", 9000)
+	assertForwardCfgNil("8000:[fe80::6358:bbae:26f8:7859]:9000", nil, 8000, "fe80::6358:bbae:26f8:7859", 9000)
 
-	assertForwardCfg(":8001:localhost:9001", newForwardCfg("", 8001, "localhost", 9001))
-	assertForwardCfg(":8002:[::1]:9002", newForwardCfg("", 8002, "::1", 9002))
-	assertForwardCfg("*:8003:127.0.0.1:9003", newForwardCfg("*", 8003, "127.0.0.1", 9003))
-	assertForwardCfg("*:8004:[fe80::6358:bbae:26f8:7859]:9004", newForwardCfg("*", 8004, "fe80::6358:bbae:26f8:7859", 9004))
+	assertForwardCfg(":8001:localhost:9001", "", 8001, "localhost", 9001)
+	assertForwardCfg(":8002:[::1]:9002", "", 8002, "::1", 9002)
+	assertForwardCfg("*:8003:127.0.0.1:9003", "*", 8003, "127.0.0.1", 9003)
+	assertForwardCfg("*:8004:[fe80::6358:bbae:26f8:7859]:9004", "*", 8004, "fe80::6358:bbae:26f8:7859", 9004)
 
-	assertForwardCfg("127.0.0.1:8001:localhost:9001", newForwardCfg("127.0.0.1", 8001, "localhost", 9001))
-	assertForwardCfg("localhost:8002:127.0.0.1:9002", newForwardCfg("localhost", 8002, "127.0.0.1", 9002))
-	assertForwardCfg("127.0.0.1:8003:[::1]:9003", newForwardCfg("127.0.0.1", 8003, "::1", 9003))
-	assertForwardCfg("localhost:8004:[fe80::6358:bbae:26f8:7859]:9004", newForwardCfg("localhost", 8004, "fe80::6358:bbae:26f8:7859", 9004))
-	assertForwardCfg("[::1]:8005:localhost:9005", newForwardCfg("::1", 8005, "localhost", 9005))
-	assertForwardCfg("[fe80::6358:bbae:26f8:7859]:8006:127.0.0.1:9006", newForwardCfg("fe80::6358:bbae:26f8:7859", 8006, "127.0.0.1", 9006))
-	assertForwardCfg("[12a5:00c8:dae6:bd0a:8312:07f8:bc94:a1d9]:8007:[::1]:9007", newForwardCfg("12a5:00c8:dae6:bd0a:8312:07f8:bc94:a1d9", 8007, "::1", 9007))
+	assertForwardCfg("127.0.0.1:8001:localhost:9001", "127.0.0.1", 8001, "localhost", 9001)
+	assertForwardCfg("localhost:8002:127.0.0.1:9002", "localhost", 8002, "127.0.0.1", 9002)
+	assertForwardCfg("127.0.0.1:8003:[::1]:9003", "127.0.0.1", 8003, "::1", 9003)
+	assertForwardCfg("localhost:8004:[fe80::6358:bbae:26f8:7859]:9004", "localhost", 8004, "fe80::6358:bbae:26f8:7859", 9004)
+	assertForwardCfg("[::1]:8005:localhost:9005", "::1", 8005, "localhost", 9005)
+	assertForwardCfg("[fe80::6358:bbae:26f8:7859]:8006:127.0.0.1:9006", "fe80::6358:bbae:26f8:7859", 8006, "127.0.0.1", 9006)
+	assertForwardCfg("[12a5:00c8:dae6:bd0a:8312:07f8:bc94:a1d9]:8007:[::1]:9007", "12a5:00c8:dae6:bd0a:8312:07f8:bc94:a1d9", 8007, "::1", 9007)
 
-	assertForwardCfg("127.0.0.1/8001/localhost/9001", newForwardCfg("127.0.0.1", 8001, "localhost", 9001))
-	assertForwardCfg("localhost/8002/127.0.0.1/9002", newForwardCfg("localhost", 8002, "127.0.0.1", 9002))
-	assertForwardCfg("127.0.0.1/8003/::1/9003", newForwardCfg("127.0.0.1", 8003, "::1", 9003))
-	assertForwardCfg("localhost/8004/fe80::6358:bbae:26f8:7859/9004", newForwardCfg("localhost", 8004, "fe80::6358:bbae:26f8:7859", 9004))
-	assertForwardCfg("::1/8005/localhost/9005", newForwardCfg("::1", 8005, "localhost", 9005))
-	assertForwardCfg("fe80::6358:bbae:26f8:7859/8006/127.0.0.1/9006", newForwardCfg("fe80::6358:bbae:26f8:7859", 8006, "127.0.0.1", 9006))
-	assertForwardCfg("12a5:00c8:dae6:bd0a:8312:07f8:bc94:a1d9/8007/::1/9007", newForwardCfg("12a5:00c8:dae6:bd0a:8312:07f8:bc94:a1d9", 8007, "::1", 9007))
-	assertForwardCfg("/8008/localhost/9008", newForwardCfg("", 8008, "localhost", 9008))
-	assertForwardCfg("*/8009/fe80::6358:bbae:26f8:7859/9009", newForwardCfg("*", 8009, "fe80::6358:bbae:26f8:7859", 9009))
+	assertForwardCfg("127.0.0.1/8001/localhost/9001", "127.0.0.1", 8001, "localhost", 9001)
+	assertForwardCfg("localhost/8002/127.0.0.1/9002", "localhost", 8002, "127.0.0.1", 9002)
+	assertForwardCfg("127.0.0.1/8003/::1/9003", "127.0.0.1", 8003, "::1", 9003)
+	assertForwardCfg("localhost/8004/fe80::6358:bbae:26f8:7859/9004", "localhost", 8004, "fe80::6358:bbae:26f8:7859", 9004)
+	assertForwardCfg("::1/8005/localhost/9005", "::1", 8005, "localhost", 9005)
+	assertForwardCfg("fe80::6358:bbae:26f8:7859/8006/127.0.0.1/9006", "fe80::6358:bbae:26f8:7859", 8006, "127.0.0.1", 9006)
+	assertForwardCfg("12a5:00c8:dae6:bd0a:8312:07f8:bc94:a1d9/8007/::1/9007", "12a5:00c8:dae6:bd0a:8312:07f8:bc94:a1d9", 8007, "::1", 9007)
+	assertForwardCfg("/8008/localhost/9008", "", 8008, "localhost", 9008)
+	assertForwardCfg("*/8009/fe80::6358:bbae:26f8:7859/9009", "*", 8009, "fe80::6358:bbae:26f8:7859", 9009)
 
 	assertArgError := func(arg, errMsg string) {
 		t.Helper()
