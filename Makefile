@@ -23,7 +23,7 @@ GO_TEST := ${shell basename `which gotest 2>/dev/null` 2>/dev/null || echo go te
 
 all: ${BIN_DIR}/${TSSH}
 
-${BIN_DIR}/${TSSH}: $(wildcard ./cmd/tssh/*.go ./tssh/*.go)
+${BIN_DIR}/${TSSH}: $(wildcard ./cmd/tssh/*.go ./tssh/*.go) go.mod go.sum
 	go build -o ${BIN_DIR}/ ./cmd/tssh
 
 clean:

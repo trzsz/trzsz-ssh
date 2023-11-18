@@ -26,112 +26,15 @@ SOFTWARE.
 */
 
 import (
-	"fmt"
-	"io"
-	"os"
-	"strings"
-	"sync"
+	"net"
 	"time"
 
-	"github.com/trzsz/npipe"
-	"golang.org/x/crypto/ssh"
-	"golang.org/x/crypto/ssh/agent"
+	"github.com/Microsoft/go-winio"
 )
 
-var (
-	agentOnce   sync.Once
-	agentConn   *npipe.PipeConn
-	agentClient agent.ExtendedAgent
-)
+const defaultAgentAddr = `\\.\pipe\openssh-ssh-agent`
 
-func getAgentAddr(args *sshArgs) string {
-	if addr := getOptionConfig(args, "IdentityAgent"); addr != "" {
-		if strings.ToLower(addr) == "none" {
-			return ""
-		}
-		return addr
-	}
-	if addr := os.Getenv("SSH_AUTH_SOCK"); addr != "" {
-		return addr
-	}
-	if addr := `\\.\pipe\openssh-ssh-agent`; isFileExist(addr) {
-		return addr
-	}
-	return ""
-}
-
-func getAgentClient(args *sshArgs) agent.ExtendedAgent {
-	agentOnce.Do(func() {
-		addr := getAgentAddr(args)
-		if addr == "" {
-			debug("ssh agent named pipe is not set")
-			return
-		}
-
-		var err error
-		agentConn, err = npipe.DialTimeout(addr, time.Second)
-		if err != nil {
-			debug("dial ssh agent named pipe [%s] failed: %v", addr, err)
-			return
-		}
-
-		agentClient = agent.NewClient(agentConn)
-		debug("new ssh agent client [%s] success", addr)
-
-		cleanupAfterLogined = append(cleanupAfterLogined, func() {
-			agentConn.Close()
-			agentConn = nil
-			agentClient = nil
-		})
-	})
-	return agentClient
-}
-
-const channelType = "auth-agent@openssh.com"
-
-func forwardToRemote(client *ssh.Client, addr string) error {
-	channels := client.HandleChannelOpen(channelType)
-	if channels == nil {
-		return fmt.Errorf("agent: already have handler for %s", channelType)
-	}
-	conn, err := npipe.DialTimeout(addr, time.Second)
-	if err != nil {
-		return err
-	}
-	conn.Close()
-
-	go func() {
-		for ch := range channels {
-			channel, reqs, err := ch.Accept()
-			if err != nil {
-				continue
-			}
-			go ssh.DiscardRequests(reqs)
-			go forwardNamedPipe(channel, addr)
-		}
-	}()
-	return nil
-}
-
-func forwardNamedPipe(channel ssh.Channel, addr string) {
-	conn, err := npipe.DialTimeout(addr, time.Second)
-	if err != nil {
-		return
-	}
-
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		io.Copy(conn, channel)
-		wg.Done()
-	}()
-	go func() {
-		io.Copy(channel, conn)
-		channel.CloseWrite()
-		wg.Done()
-	}()
-
-	wg.Wait()
-	conn.Close()
-	channel.Close()
+func dialAgent(addr string) (net.Conn, error) {
+	timeout := time.Second
+	return winio.DialPipe(addr, &timeout)
 }
