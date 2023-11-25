@@ -61,6 +61,7 @@ type sshHost struct {
 	ProxyCommand  string
 	ProxyJump     string
 	RemoteCommand string
+	GroupLabels   string
 	Selected      bool
 }
 
@@ -211,7 +212,7 @@ func (c *tsshConfig) doLoadConfig() {
 		ssh_config.SetDefault("IdentityFile", "")
 
 		if c.configPath == "" {
-			debug("no configuration files will be read")
+			debug("no ssh configuration file path")
 			return
 		}
 		c.config = loadConfig(c.configPath, false)
@@ -223,6 +224,20 @@ func (c *tsshConfig) doLoadConfig() {
 			}
 			c.sysConfig = loadConfig(c.sysConfigPath, true)
 		}
+	})
+}
+
+func (c *tsshConfig) doLoadExConfig() {
+	c.loadExConfig.Do(func() {
+		if c.exConfigPath == "" {
+			debug("no extended configuration file path")
+			return
+		}
+		if !isFileExist(c.exConfigPath) {
+			debug("extended config [%s] does not exist", c.exConfigPath)
+			return
+		}
+		c.exConfig = loadConfig(c.exConfigPath, false)
 	})
 }
 
@@ -269,17 +284,7 @@ func getAllConfig(alias, key string) []string {
 }
 
 func getExConfig(alias, key string) string {
-	userConfig.loadExConfig.Do(func() {
-		if userConfig.exConfigPath == "" {
-			debug("no extended configuration will be read")
-			return
-		}
-		if !isFileExist(userConfig.exConfigPath) {
-			debug("extended config [%s] does not exist", userConfig.exConfigPath)
-			return
-		}
-		userConfig.exConfig = loadConfig(userConfig.exConfigPath, false)
-	})
+	userConfig.doLoadExConfig()
 
 	if userConfig.exConfig != nil {
 		value, _ := userConfig.exConfig.Get(alias, key)
@@ -289,8 +294,29 @@ func getExConfig(alias, key string) string {
 		}
 	}
 
+	if value := getConfig(alias, key); value != "" {
+		debug("get extended config [%s] for [%s] success", key, alias)
+		return value
+	}
+
 	debug("no extended config [%s] for [%s]", key, alias)
 	return ""
+}
+
+func getAllExConfig(alias, key string) []string {
+	userConfig.doLoadExConfig()
+
+	var values []string
+	if userConfig.exConfig != nil {
+		if vals, _ := userConfig.exConfig.GetAll(alias, key); len(vals) > 0 {
+			values = append(values, vals...)
+		}
+	}
+	if vals := getAllConfig(alias, key); len(vals) > 0 {
+		values = append(values, vals...)
+	}
+
+	return values
 }
 
 func getAllHosts() []*sshHost {
@@ -346,10 +372,29 @@ func appendPromptHosts(hosts []*sshHost, cfgHosts ...*ssh_config.Host) []*sshHos
 				ProxyCommand:  getConfig(alias, "ProxyCommand"),
 				ProxyJump:     getConfig(alias, "ProxyJump"),
 				RemoteCommand: getConfig(alias, "RemoteCommand"),
+				GroupLabels:   getGroupLabels(alias),
 			})
 		}
 	}
 	return hosts
+}
+
+func getGroupLabels(alias string) string {
+	var groupLabels []string
+	addGroupLabel := func(groupLabel string) {
+		for _, label := range groupLabels {
+			if label == groupLabel {
+				return
+			}
+		}
+		groupLabels = append(groupLabels, groupLabel)
+	}
+	for _, groupLabel := range getAllExConfig(alias, "GroupLabels") {
+		for _, label := range strings.Fields(groupLabel) {
+			addGroupLabel(label)
+		}
+	}
+	return strings.Join(groupLabels, " ")
 }
 
 func getOptionConfig(args *sshArgs, option string) string {

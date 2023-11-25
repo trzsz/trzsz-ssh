@@ -538,10 +538,13 @@ func (p *sshPrompt) wrapStdin() {
 }
 
 func matchHost(h *sshHost, keywords []string) bool {
-	alias := strings.ReplaceAll(strings.ToLower(h.Alias), " ", "")
-	host := strings.ReplaceAll(strings.ToLower(h.Host), " ", "")
-	for _, keywork := range keywords {
-		if !strings.Contains(alias, keywork) && !strings.Contains(host, keywork) {
+	host := strings.ToLower(h.Host)
+	alias := strings.ToLower(h.Alias)
+	labels := strings.ToLower(h.GroupLabels)
+	for _, keyword := range keywords {
+		if !strings.Contains(host, keyword) &&
+			!strings.Contains(alias, keyword) &&
+			!strings.Contains(labels, keyword) {
 			return false
 		}
 	}
@@ -557,9 +560,10 @@ func chooseAlias(keywords string) (string, bool, error) {
 
 	templates := &promptui.SelectTemplates{
 		Help: `{{ "Use ← ↓ ↑ → h j k l to navigate, / toggles search, ? toggles help" | faint }}`,
-		Active: fmt.Sprintf(`%s {{ if .Selected }}{{ "✔ " | green }}{{ end }}{{ .Alias | cyan }} ({{ .Host | red }})`,
-			promptCursorIcon),
-		Inactive: `   {{ if .Selected }}{{ "✔ " | green }}{{ end }}{{ .Alias | cyan }} ({{ .Host | red }})`,
+		Active: fmt.Sprintf(`%s {{ if .Selected }}{{ "✔ " | green }}{{ end }}{{ .Alias | cyan }} ({{ .Host | red }})`+
+			`	{{ .GroupLabels }}`, promptCursorIcon),
+		Inactive: `   {{ if .Selected }}{{ "✔ " | green }}{{ end }}{{ .Alias | cyan }} ({{ .Host | red }})` +
+			`	 {{ .GroupLabels }}`,
 		Details: `
 --------- SSH Alias ----------
 {{ "Alias:" | faint }}	{{ .Alias }}
@@ -569,6 +573,9 @@ func chooseAlias(keywords string) (string, bool, error) {
 {{- end }}
 {{- if .User }}
 {{ "User:" | faint }}	{{ .User }}
+{{- end }}
+{{- if .GroupLabels }}
+{{ "GroupLabels:" | faint }}	{{ .GroupLabels }}
 {{- end }}
 {{- if .IdentityFile }}
 {{ "IdentityFile:" | faint }}	{{ .IdentityFile }}
