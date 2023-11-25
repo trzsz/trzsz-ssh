@@ -41,8 +41,6 @@ import (
 var promptCursorIcon = "🧨"
 var promptSelectedIcon = "🍺"
 
-const promptPageSize = 10
-
 const (
 	keyCtrlA     = '\x01'
 	keyCtrlB     = '\x02'
@@ -148,7 +146,7 @@ func (p *sshPrompt) getShortcuts() []string {
 }
 
 func (p *sshPrompt) getPageCount() int {
-	return (len(p.hosts)-1)/promptPageSize + 1
+	return (len(p.hosts)-1)/getPromptPageSize() + 1
 }
 
 func (p *sshPrompt) hasSelected() bool {
@@ -603,7 +601,7 @@ func chooseAlias(keywords string) (string, bool, error) {
 			Label:        "SSH Alias",
 			Items:        hosts,
 			Templates:    templates,
-			Size:         promptPageSize,
+			Size:         getPromptPageSize(),
 			Searcher:     searcher,
 			Stdin:        pipeIn,
 			Stdout:       &bellFilter{os.Stderr},

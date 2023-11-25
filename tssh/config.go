@@ -36,6 +36,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -71,6 +72,7 @@ type tsshConfig struct {
 	exConfigPath        string
 	defaultUploadPath   string
 	defaultDownloadPath string
+	promptPageSize      uint8
 	loadConfig          sync.Once
 	loadExConfig        sync.Once
 	loadHosts           sync.Once
@@ -123,6 +125,13 @@ func parseTsshConfig() {
 			userConfig.defaultUploadPath = resolveHomeDir(value)
 		case name == "defaultdownloadpath" && userConfig.defaultDownloadPath == "":
 			userConfig.defaultDownloadPath = resolveHomeDir(value)
+		case name == "promptpagesize" && userConfig.promptPageSize == 0:
+			pageSize, err := strconv.ParseUint(value, 10, 8)
+			if err != nil {
+				warning("PromptPageSize %s is invalid: %v", value, err)
+			} else {
+				userConfig.promptPageSize = uint8(pageSize)
+			}
 		}
 	}
 
@@ -137,6 +146,9 @@ func parseTsshConfig() {
 	}
 	if userConfig.defaultDownloadPath != "" {
 		debug("DefaultDownloadPath = %s", userConfig.defaultDownloadPath)
+	}
+	if userConfig.promptPageSize != 0 {
+		debug("PromptPageSize = %d", userConfig.promptPageSize)
 	}
 }
 
@@ -466,4 +478,11 @@ func getSecretConfig(alias, key string) string {
 		warning("decode secret [%s] failed: %v", value, err)
 	}
 	return getExConfig(alias, key)
+}
+
+func getPromptPageSize() int {
+	if userConfig.promptPageSize != 0 {
+		return int(userConfig.promptPageSize)
+	}
+	return 10
 }
