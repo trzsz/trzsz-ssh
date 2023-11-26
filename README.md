@@ -156,8 +156,9 @@ _如果服务器不安装 [trzsz](https://trzsz.github.io/cn/)，也能用 `tssh
 
 _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\Users\your_name\`。_
 
-- 在客户端生成密钥对，一般存放在 `~/.ssh/` 下：
+- 在客户端生成密钥对，一般存放在 `~/.ssh/` 下（ 只要一种就可以了 ）：
 
+  - `ssh-keygen -t ed25519` 生成 ED25519 的，私钥 `~/.ssh/id_ed25519`，公钥 `~/.ssh/id_ed25519.pub`。
   - `ssh-keygen -t rsa -b 4096` 生成 RSA 的，私钥 `~/.ssh/id_rsa`，公钥 `~/.ssh/id_rsa.pub`。
 
 - 登录服务器，将公钥（ 即前面生成密钥对时 `.pub` 后缀的文件内容 ）追加写入服务器上的 `~/.ssh/authorized_keys` 文件中。
@@ -200,19 +201,45 @@ _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\
   tssh -t -o RemoteCommand="ping -c3 trzsz.github.io |cat&& bash"
   ```
 
+## 分组标签
+
+- 如果服务器数量很多，分组标签 `GroupLabels` 可以在按 `/` 搜索时，快速找到目标服务器。
+
+- 按 `/` 输入分组标签后，`回车`可以锁定；再按 `/` 可以输入另一个分组标签，`回车`再次锁定。
+
+- 在非搜索模式下，按 `E` 可以清空当前搜索标签；在搜索模式下按 `Ctrl + E` 也是同样效果。
+
+- 支持在一个 `GroupLabels` 中以空格分隔，配置多个分组标签；支持配置多个 `GroupLabels`。
+
+- 支持以通配符 \* 的形式，在多个 Host 节点配置分组标签，`tssh` 会将所有的标签汇总起来。
+
+  ```
+  # 以下 testAA 具有标签 group1 group2 label3 label4 group5，可以加上 `#!!` 前缀，以兼容标准 ssh
+  Host test*
+      #!! GroupLabels group1 group2
+      #!! GroupLabels label3
+  Host testAA
+      #!! GroupLabels label4 group5
+  ```
+
 ## 记住密码
 
-- 为了兼容标准 ssh ，密码配置项独立放在 `~/.ssh/password` 中，其他配置项依然放在 `~/.ssh/config` 中。
+- 为了兼容标准 ssh ，密码可以单独配置在 `~/.ssh/password` 中，也可以在 `~/.ssh/config` 中加上 `#!!` 前缀。
 
-- 推荐使用前面密钥认证的方式，密码的安全性弱一些。如果必须要用，建议设置好 `~/.ssh/password` 的权限：
+- 推荐使用前面密钥认证的方式，密码的安全性弱一些。如果必须要用密码，建议设置好 `~/.ssh/password` 的权限，如：
 
   ```sh
   chmod 700 ~/.ssh && chmod 600 ~/.ssh/password
   ```
 
-- 下面 `~/.ssh/password` 配置 `test2` 的密码是 `123456`，其他以 `test` 开头的密码是 `111111`：
+- 下面配置 `test1` 和 `test2` 的密码是 `123456`，其他以 `test` 开头的密码是 `111111`：
 
   ```
+  # 如果配置在 ~/.ssh/config 中，可以加上 `#!!` 前缀，以兼容标准 ssh
+  Host test1
+      #!! Password 123456
+
+  # 如果配置在 ~/.ssh/password 中，则不需要考虑是否兼容标准 ssh
   Host test2
       Password 123456
 
@@ -223,20 +250,20 @@ _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\
       Password 111111
   ```
 
-- 支持记住私钥的`Passphrase`。如果 `~/.ssh/config` 中配置了 `IdentityFile`, 则使用相同的 Host 别名，在 `~/.ssh/password` 中配置对应的 `Passphrase`。如果 `~/.ssh/config` 中没有配置 `IdentityFile`，通用的私钥则使用私钥文件名代替 Host 别名。举例：
+- 支持记住私钥的`Passphrase`（ 推荐使用 `ssh-agent` ）。支持与 `IdentityFile` 一起配置, 支持使用私钥文件名代替 Host 别名设置通用密钥的 `Passphrase`。举例：
 
   ```
-  # ~/.ssh/config 中 test1 配置了 IdentityFile
+  # IdentityFile 和 Passphrase 一起配置，可以加上 `#!!` 前缀，以兼容标准 ssh
   Host test1
       IdentityFile /path/to/id_rsa
-  ```
+      #!! Passphrase 123456
 
-  ```
-  # ~/.ssh/password 中配置 test1 私钥对应的 Passphrase
-  Host test1
-      Passphrase 123456
+  # 在 ~/.ssh/config 中配置通用私钥 ~/.ssh/id_ed25519 对应的 Passphrase
+  # 可以加上通配符 * 以避免 tssh 搜索和选择时，文件名出现在服务器列表中。
+  Host id_ed25519*
+      #!! Passphrase 111111
 
-  # ~/.ssh/password 中配置通用私钥 ~/.ssh/id_rsa 对应的 Passphrase
+  # 在 ~/.ssh/password 中配置则不需要通配符*，也不会出现在服务器列表中。
   Host id_rsa
       Passphrase 111111
   ```
@@ -245,11 +272,12 @@ _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\
 
 - 除了私钥和密码，还有一种登录方式，英文叫 keyboard interactive ，是服务器返回一些问题，客户端提供正确的答案就能登录，很多自定义的一次性密码就是利用这种方式实现的。
 
-- 如果答案是固定不变的，`tssh` 支持“记住答案”，也是在 `~/.ssh/password` 中进行配置。大部分都是只有一个问题，只要配置 `QuestionAnswer1` 即可。对于有多个问题的，每个问题答案可按序号进行配置，也可以按问题的 hex 编码进行配置。
+- 如果答案是固定不变的，`tssh` 支持“记住答案”。大部分都是只有一个问题，只要配置 `QuestionAnswer1` 即可。对于有多个问题的，每个问题答案可按序号进行配置，也可以按问题的 hex 编码进行配置。
 
 - 使用 `tssh --debug` 登录，会输出问题的 hex 编码，从而知道该如何使用 hex 编码进行配置。配置举例：
 
   ```
+  # 如果配置在 ~/.ssh/config 中，可以加上 `#!!` 前缀，以兼容标准 ssh
   Host test1
       QuestionAnswer1 答案一
   Host test2
@@ -277,23 +305,28 @@ _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\
 
   # tsz 下载时，自动保存的路径，为空时弹出对话框手工选择，默认为空
   DefaultDownloadPath = ~/Downloads
+
+  # tssh 搜索和选择服务器时，每页显示的记录数，默认为 10
+  PromptPageSize = 10
   ```
 
 ## 其他功能
 
 - 使用 `-f` 后台运行时，可以一并加上 `--reconnect` 参数，这样在后台进程因连接断开等而退出时，会自动重新连接。
 
-- 使用 `--dragfile` 启用拖拽上传功能，想默认启用则可以在 `ExConfigPath` 配置的文件（ 默认是 `~/.ssh/password` ）中配置：
+- 使用 `--dragfile` 启用拖拽上传功能，想默认启用则可以在 `~/.ssh/config` 或扩展配置 `ExConfigPath` 中配置：
 
   ```
   Host *
+    # 如果配置在 ~/.ssh/config 中，可以加上 `#!!` 前缀，以兼容标准 ssh
     EnableDragFile Yes
   ```
 
-- 使用 `-oEnableTrzsz=No` 禁用 trzsz 功能，想默认禁用则可以在 `ExConfigPath` 配置的文件（ 默认是 `~/.ssh/password` ）中配置：
+- 使用 `-oEnableTrzsz=No` 禁用 trzsz 功能，想默认禁用则可以在 `~/.ssh/config` 或扩展配置 `ExConfigPath` 中配置：
 
   ```
   Host server1
+    # 如果配置在 ~/.ssh/config 中，可以加上 `#!!` 前缀，以兼容标准 ssh
     EnableTrzsz No
   ```
 
@@ -303,6 +336,7 @@ _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\
 
   ```
   Host server2
+    # 如果配置在 ~/.ssh/config 中，可以加上 `#!!` 前缀，以兼容标准 ssh
     encPassword de88c4dbdc95d85303682734e2397c4d8dd29bfff09ec53580f31dd40291fc8c7755
     encQuestionAnswer1 93956f6e7e9f2aef3af7d6a61f7046dddf14aa4bbd9845dbb836fe3782b62ac0d89f
   ```
@@ -339,11 +373,15 @@ _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\
 
   - `--dragfile` 参数可能会让 Warp 分块功能失效，请参考前文配置 `EnableDragFile` 来启用拖拽功能。
 
-  - 拖拽文件或目录进入 Warp 终端后，可能不会立即触发上传，需要多按一次回车键，才会上传。
+  - 拖拽文件或目录进入 Warp 终端后，可能不会立即触发上传，需要多按一次`回车`键，才会上传。
 
 - 如果你在使用 Windows7 或者旧版本的 Windows10 等，遇到 `enable virtual terminal failed` 的错误。
 
   - 可以尝试在 [Cygwin](https://www.cygwin.com/)、[MSYS2](https://www.msys2.org/) 或 [Git Bash](https://www.atlassian.com/git/tutorials/git-bash) 内使用 `tssh`。
+
+- 如果在 `~/.ssh/config` 中配置了 `tssh` 特有的配置项后，标准 `ssh` 报错 `Bad configuration option`。
+
+  - 可以在出错配置项中加上前缀 `#!!`，标准 `ssh` 会将它当作注释，而 `tssh` 则会认为它是有效配置之一。
 
 ## 录屏演示
 
