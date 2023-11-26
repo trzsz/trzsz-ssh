@@ -308,6 +308,9 @@ _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\
 
   # tssh 搜索和选择服务器时，每页显示的记录数，默认为 10
   PromptPageSize = 10
+
+  # tssh 搜索和选择服务器时，详情中显示的配置列表，默认如下：
+  PromptDetailItems = Alias Host Port User GroupLabels IdentityFile ProxyCommand ProxyJump RemoteCommand
   ```
 
 ## 其他功能

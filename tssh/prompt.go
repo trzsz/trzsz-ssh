@@ -562,31 +562,7 @@ func chooseAlias(keywords string) (string, bool, error) {
 			`	{{ .GroupLabels }}`, promptCursorIcon),
 		Inactive: `   {{ if .Selected }}{{ "✔ " | green }}{{ end }}{{ .Alias | cyan }} ({{ .Host | red }})` +
 			`	 {{ .GroupLabels }}`,
-		Details: `
---------- SSH Alias ----------
-{{ "Alias:" | faint }}	{{ .Alias }}
-{{ "Host:" | faint }}	{{ .Host }}
-{{- if ne .Port "22" }}
-{{ "Port:" | faint }}	{{ .Port }}
-{{- end }}
-{{- if .User }}
-{{ "User:" | faint }}	{{ .User }}
-{{- end }}
-{{- if .GroupLabels }}
-{{ "GroupLabels:" | faint }}	{{ .GroupLabels }}
-{{- end }}
-{{- if .IdentityFile }}
-{{ "IdentityFile:" | faint }}	{{ .IdentityFile }}
-{{- end }}
-{{- if .ProxyCommand }}
-{{ "ProxyCommand:" | faint }}	{{ .ProxyCommand }}
-{{- end }}
-{{- if .ProxyJump }}
-{{ "ProxyJump:" | faint }}	{{ .ProxyJump }}
-{{- end }}
-{{- if .RemoteCommand }}
-{{ "RemoteCommand:" | faint }}	{{ .RemoteCommand }}
-{{- end }}`,
+		Details: getPromptDetailTemplate(),
 	}
 
 	searcher := func(input string, index int) bool {

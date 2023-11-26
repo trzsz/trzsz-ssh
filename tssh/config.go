@@ -73,6 +73,7 @@ type tsshConfig struct {
 	defaultUploadPath   string
 	defaultDownloadPath string
 	promptPageSize      uint8
+	promptDetailItems   string
 	loadConfig          sync.Once
 	loadExConfig        sync.Once
 	loadHosts           sync.Once
@@ -132,6 +133,8 @@ func parseTsshConfig() {
 			} else {
 				userConfig.promptPageSize = uint8(pageSize)
 			}
+		case name == "promptdetailitems" && userConfig.promptDetailItems == "":
+			userConfig.promptDetailItems = value
 		}
 	}
 
@@ -149,6 +152,9 @@ func parseTsshConfig() {
 	}
 	if userConfig.promptPageSize != 0 {
 		debug("PromptPageSize = %d", userConfig.promptPageSize)
+	}
+	if userConfig.promptDetailItems != "" {
+		debug("PromptDetailItems = %s", userConfig.promptDetailItems)
 	}
 }
 
@@ -485,4 +491,38 @@ func getPromptPageSize() int {
 		return int(userConfig.promptPageSize)
 	}
 	return 10
+}
+
+func getPromptDetailTemplate() string {
+	promptDetailItems := userConfig.promptDetailItems
+	if promptDetailItems == "" {
+		promptDetailItems = "Alias Host Port User GroupLabels IdentityFile ProxyCommand ProxyJump RemoteCommand"
+	}
+	var builder strings.Builder
+	builder.WriteString(`{{ "--------- SSH Alias ----------\n" }}`)
+	for _, item := range strings.Fields(promptDetailItems) {
+		switch strings.ToLower(item) {
+		case "alias":
+			builder.WriteString(`{{- if .Alias }}{{ "Alias:" | faint }}{{ "\t" }}{{ .Alias }}{{ "\n" }}{{ end }}`)
+		case "host":
+			builder.WriteString(`{{- if .Host }}{{ "Host:" | faint }}{{ "\t" }}{{ .Host }}{{ "\n" }}{{ end }}`)
+		case "port":
+			builder.WriteString(`{{- if ne .Port "22" }}{{ "Port:" | faint }}{{ "\t" }}{{ .Port }}{{ "\n" }}{{ end }}`)
+		case "user":
+			builder.WriteString(`{{- if .User }}{{ "User:" | faint }}{{ "\t" }}{{ .User }}{{ "\n" }}{{ end }}`)
+		case "grouplabels":
+			builder.WriteString(`{{- if .GroupLabels }}{{ "GroupLabels:" | faint }}{{ "\t" }}{{ .GroupLabels }}{{ "\n" }}{{ end }}`)
+		case "identityfile":
+			builder.WriteString(`{{- if .IdentityFile }}{{ "IdentityFile:" | faint }}{{ "\t" }}{{ .IdentityFile }}{{ "\n" }}{{ end }}`)
+		case "proxycommand":
+			builder.WriteString(`{{- if .ProxyCommand }}{{ "ProxyCommand:" | faint }}{{ "\t" }}{{ .ProxyCommand }}{{ "\n" }}{{ end }}`)
+		case "proxyjump":
+			builder.WriteString(`{{- if .ProxyJump }}{{ "ProxyJump:" | faint }}{{ "\t" }}{{ .ProxyJump }}{{ "\n" }}{{ end }}`)
+		case "remotecommand":
+			builder.WriteString(`{{- if .RemoteCommand }}{{ "RemoteCommand:" | faint }}{{ "\t" }}{{ .RemoteCommand }}{{ "\n" }}{{ end }}`)
+		default:
+			warning("Unknown prompt detail item: %s", item)
+		}
+	}
+	return builder.String()
 }
