@@ -178,11 +178,6 @@ func TsshMain() int {
 	var args sshArgs
 	parser := arg.MustParse(&args)
 
-	// execute tools
-	if args.Ver || args.EncSecret {
-		return execTools(&args)
-	}
-
 	// debug log
 	if args.Debug {
 		enableDebugLogging = true
@@ -209,6 +204,11 @@ func TsshMain() int {
 		if err = setupVirtualTerminal(); err != nil {
 			return 2
 		}
+	}
+
+	// execute tools
+	if code, quit := execTools(&args); quit {
+		return code
 	}
 
 	// choose ssh alias

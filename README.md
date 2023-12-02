@@ -335,7 +335,7 @@ _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\
 
 - 上文说的“记住密码”和“记住答案”，只要在配置项前面加上 `enc` 则可以配置密文，防止被人窥屏。密文可以解决密码含有`#`的问题。
 
-  运行 `tssh --enc-secret`，输入密码或答案的明文（ 不会回显 ），可得到用于配置的密文（ 相同密码每次加密的结果不同 ）：
+  运行 `tssh --enc-secret`，输入密码或答案的明文，可得到用于配置的密文（ 相同密码每次加密的结果不同 ）：
 
   ```
   Host server2
@@ -343,6 +343,8 @@ _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\
     encPassword de88c4dbdc95d85303682734e2397c4d8dd29bfff09ec53580f31dd40291fc8c7755
     encQuestionAnswer1 93956f6e7e9f2aef3af7d6a61f7046dddf14aa4bbd9845dbb836fe3782b62ac0d89f
   ```
+
+- 运行 `tssh --new-host` 可以在 TUI 界面轻松添加 SSH 配置，并且完成后可以立即登录。
 
 ## 快捷键
 
