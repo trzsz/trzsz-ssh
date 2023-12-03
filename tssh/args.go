@@ -74,6 +74,7 @@ type sshArgs struct {
 	TraceLog       bool        `arg:"--tracelog" help:"enable trzsz detect trace logs for debugging"`
 	Relay          bool        `arg:"--relay" help:"force trzsz run as a relay on the jump server"`
 	Debug          bool        `arg:"--debug" help:"verbose mode for debugging, same as ssh's -vvv"`
+	Zmodem         bool        `arg:"--zmodem" help:"enable zmodem lrzsz ( rz / sz ) feature"`
 	EncSecret      bool        `arg:"--enc-secret" help:"tools: encode secret for configuration"`
 	NewHost        bool        `arg:"--new-host" help:"tools: add new host to configuration"`
 	originalDest   string

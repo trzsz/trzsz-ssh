@@ -79,6 +79,7 @@ func TestSshArgs(t *testing.T) {
 	assertArgsEqual("--tracelog", sshArgs{TraceLog: true})
 	assertArgsEqual("--relay", sshArgs{Relay: true})
 	assertArgsEqual("--debug", sshArgs{Debug: true})
+	assertArgsEqual("--zmodem", sshArgs{Zmodem: true})
 
 	assertArgsEqual("--enc-secret", sshArgs{EncSecret: true})
 	assertArgsEqual("--new-host", sshArgs{NewHost: true})

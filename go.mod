@@ -19,14 +19,14 @@ require (
 	github.com/trzsz/iterm2 v0.1.1
 	github.com/trzsz/promptui v0.10.5
 	github.com/trzsz/ssh_config v1.3.4
-	github.com/trzsz/trzsz-go v1.1.7-0.20231111144918-b45bed013817
+	github.com/trzsz/trzsz-go v1.1.7-0.20231203152037-fc290aa1e938
 	golang.org/x/crypto v0.16.0
 	golang.org/x/sys v0.15.0
 	golang.org/x/term v0.15.0
 )
 
 require (
-	github.com/UserExistsError/conpty v0.1.1 // indirect
+	github.com/UserExistsError/conpty v0.1.2 // indirect
 	github.com/akavel/rsrc v0.10.2 // indirect
 	github.com/alexflint/go-scalar v1.2.0 // indirect
 	github.com/andybrewer/mack v0.0.0-20220307193339-22e922cc18af // indirect

@@ -129,6 +129,7 @@ func enableTrzsz(args *sshArgs, client *ssh.Client, session *ssh.Session, server
 		TerminalColumns: int32(width),
 		DetectDragFile:  args.DragFile || strings.ToLower(getExOptionConfig(args, "EnableDragFile")) == "yes",
 		DetectTraceLog:  args.TraceLog,
+		EnableZmodem:    args.Zmodem || strings.ToLower(getExOptionConfig(args, "EnableZmodem")) == "yes",
 	})
 
 	// reset terminal size on resize
