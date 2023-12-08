@@ -171,10 +171,6 @@ func (m *iterm2Mgr) openPanes(hosts []*sshHost) {
 }
 
 func getIterm2Manager() terminalManager {
-	if os.Getenv("ITERM2_COOKIE") == "" {
-		debug("no ITERM2_COOKIE environment variable")
-		return nil
-	}
 	if os.Getenv("ITERM_SESSION_ID") == "" {
 		debug("no ITERM_SESSION_ID environment variable")
 		return nil
