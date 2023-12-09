@@ -27,6 +27,8 @@ package tssh
 
 import (
 	"fmt"
+	"io"
+	"math"
 	"os"
 	"strings"
 	"time"
@@ -34,6 +36,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"golang.org/x/crypto/ssh"
 )
 
 const (
@@ -44,6 +47,71 @@ const (
 	magentaColor = lipgloss.Color("5")
 	cyanColor    = lipgloss.Color("6")
 )
+
+func hideCursor(writer io.Writer) {
+	_, _ = writer.Write([]byte("\x1b[?25l"))
+}
+
+func showCursor(writer io.Writer) {
+	_, _ = writer.Write([]byte("\x1b[?25h"))
+}
+
+type toolsProgress struct {
+	prefix        string
+	totalSize     int
+	currentStep   int
+	progressTimer *time.Timer
+}
+
+func newToolsProgress(tool, name string, totalSize int) *toolsProgress {
+	hideCursor(os.Stderr)
+	p := &toolsProgress{prefix: fmt.Sprintf("[%s] %s", tool, name), totalSize: totalSize}
+	p.progressTimer = time.AfterFunc(100*time.Millisecond, p.showProgress)
+	return p
+}
+
+func (p *toolsProgress) writeMessage(format string, a ...any) {
+	fmt.Fprintf(os.Stderr, fmt.Sprintf("\r\033[0;36m%s %s\033[0m", p.prefix, format), a...)
+}
+
+func (p *toolsProgress) addStep(delta int) {
+	p.currentStep += delta
+	if p.currentStep >= p.totalSize {
+		p.writeMessage("%d%%", 100)
+		p.stopProgress()
+	}
+}
+
+func (p *toolsProgress) showProgress() {
+	percentage := int(math.Round(float64(p.currentStep) * 100 / float64(p.totalSize)))
+	if percentage >= 100 {
+		return
+	}
+	p.writeMessage("%d%%", percentage)
+	p.progressTimer = time.AfterFunc(time.Second, p.showProgress)
+}
+
+func (p *toolsProgress) stopProgress() {
+	if p.progressTimer == nil {
+		return
+	}
+	p.progressTimer.Stop()
+	p.progressTimer = nil
+	p.writeMessage("\r\n")
+	showCursor(os.Stderr)
+}
+
+func toolsInfo(tool, format string, a ...any) {
+	fmt.Fprintf(os.Stderr, fmt.Sprintf("\033[0;36m[%s] %s\033[0m\r\n", tool, format), a...)
+}
+
+func toolsWarn(tool, format string, a ...any) {
+	fmt.Fprintf(os.Stderr, fmt.Sprintf("\033[0;33m[%s] %s\033[0m\r\n", tool, format), a...)
+}
+
+func toolsSucc(tool, format string, a ...any) {
+	fmt.Fprintf(os.Stderr, fmt.Sprintf("\033[0;32m[%s] %s\033[0m\r\n", tool, format), a...)
+}
 
 func toolsErrorExit(format string, a ...any) {
 	fmt.Fprintf(os.Stderr, fmt.Sprintf("\033[0;31m%s\033[0m\r\n", format), a...)
@@ -290,34 +358,38 @@ func promptPassword(promptLabel, helpMessage string, validator *inputValidator) 
 	return ""
 }
 
-func execTools(args *sshArgs) (int, bool) {
+func isFileNotExistOrEmpty(path string) bool {
+	stat, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return true
+	} else if err != nil {
+		return false
+	}
+	return stat.Size() == 0
+}
+
+// execLocalTools execute local tools if necessary
+//
+// return true to quit with return code
+// return false to continue ssh login
+func execLocalTools(args *sshArgs) (int, bool) {
 	switch {
 	case args.Ver:
 		fmt.Println(args.Version())
 		return 0, true
 	case args.EncSecret:
 		return execEncodeSecret()
-	case args.NewHost:
+	case args.NewHost || len(os.Args) == 1 && isFileNotExistOrEmpty(userConfig.configPath):
 		return execNewHost(args)
 	default:
 		return 0, false
 	}
 }
 
-func execEncodeSecret() (int, bool) {
-	secret := promptPassword("Password or secret to be encoded", "",
-		&inputValidator{func(secret string) error {
-			if secret == "" {
-				return fmt.Errorf("empty password or secret")
-			}
-			return nil
-		}})
-	encoded, err := encodeSecret([]byte(secret))
-	if err != nil {
-		toolsErrorExit("encode secret failed: %v", err)
+// execRemoteTools execute remote tools if necessary
+func execRemoteTools(args *sshArgs, client *ssh.Client) {
+	switch {
+	case args.InstallTrzsz:
+		execInstallTrzsz(args, client)
 	}
-	fmt.Printf("%s%s%s\r\n\r\n",
-		lipgloss.NewStyle().Foreground(greenColor).Render("Encoded secret for configuration"),
-		lipgloss.NewStyle().Faint(true).Render(": "), encoded)
-	return 0, true
 }

@@ -206,8 +206,8 @@ func TsshMain() int {
 		}
 	}
 
-	// execute tools
-	if code, quit := execTools(&args); quit {
+	// execute local tools if necessary
+	if code, quit := execLocalTools(&args); quit {
 		return code
 	}
 
@@ -287,6 +287,9 @@ func sshStart(args *sshArgs) error {
 		_ = client.Wait()
 		return nil
 	}
+
+	// execute remote tools if necessary
+	execRemoteTools(args, client)
 
 	// run command or start shell
 	if command != "" {
