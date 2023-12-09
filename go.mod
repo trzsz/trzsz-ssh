@@ -15,11 +15,11 @@ require (
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/skeema/knownhosts v1.2.1
 	github.com/stretchr/testify v1.8.4
-	github.com/trzsz/go-arg v1.5.2
+	github.com/trzsz/go-arg v1.5.3
 	github.com/trzsz/iterm2 v0.1.1
 	github.com/trzsz/promptui v0.10.5
 	github.com/trzsz/ssh_config v1.3.4
-	github.com/trzsz/trzsz-go v1.1.7-0.20231203152037-fc290aa1e938
+	github.com/trzsz/trzsz-go v1.1.7-0.20231209133301-4537ecb85e1c
 	golang.org/x/crypto v0.16.0
 	golang.org/x/sys v0.15.0
 	golang.org/x/term v0.15.0

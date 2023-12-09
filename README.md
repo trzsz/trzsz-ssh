@@ -90,10 +90,10 @@ _在作者的 MacOS 上，使用 `trzsz ssh` 的上传速度在 10 MB/s 左右�
 
   <details><summary><code>sudo yum install tssh</code></summary>
 
-  - 国内推荐使用 [wlnmp](https://www.wlnmp.com/install) 源，安装 tssh 只需要添加 wlnmp 源（ 配置 epel 源不是必须的 ），以 CentOS 为例：
+  - 国内推荐使用 [wlnmp](https://www.wlnmp.com/install) 源，安装 tssh 只需要添加 wlnmp 源（ 配置 epel 源不是必须的 ）：
 
     ```sh
-    sudo rpm -ivh https://mirrors.wlnmp.com/centos/wlnmp-release-centos.noarch.rpm
+    curl -fsSL "https://sh.wlnmp.com/wlnmp.sh" | bash
 
     sudo yum install tssh
     ```
@@ -333,9 +333,15 @@ _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\
     EnableZmodem Yes
   ```
 
-  - 需要在客户端（ 本地电脑 ）上安装 `lrzsz`，Windows 可以从 [lrzsz-win32](https://github.com/trzsz/lrzsz-win32/releases) 下载解压并加到 `PATH` 中。
+  - 需要在客户端（ 本地电脑 ）上安装 `lrzsz`，Windows 可以从 [lrzsz-win32](https://github.com/trzsz/lrzsz-win32/releases) 下载解压并加到 `PATH` 中，也可以如下安装：
 
-  - 关于进度条，己传文件大小和传输速度不是精确值，会比实际偏大一些，它的主要作用只是指示传输正在进行中。
+  ```
+  scoop install https://trzsz.github.io/lrzsz.json
+
+  choco install lrzsz --version=0.12.21
+  ```
+
+  - 关于进度条，己传文件大小和传输速度不是精确值，会有一些偏差，它的主要作用只是指示传输正在进行中。
 
 - 使用 `-oEnableTrzsz=No` 禁用 trzsz 功能，想默认禁用则可以在 `~/.ssh/config` 或扩展配置 `ExConfigPath` 中配置：
 
@@ -357,6 +363,8 @@ _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\
   ```
 
 - 运行 `tssh --new-host` 可以在 TUI 界面轻松添加 SSH 配置，并且完成后可以立即登录。
+
+- 运行 `tssh --install-trzsz` 可以自动安装 [trzsz](https://github.com/trzsz/trzsz-go) 到服务器的 `~/.local/bin/` 目录。若获取 `trzsz` 的最新版本号失败，可以通过 `--trzsz-version x.x.x` 参数自行指定。若下载 `trzsz` 的安装包失败，可以自行下载并通过 `--trzsz-bin-path /path/to/trzsz.tar.gz` 参数指定。
 
 ## 快捷键
 
