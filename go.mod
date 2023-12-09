@@ -19,7 +19,7 @@ require (
 	github.com/trzsz/iterm2 v0.1.1
 	github.com/trzsz/promptui v0.10.5
 	github.com/trzsz/ssh_config v1.3.4
-	github.com/trzsz/trzsz-go v1.1.7-0.20231209133301-4537ecb85e1c
+	github.com/trzsz/trzsz-go v1.1.7-0.20231209142115-a64ab46112dc
 	golang.org/x/crypto v0.16.0
 	golang.org/x/sys v0.15.0
 	golang.org/x/term v0.15.0
