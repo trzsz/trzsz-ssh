@@ -39,7 +39,20 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-func wrapStdIO(serverIn io.WriteCloser, serverOut io.Reader, tty bool) {
+func writeAll(dst io.Writer, data []byte) error {
+	m := 0
+	l := len(data)
+	for m < l {
+		n, err := dst.Write(data[m:])
+		if err != nil {
+			return err
+		}
+		m += n
+	}
+	return nil
+}
+
+func wrapStdIO(serverIn io.WriteCloser, serverOut io.Reader, serverErr io.Reader, tty bool) {
 	win := runtime.GOOS == "windows"
 	forwardIO := func(reader io.Reader, writer io.WriteCloser, oldVal, newVal []byte) {
 		defer writer.Close()
@@ -51,14 +64,9 @@ func wrapStdIO(serverIn io.WriteCloser, serverOut io.Reader, tty bool) {
 				if win && !tty {
 					buf = bytes.ReplaceAll(buf, oldVal, newVal)
 				}
-				w := 0
-				for w < len(buf) {
-					n, err := writer.Write(buf[w:])
-					if err != nil {
-						warning("wrap stdio write failed: %v", err)
-						return
-					}
-					w += n
+				if err := writeAll(writer, buf); err != nil {
+					warning("wrap stdio write failed: %v", err)
+					return
 				}
 			}
 			if err == io.EOF {
@@ -74,25 +82,35 @@ func wrapStdIO(serverIn io.WriteCloser, serverOut io.Reader, tty bool) {
 			}
 		}
 	}
-	go forwardIO(os.Stdin, serverIn, []byte("\r\n"), []byte("\n"))
-	go forwardIO(serverOut, os.Stdout, []byte("\n"), []byte("\r\n"))
+	if serverIn != nil {
+		go forwardIO(os.Stdin, serverIn, []byte("\r\n"), []byte("\n"))
+	}
+	if serverOut != nil {
+		go forwardIO(serverOut, os.Stdout, []byte("\n"), []byte("\r\n"))
+	}
+	if serverErr != nil {
+		go forwardIO(serverErr, os.Stderr, []byte("\n"), []byte("\r\n"))
+	}
 }
 
-func enableTrzsz(args *sshArgs, client *ssh.Client, session *ssh.Session, serverIn io.WriteCloser, serverOut io.Reader, tty bool) error {
+func enableTrzsz(args *sshArgs, client *ssh.Client, session *ssh.Session,
+	serverIn io.WriteCloser, serverOut io.Reader, serverErr io.Reader, tty bool) error {
 	// not terminal or not tty
 	if !isTerminal || !tty {
-		wrapStdIO(serverIn, serverOut, tty)
+		wrapStdIO(serverIn, serverOut, serverErr, tty)
 		return nil
 	}
 
 	// disable trzsz ( trz / tsz )
 	if strings.ToLower(getExOptionConfig(args, "EnableTrzsz")) == "no" {
-		wrapStdIO(serverIn, serverOut, tty)
+		wrapStdIO(serverIn, serverOut, serverErr, tty)
 		onTerminalResize(func(width, height int) { _ = session.WindowChange(height, width) })
 		return nil
 	}
 
 	// support trzsz ( trz / tsz )
+
+	wrapStdIO(nil, nil, serverErr, tty)
 
 	trzsz.SetAffectedByWindows(false)
 

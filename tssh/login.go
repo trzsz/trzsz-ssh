@@ -892,7 +892,8 @@ func sshAgentForward(args *sshArgs, client *ssh.Client, session *ssh.Session) {
 	debug("request ssh agent forwarding success")
 }
 
-func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session, serverIn io.WriteCloser, serverOut io.Reader, err error) {
+func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session,
+	serverIn io.WriteCloser, serverOut io.Reader, serverErr io.Reader, err error) {
 	defer func() {
 		if err != nil {
 			if session != nil {
@@ -960,7 +961,11 @@ func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session
 		err = fmt.Errorf("stdout pipe failed: %v", err)
 		return
 	}
-	session.Stderr = os.Stderr
+	serverErr, err = session.StderrPipe()
+	if err != nil {
+		err = fmt.Errorf("stderr pipe failed: %v", err)
+		return
+	}
 
 	// ssh agent forward
 	if !control {

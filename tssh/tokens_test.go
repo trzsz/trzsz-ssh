@@ -89,5 +89,5 @@ func TestExpandTokens(t *testing.T) {
 
 	assertControlPath("%j", "%j", "token [%j] in [%j] is not supported")
 	assertControlPath("p_%h_%d", "p_127.0.0.1_%d", "token [%d] in [p_%h_%d] is not supported yet")
-	assertControlPath("h%", "h", "[h%] ends with % is invalid")
+	assertControlPath("h%", "h%", "[h%] ends with % is invalid")
 }

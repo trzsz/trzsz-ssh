@@ -90,6 +90,7 @@ func expandTokens(str string, args *sshArgs, param *loginParam, tokens string) s
 	}
 	if state != 0 {
 		warning("[%s] ends with %% is invalid", str)
+		buf.WriteRune('%')
 	}
 	return buf.String()
 }

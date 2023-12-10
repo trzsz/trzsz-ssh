@@ -260,7 +260,7 @@ func sshStart(args *sshArgs) error {
 	}
 
 	// ssh login
-	client, session, serverIn, serverOut, err := sshLogin(args, tty)
+	client, session, serverIn, serverOut, serverErr, err := sshLogin(args, tty)
 	if err != nil {
 		return err
 	}
@@ -302,6 +302,9 @@ func sshStart(args *sshArgs) error {
 		}
 	}
 
+	// execute expect interactions if necessary
+	serverOut, serverErr = execExpectInteractions(args, serverIn, serverOut, serverErr)
+
 	// make stdin raw
 	if isTerminal && tty {
 		state, err := makeStdinRaw()
@@ -312,7 +315,7 @@ func sshStart(args *sshArgs) error {
 	}
 
 	// enable trzsz
-	if err := enableTrzsz(args, client, session, serverIn, serverOut, tty); err != nil {
+	if err := enableTrzsz(args, client, session, serverIn, serverOut, serverErr, tty); err != nil {
 		return err
 	}
 

@@ -223,6 +223,22 @@ _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\
       #!! GroupLabels label4 group5
   ```
 
+## 自动交互
+
+- 支持类似 `expect` 的自动交互功能，可以在登录服务器之后，自动匹配服务器的输出，然后自动输入。
+
+  ```
+  Host auto
+      #!! ExpectCount 2  # 配置自动交互的次数，默认是 0 即无自动交互
+      #!! ExpectTimeout 30  # 配置自动交互的超时时间（单位：秒），默认是 30 秒
+      #!! ExpectPattern1 *password  # 配置第一个自动交互的匹配表达式
+      # 配置第一个自动输入（密文），填 tssh --enc-secret 编码后的字符串，会自动发送 \r 回车
+      #!! ExpectSendPass1 d7983b4a8ac204bd073ed04741913befd4fbf813ad405d7404cb7d779536f8b87e71106d7780b2
+      #!! ExpectPattern2 $  # 配置第二个自动交互的匹配表达式
+      #!! ExpectSendText2 echo tssh expect\r  # 配置第二个自动输入（明文），需要指定 \r 才会发送回车
+      # 以上 ExpectSendPass? 和 ExpectSendText? 只要二选一即可，若都配置则 ExpectSendPass? 的优先级更高
+  ```
+
 ## 记住密码
 
 - 为了兼容标准 ssh ，密码可以单独配置在 `~/.ssh/password` 中，也可以在 `~/.ssh/config` 中加上 `#!!` 前缀。
