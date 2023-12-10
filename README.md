@@ -142,7 +142,8 @@ _在作者的 MacOS 上，使用 `trzsz ssh` 的上传速度在 10 MB/s 左右�
   ```sh
   git clone https://github.com/trzsz/trzsz-ssh.git
   cd trzsz-ssh
-  go build ./cmd/tssh
+  make
+  sudo make install
   ```
 
   </details>
