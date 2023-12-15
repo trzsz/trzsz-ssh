@@ -27,6 +27,7 @@ package tssh
 
 import (
 	"archive/tar"
+	"bufio"
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
@@ -41,6 +42,12 @@ import (
 )
 
 const kMaxBufferSize = 32 * 1024
+
+const (
+	kScpOK    = 0
+	kScpWarn  = 1
+	kScpError = 2
+)
 
 type trzszRelease struct {
 	TagName string `json:"tag_name"`
@@ -79,19 +86,20 @@ func checkTrzszVersion(client *ssh.Client, cmd, name, version string) bool {
 	return strings.TrimSpace(string(output)) == fmt.Sprintf("%s (trzsz) go %s", name, version)
 }
 
-func checkInstalledVersion(client *ssh.Client, name, version string) bool {
-	return checkTrzszVersion(client, fmt.Sprintf("~/.local/bin/%s -v", name), name, version)
+func checkInstalledVersion(client *ssh.Client, path, name, version string) bool {
+	// local may be Windows, remote may be Linux, so filepath.Join is not suitable here.
+	return checkTrzszVersion(client, fmt.Sprintf("%s/%s -v", path, name), name, version)
 }
 
 func checkTrzszExecutable(client *ssh.Client, name, version string) bool {
 	return checkTrzszVersion(client, fmt.Sprintf("$SHELL -l -c '%s -v'", name), name, version)
 }
 
-func checkTrzszPathEnv(client *ssh.Client, version string) {
+func checkTrzszPathEnv(client *ssh.Client, version, path string) {
 	trzExecutable := checkTrzszExecutable(client, "trz", version)
 	tszExecutable := checkTrzszExecutable(client, "tsz", version)
 	if !trzExecutable || !tszExecutable {
-		toolsInfo("InstallTrzsz", "you may need to add ~/.local/bin/ to the PATH environment variable")
+		toolsInfo("InstallTrzsz", "you may need to add %s to the PATH environment variable", path)
 	}
 }
 
@@ -141,6 +149,23 @@ func getRemoteServerArch(client *ssh.Client) (string, error) {
 	default:
 		return "", fmt.Errorf("arch [%s] does not support yet", arch)
 	}
+}
+
+func mkdirInstallPath(client *ssh.Client, path string) error {
+	session, err := client.NewSession()
+	if err != nil {
+		return err
+	}
+	defer session.Close()
+	output, err := session.CombinedOutput(fmt.Sprintf("mkdir -p -m 755 %s", path))
+	if err != nil {
+		errMsg := string(bytes.TrimSpace(output))
+		if errMsg != "" {
+			return fmt.Errorf("%s", errMsg)
+		}
+		return err
+	}
+	return nil
 }
 
 func extractTrzszBinary(gzr io.Reader, version, svrOS, arch string) ([]byte, []byte, error) {
@@ -249,7 +274,7 @@ func readTrzszBinary(path, version, svrOS, arch string) ([]byte, []byte, error) 
 	return extractTrzszBinary(gzr, version, svrOS, arch)
 }
 
-func uploadTrzszBinary(client *ssh.Client, trz, tsz []byte) error {
+func uploadTrzszBinary(client *ssh.Client, path string, trz, tsz []byte) error {
 	session, err := client.NewSession()
 	if err != nil {
 		return err
@@ -266,13 +291,24 @@ func uploadTrzszBinary(client *ssh.Client, trz, tsz []byte) error {
 	}
 	progress := newToolsProgress("InstallTrzsz", "upload percentage", len(trz)+len(tsz))
 
+	var errMsg []string
 	checkTransferResponse := func() bool {
 		buf := make([]byte, 1)
 		n, err := reader.Read(buf)
 		if err != nil || n != 1 {
 			return false
 		}
-		return buf[0] == 0
+		switch buf[0] {
+		case kScpOK:
+			return true
+		case kScpWarn, kScpError:
+			msg, _ := bufio.NewReader(reader).ReadString('\n')
+			errMsg = append(errMsg, fmt.Sprintf("scp response [%d]: %s", buf[0], strings.TrimSpace(msg)))
+			return false
+		default:
+			errMsg = append(errMsg, fmt.Sprintf("unknown scp response [%d]", buf[0]))
+			return false
+		}
 	}
 	writeTransferCommand := func(cmd string) bool {
 		if n, err := writer.Write([]byte(cmd)); err != nil || n != len(cmd) {
@@ -304,12 +340,6 @@ func uploadTrzszBinary(client *ssh.Client, trz, tsz []byte) error {
 		if !checkTransferResponse() {
 			return
 		}
-		if !writeTransferCommand("D0755 0 .local\n") {
-			return
-		}
-		if !writeTransferCommand("D0755 0 bin\n") {
-			return
-		}
 		if !writeTransferCommand(fmt.Sprintf("C0755 %d trz\n", len(trz))) {
 			return
 		}
@@ -322,19 +352,16 @@ func uploadTrzszBinary(client *ssh.Client, trz, tsz []byte) error {
 		if !writeBinaryContent(tsz) {
 			return
 		}
-		if !writeTransferCommand("E\n") {
-			return
-		}
-		if !writeTransferCommand("E\n") {
-			return
-		}
 	}()
 
-	output, err := session.CombinedOutput("scp -tqr ~/")
+	output, err := session.CombinedOutput(fmt.Sprintf("scp -tqr %s", path))
 	if err != nil {
 		msg := strings.TrimSpace(string(output))
 		if msg != "" {
-			return fmt.Errorf("%s: %s", err.Error(), msg)
+			errMsg = append(errMsg, msg)
+		}
+		if len(errMsg) > 0 {
+			return fmt.Errorf("%s", strings.Join(errMsg, ", "))
 		}
 		return err
 	}
@@ -352,11 +379,16 @@ func execInstallTrzsz(args *sshArgs, client *ssh.Client) {
 		}
 	}
 
-	trzInstalled := checkInstalledVersion(client, "trz", version)
-	tszInstalled := checkInstalledVersion(client, "tsz", version)
+	installPath := args.InstallPath
+	if installPath == "" {
+		installPath = "~/.local/bin/"
+	}
+
+	trzInstalled := checkInstalledVersion(client, installPath, "trz", version)
+	tszInstalled := checkInstalledVersion(client, installPath, "tsz", version)
 	if trzInstalled && tszInstalled {
-		toolsSucc("InstallTrzsz", "trzsz %s has been installed in ~/.local/bin/", version)
-		checkTrzszPathEnv(client, version)
+		toolsSucc("InstallTrzsz", "trzsz %s has been installed in %s", version, installPath)
+		checkTrzszPathEnv(client, version, installPath)
 		return
 	}
 
@@ -369,6 +401,11 @@ func execInstallTrzsz(args *sshArgs, client *ssh.Client) {
 	arch, err := getRemoteServerArch(client)
 	if err != nil {
 		toolsWarn("InstallTrzsz", "get remote server cpu architecture failed: %v", err)
+		return
+	}
+
+	if err := mkdirInstallPath(client, installPath); err != nil {
+		toolsWarn("InstallTrzsz", "mkdir [%s] failed: %v", installPath, err)
 		return
 	}
 
@@ -388,11 +425,11 @@ func execInstallTrzsz(args *sshArgs, client *ssh.Client) {
 		}
 	}
 
-	if err := uploadTrzszBinary(client, trz, tsz); err != nil {
+	if err := uploadTrzszBinary(client, installPath, trz, tsz); err != nil {
 		toolsWarn("InstallTrzsz", "upload trzsz binary files failed: %v", err)
 		return
 	}
 
-	toolsSucc("InstallTrzsz", "trzsz %s installation to ~/.local/bin/ completed successfully", version)
-	checkTrzszPathEnv(client, version)
+	toolsSucc("InstallTrzsz", "trzsz %s installation to %s completed successfully", version, installPath)
+	checkTrzszPathEnv(client, version, installPath)
 }

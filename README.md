@@ -381,7 +381,7 @@ _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\
 
 - 运行 `tssh --new-host` 可以在 TUI 界面轻松添加 SSH 配置，并且完成后可以立即登录。
 
-- 运行 `tssh --install-trzsz` 可以自动安装 [trzsz](https://github.com/trzsz/trzsz-go) 到服务器的 `~/.local/bin/` 目录。若获取 `trzsz` 的最新版本号失败，可以通过 `--trzsz-version x.x.x` 参数自行指定。若下载 `trzsz` 的安装包失败，可以自行下载并通过 `--trzsz-bin-path /path/to/trzsz.tar.gz` 参数指定。
+- 运行 `tssh --install-trzsz` 可以自动安装 [trzsz](https://github.com/trzsz/trzsz-go) 到服务器上。默认安装到 `~/.local/bin/` 目录，可以通过 `--install-path /path/to/install` 指定安装目录。若安装目录含有 `~/`，则必须加上单引号，如`--install-path '~/path'`。若获取 `trzsz` 的最新版本号失败，可以通过 `--trzsz-version x.x.x` 参数自行指定。若下载 `trzsz` 的安装包失败，可以自行下载并通过 `--trzsz-bin-path /path/to/trzsz.tar.gz` 参数指定。
 
 ## 快捷键
 
@@ -424,6 +424,16 @@ _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\
 - 如果在 `~/.ssh/config` 中配置了 `tssh` 特有的配置项后，标准 `ssh` 报错 `Bad configuration option`。
 
   - 可以在出错配置项中加上前缀 `#!!`，标准 `ssh` 会将它当作注释，而 `tssh` 则会认为它是有效配置之一。
+
+- 关于动态修改终端标题，其实不需要 `tssh` 就能实现，只要在服务器的 shell 配置文件中（如`~/.bashrc`）配置：
+
+  ```sh
+  # 设置固定的服务器标题
+  PROMPT_COMMAND='echo -ne "\033]0;固定的服务器标题\007"'
+
+  # 根据环境变量动态变化的标题
+  PROMPT_COMMAND='echo -ne "\033]0;${USER}@${HOSTNAME}: ${PWD}\007"'
+  ```
 
 ## 录屏演示
 

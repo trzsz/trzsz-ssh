@@ -84,6 +84,7 @@ func TestSshArgs(t *testing.T) {
 	assertArgsEqual("--new-host", sshArgs{NewHost: true})
 	assertArgsEqual("--enc-secret", sshArgs{EncSecret: true})
 	assertArgsEqual("--install-trzsz", sshArgs{InstallTrzsz: true})
+	assertArgsEqual("--install-trzsz --install-path /bin", sshArgs{InstallTrzsz: true, InstallPath: "/bin"})
 	assertArgsEqual("--install-trzsz --trzsz-version 1.1.6", sshArgs{InstallTrzsz: true, TrzszVersion: "1.1.6"})
 	assertArgsEqual("--install-trzsz --trzsz-bin-path a.tgz", sshArgs{InstallTrzsz: true, TrzszBinPath: "a.tgz"})
 
