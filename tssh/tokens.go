@@ -46,11 +46,12 @@ func expandTokens(str string, args *sshArgs, param *loginParam, tokens string) s
 	state := byte(0)
 	for _, c := range str {
 		if state == 0 {
-			if c == '%' {
+			switch c {
+			case '%':
 				state = '%'
-				continue
+			default:
+				buf.WriteRune(c)
 			}
-			buf.WriteRune(c)
 			continue
 		}
 		state = 0
