@@ -170,6 +170,7 @@ func (c *caseSendList) handleOutput(output string) {
 }
 
 type sshExpect struct {
+	pre string
 	ctx context.Context
 	out chan []byte
 	err chan []byte
@@ -192,7 +193,9 @@ func (e *sshExpect) captureOutput(reader io.Reader, ch chan<- []byte) ([]byte, e
 			return nil, err
 		}
 		if err != nil {
-			warning("expect read output failed: %v", err)
+			if e.ctx.Err() == nil {
+				warning("expect read output failed: %v", err)
+			}
 			return nil, err
 		}
 	}
@@ -202,6 +205,9 @@ func (e *sshExpect) captureOutput(reader io.Reader, ch chan<- []byte) ([]byte, e
 func (e *sshExpect) wrapOutput(reader io.Reader, writer io.Writer, ch chan []byte) {
 	buf, err := e.captureOutput(reader, ch)
 	if err != nil {
+		return
+	}
+	if writer == nil {
 		return
 	}
 	for data := range ch {
@@ -262,16 +268,16 @@ func (e *sshExpect) waitForPattern(pattern string, caseSends *caseSendList) erro
 
 func (e *sshExpect) execInteractions(alias string, writer io.Writer, expectCount uint32) {
 	for i := uint32(1); i <= expectCount; i++ {
-		pattern := getExConfig(alias, fmt.Sprintf("ExpectPattern%d", i))
+		pattern := getExConfig(alias, fmt.Sprintf("%sExpectPattern%d", e.pre, i))
 		debug("expect pattern %d: %s", i, pattern)
 		if pattern != "" {
 			caseSends := &caseSendList{writer: writer}
-			for _, cfg := range getAllExConfig(alias, fmt.Sprintf("ExpectCaseSendPass%d", i)) {
+			for _, cfg := range getAllExConfig(alias, fmt.Sprintf("%sExpectCaseSendPass%d", e.pre, i)) {
 				if err := caseSends.addCaseSendPass(cfg); err != nil {
 					warning("Invalid ExpectCaseSendPass%d: %v", i, err)
 				}
 			}
-			for _, cfg := range getAllExConfig(alias, fmt.Sprintf("ExpectCaseSendText%d", i)) {
+			for _, cfg := range getAllExConfig(alias, fmt.Sprintf("%sExpectCaseSendText%d", e.pre, i)) {
 				if err := caseSends.addCaseSendText(cfg); err != nil {
 					warning("Invalid ExpectCaseSendText%d: %v", i, err)
 				}
@@ -284,7 +290,7 @@ func (e *sshExpect) execInteractions(alias string, writer io.Writer, expectCount
 			return
 		}
 		var input string
-		secret := getExConfig(alias, fmt.Sprintf("ExpectSendPass%d", i))
+		secret := getExConfig(alias, fmt.Sprintf("%sExpectSendPass%d", e.pre, i))
 		if secret != "" {
 			pass, err := decodeSecret(secret)
 			if err != nil {
@@ -294,7 +300,7 @@ func (e *sshExpect) execInteractions(alias string, writer io.Writer, expectCount
 			debug("expect send %d: %s\\r", i, strings.Repeat("*", len(pass)))
 			input = pass + "\r"
 		} else {
-			text := getExConfig(alias, fmt.Sprintf("ExpectSendText%d", i))
+			text := getExConfig(alias, fmt.Sprintf("%sExpectSendText%d", e.pre, i))
 			if text == "" {
 				continue
 			}
@@ -308,8 +314,8 @@ func (e *sshExpect) execInteractions(alias string, writer io.Writer, expectCount
 	}
 }
 
-func getExpectCount(args *sshArgs) uint32 {
-	expectCount := getExOptionConfig(args, "ExpectCount")
+func getExpectCount(args *sshArgs, prefix string) uint32 {
+	expectCount := getExOptionConfig(args, prefix+"ExpectCount")
 	if expectCount == "" {
 		return 0
 	}
@@ -321,8 +327,8 @@ func getExpectCount(args *sshArgs) uint32 {
 	return uint32(count)
 }
 
-func getExpectTimeout(args *sshArgs) uint32 {
-	expectCount := getExOptionConfig(args, "ExpectTimeout")
+func getExpectTimeout(args *sshArgs, prefix string) uint32 {
+	expectCount := getExOptionConfig(args, prefix+"ExpectTimeout")
 	if expectCount == "" {
 		return kDefaultExpectTimeout
 	}
@@ -336,7 +342,7 @@ func getExpectTimeout(args *sshArgs) uint32 {
 
 func execExpectInteractions(args *sshArgs, serverIn io.Writer,
 	serverOut io.Reader, serverErr io.Reader) (io.Reader, io.Reader) {
-	expectCount := getExpectCount(args)
+	expectCount := getExpectCount(args, "")
 	if expectCount <= 0 {
 		return serverOut, serverErr
 	}
@@ -346,7 +352,7 @@ func execExpectInteractions(args *sshArgs, serverIn io.Writer,
 
 	var ctx context.Context
 	var cancel context.CancelFunc
-	if expectTimeout := getExpectTimeout(args); expectTimeout > 0 {
+	if expectTimeout := getExpectTimeout(args, ""); expectTimeout > 0 {
 		ctx, cancel = context.WithTimeout(context.Background(), time.Duration(expectTimeout)*time.Second)
 	} else {
 		ctx, cancel = context.WithCancel(context.Background())

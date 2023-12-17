@@ -29,6 +29,7 @@ package tssh
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -42,6 +43,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/creack/pty"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -49,14 +51,14 @@ type controlMaster struct {
 	path      string
 	args      []string
 	cmd       *exec.Cmd
-	stdin     io.WriteCloser
+	ptmx      *os.File
 	stdout    io.ReadCloser
 	stderr    io.ReadCloser
 	loggingIn atomic.Bool
 	exited    atomic.Bool
 }
 
-func (c *controlMaster) readStderr() {
+func (c *controlMaster) handleStderr() {
 	go func() {
 		defer c.stderr.Close()
 		buf := make([]byte, 100)
@@ -72,81 +74,114 @@ func (c *controlMaster) readStderr() {
 	}()
 }
 
-func (c *controlMaster) readStdout() <-chan error {
-	done := make(chan error, 1)
+func (c *controlMaster) handleStdout() <-chan error {
+	doneCh := make(chan error, 1)
 	go func() {
-		defer close(done)
+		defer close(doneCh)
 		buf := make([]byte, 1000)
 		n, err := c.stdout.Read(buf)
 		if err != nil {
-			done <- fmt.Errorf("stdout read failed: %v", err)
+			doneCh <- fmt.Errorf("read stdout failed: %v", err)
 			return
 		}
 		if !bytes.Equal(bytes.TrimSpace(buf[:n]), []byte("ok")) {
-			done <- fmt.Errorf("stdout invalid: %v", buf[:n])
+			doneCh <- fmt.Errorf("control master stdout invalid: %v", buf[:n])
 			return
 		}
-		done <- nil
+		doneCh <- nil
 	}()
-	return done
+	return doneCh
+}
+
+func (c *controlMaster) fillPassword(args *sshArgs, expectCount uint32) (cancel context.CancelFunc) {
+	var ctx context.Context
+	if expectTimeout := getExpectTimeout(args, "Ctrl"); expectTimeout > 0 {
+		ctx, cancel = context.WithTimeout(context.Background(), time.Duration(expectTimeout)*time.Second)
+	} else {
+		ctx, cancel = context.WithCancel(context.Background())
+	}
+
+	expect := &sshExpect{
+		ctx: ctx,
+		pre: "Ctrl",
+		out: make(chan []byte, 1),
+	}
+	go expect.wrapOutput(c.ptmx, nil, expect.out)
+	go expect.execInteractions(args.Destination, c.ptmx, expectCount)
+	return
 }
 
 func (c *controlMaster) checkExit() <-chan struct{} {
-	exit := make(chan struct{}, 1)
+	exitCh := make(chan struct{}, 1)
 	go func() {
-		defer close(exit)
+		defer close(exitCh)
 		_ = c.cmd.Wait()
 		c.exited.Store(true)
-		exit <- struct{}{}
+		if c.ptmx != nil {
+			c.ptmx.Close()
+		}
+		exitCh <- struct{}{}
 	}()
-	return exit
+	return exitCh
 }
 
-func (c *controlMaster) start() error {
+func (c *controlMaster) start(args *sshArgs) error {
 	var err error
 	c.cmd = exec.Command(c.path, c.args...)
-	c.stdin, err = c.cmd.StdinPipe()
-	if err != nil {
-		return fmt.Errorf("stdin pipe failed: %v", err)
+	expectCount := getExpectCount(args, "Ctrl")
+	if expectCount > 0 {
+		c.cmd.SysProcAttr = &syscall.SysProcAttr{
+			Setsid:  true,
+			Setctty: true,
+		}
+		pty, tty, err := pty.Open()
+		if err != nil {
+			return fmt.Errorf("open pty failed: %v", err)
+		}
+		defer tty.Close()
+		c.cmd.Stdin = tty
+		c.ptmx = pty
+		cancel := c.fillPassword(args, expectCount)
+		defer cancel()
 	}
-	c.stdout, err = c.cmd.StdoutPipe()
-	if err != nil {
+	if c.stdout, err = c.cmd.StdoutPipe(); err != nil {
 		return fmt.Errorf("stdout pipe failed: %v", err)
 	}
-	c.stderr, err = c.cmd.StderrPipe()
-	if err != nil {
+	if c.stderr, err = c.cmd.StderrPipe(); err != nil {
 		return fmt.Errorf("stderr pipe failed: %v", err)
 	}
 	if err := c.cmd.Start(); err != nil {
-		return fmt.Errorf("start failed: %v", err)
+		return fmt.Errorf("control master start failed: %v", err)
 	}
 
 	c.loggingIn.Store(true)
+
+	intCh := make(chan os.Signal, 1)
+	signal.Notify(intCh, os.Interrupt)
+	defer func() { signal.Stop(intCh); close(intCh) }()
+
+	c.handleStderr()
+	exitCh := c.checkExit()
+	doneCh := c.handleStdout()
+
 	defer func() {
 		c.loggingIn.Store(false)
+		if !c.exited.Load() {
+			onExitFuncs = append(onExitFuncs, func() {
+				c.quit(exitCh)
+			})
+		}
 	}()
-
-	interrupt := make(chan os.Signal, 1)
-	signal.Notify(interrupt, os.Interrupt)
-	defer func() { signal.Stop(interrupt); close(interrupt) }()
-
-	c.readStderr()
-	exit := c.checkExit()
-	done := c.readStdout()
-
-	onExitFuncs = append(onExitFuncs, func() {
-		c.quit(exit)
-	})
 
 	for {
 		select {
-		case err := <-done:
+		case err := <-doneCh:
 			return err
-		case <-exit:
-			return fmt.Errorf("process exited")
-		case <-interrupt:
-			c.quit(exit)
-			return fmt.Errorf("interrupt")
+		case <-exitCh:
+			return fmt.Errorf("control master process exited")
+		case <-intCh:
+			c.quit(exitCh)
+			return fmt.Errorf("user interrupt control master")
 		}
 	}
 }
@@ -155,9 +190,8 @@ func (c *controlMaster) quit(exit <-chan struct{}) {
 	if c.exited.Load() {
 		return
 	}
-	_, _ = c.stdin.Write([]byte("\x03")) // ctrl + c
-	_ = c.cmd.Process.Signal(syscall.SIGTERM)
-	timer := time.AfterFunc(200*time.Millisecond, func() {
+	_ = c.cmd.Process.Signal(syscall.SIGINT)
+	timer := time.AfterFunc(500*time.Millisecond, func() {
 		_ = c.cmd.Process.Kill()
 	})
 	<-exit
@@ -184,11 +218,10 @@ func getOpenSSH() (string, error) {
 	return sshPath, nil
 }
 
-func startControlMaster(args *sshArgs) {
+func startControlMaster(args *sshArgs) error {
 	sshPath, err := getOpenSSH()
 	if err != nil {
-		warning("can't find ssh to start control master: %v", err)
-		return
+		return fmt.Errorf("can't find openssh program: %v", err)
 	}
 
 	cmdArgs := []string{"-T", "-oRemoteCommand=none", "-oConnectTimeout=5"}
@@ -243,47 +276,56 @@ func startControlMaster(args *sshArgs) {
 	} else {
 		cmdArgs = append(cmdArgs, args.Destination)
 	}
-	// sleep 2147483 for PowerShell
-	cmdArgs = append(cmdArgs, "echo ok; sleep 2147483; sleep infinity")
+	// 10 seconds is enough for tssh to connect
+	cmdArgs = append(cmdArgs, "echo ok; sleep 10")
 
 	if enableDebugLogging {
 		debug("control master: %s %s", sshPath, strings.Join(cmdArgs, " "))
 	}
 
 	ctrlMaster := &controlMaster{path: sshPath, args: cmdArgs}
-	if err := ctrlMaster.start(); err != nil {
-		warning("start control master failed: %v", err)
-		return
+	if err := ctrlMaster.start(args); err != nil {
+		return err
 	}
 	debug("start control master success")
+	return nil
 }
 
 func connectViaControl(args *sshArgs, param *loginParam) *ssh.Client {
 	ctrlMaster := getOptionConfig(args, "ControlMaster")
 	ctrlPath := getOptionConfig(args, "ControlPath")
 
-	switch strings.ToLower(ctrlMaster) {
-	case "auto", "yes", "ask", "autoask":
-		startControlMaster(args)
-	}
-
 	switch strings.ToLower(ctrlPath) {
 	case "", "none":
 		return nil
 	}
 
-	unixAddr := resolveHomeDir(expandTokens(ctrlPath, args, param, "%CdhikLlnpru"))
-	debug("login to [%s], socket: %s", args.Destination, unixAddr)
+	socket := resolveHomeDir(expandTokens(ctrlPath, args, param, "%CdhikLlnpru"))
 
-	conn, err := net.DialTimeout("unix", unixAddr, time.Second)
+	switch strings.ToLower(ctrlMaster) {
+	case "yes", "ask":
+		if isFileExist(socket) {
+			warning("control socket [%s] already exists, disabling multiplexing", socket)
+			return nil
+		}
+		fallthrough
+	case "auto", "autoask":
+		if err := startControlMaster(args); err != nil {
+			warning("start control master failed: %v", err)
+		}
+	}
+
+	debug("login to [%s], socket: %s", args.Destination, socket)
+
+	conn, err := net.DialTimeout("unix", socket, time.Second)
 	if err != nil {
-		warning("dial ctrl unix [%s] failed: %v", unixAddr, err)
+		warning("dial control socket [%s] failed: %v", socket, err)
 		return nil
 	}
 
 	ncc, chans, reqs, err := NewControlClientConn(conn)
 	if err != nil {
-		warning("new ctrl conn [%s] failed: %v", unixAddr, err)
+		warning("new conn from control socket [%s] failed: %v", socket, err)
 		return nil
 	}
 
