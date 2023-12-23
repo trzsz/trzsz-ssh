@@ -77,6 +77,7 @@ func (c *controlMaster) handleStderr() {
 func (c *controlMaster) handleStdout() <-chan error {
 	doneCh := make(chan error, 1)
 	go func() {
+		defer c.stdout.Close()
 		defer close(doneCh)
 		buf := make([]byte, 1000)
 		n, err := c.stdout.Read(buf)
@@ -224,7 +225,7 @@ func startControlMaster(args *sshArgs) error {
 		return fmt.Errorf("can't find openssh program: %v", err)
 	}
 
-	cmdArgs := []string{"-T", "-oRemoteCommand=none", "-oConnectTimeout=5"}
+	cmdArgs := []string{"-T", "-oRemoteCommand=none", "-oConnectTimeout=10"}
 
 	if args.Debug {
 		cmdArgs = append(cmdArgs, "-v")
