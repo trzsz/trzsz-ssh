@@ -252,10 +252,10 @@ _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\
 
 - 为了兼容标准 ssh ，密码可以单独配置在 `~/.ssh/password` 中，也可以在 `~/.ssh/config` 中加上 `#!!` 前缀。
 
-- 推荐使用前面公钥认证的方式，密码的安全性弱一些。如果必须要用密码，建议设置好 `~/.ssh/password` 的权限，如：
+- 推荐使用前面公钥认证的方式，密码的安全性弱一些。如果必须要用密码，建议至少设置好权限，如：
 
   ```sh
-  chmod 700 ~/.ssh && chmod 600 ~/.ssh/password
+  chmod 700 ~/.ssh && chmod 600 ~/.ssh/password ~/.ssh/config
   ```
 
 - 下面配置 `test1` 和 `test2` 的密码是 `123456`，其他以 `test` 开头的密码是 `111111`：
@@ -354,15 +354,18 @@ _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\
   # tssh 搜索和选择服务器时，每页显示的记录数，默认为 10
   PromptPageSize = 10
 
+  # tssh 搜索和选择服务器时，默认是类似 vim 的 normal 模式，想默认进入搜索模式可如下配置：
+  PromptDefaultMode = search
+
   # tssh 搜索和选择服务器时，详情中显示的配置列表，默认如下：
   PromptDetailItems = Alias Host Port User GroupLabels IdentityFile ProxyCommand ProxyJump RemoteCommand
   ```
 
 ## 其他功能
 
-- 使用 `-f` 后台运行时，可以一并加上 `--reconnect` 参数，这样在后台进程因连接断开等而退出时，会自动重新连接。
+- 使用 `-f` 后台运行时，可以加上 `--reconnect` 参数，在后台进程因连接断开等而退出时，会自动重新连接。
 
-- 使用 `--dragfile` 启用拖拽上传功能，想默认启用则可以在 `~/.ssh/config` 或扩展配置 `ExConfigPath` 中配置：
+- 使用 `--dragfile` 启用拖拽上传功能，想默认启用则可以在 `~/.ssh/config` 或 `ExConfigPath` 中配置：
 
   ```
   Host *
@@ -370,7 +373,7 @@ _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\
     EnableDragFile Yes
   ```
 
-- 使用 `--zmodem` 启用 `rz / sz` 功能，想默认启用则可以在 `~/.ssh/config` 或扩展配置 `ExConfigPath` 中配置：
+- 使用 `--zmodem` 启用 `rz / sz` 功能，想默认启用则可以在 `~/.ssh/config` 或 `ExConfigPath` 中配置：
 
   ```
   Host server0
@@ -386,9 +389,9 @@ _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\
   choco install lrzsz --version=0.12.21
   ```
 
-  - 关于进度条，己传文件大小和传输速度不是精确值，会有一些偏差，它的主要作用只是指示传输正在进行中。
+  - 关于 `rz / sz` 进度条，己传大小和传输速度会有一点偏差，它的主要作用只是指示传输正在进行中。
 
-- 使用 `-oEnableTrzsz=No` 禁用 trzsz 功能，想默认禁用则可以在 `~/.ssh/config` 或扩展配置 `ExConfigPath` 中配置：
+- 使用 `-oEnableTrzsz=No` 禁用 trzsz 功能，想默认禁用则可以在 `~/.ssh/config` 或 `ExConfigPath` 中配置：
 
   ```
   Host server1
@@ -396,9 +399,9 @@ _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\
     EnableTrzsz No
   ```
 
-- 上文说的“记住密码”和“记住答案”，只要在配置项前面加上 `enc` 则可以配置密文，防止被人窥屏。密文可以解决密码含有`#`的问题。
+- 上文说的“记住密码”和“记住答案”，只要在配置项前面加上 `enc` 则可以配置密文，防止被人窥屏。并且，密文可以解决密码含有`#`的问题。
 
-  运行 `tssh --enc-secret`，输入密码或答案的明文，可得到用于配置的密文（ 相同密码每次加密的结果不同 ）：
+  运行 `tssh --enc-secret`，输入密码或答案，可得到用于配置的密文（ 相同密码每次运行结果不同 ）：
 
   ```
   Host server2
@@ -409,7 +412,17 @@ _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\
 
 - 运行 `tssh --new-host` 可以在 TUI 界面轻松添加 SSH 配置，并且完成后可以立即登录。
 
-- 运行 `tssh --install-trzsz` 可以自动安装 [trzsz](https://github.com/trzsz/trzsz-go) 到服务器上。默认安装到 `~/.local/bin/` 目录，可以通过 `--install-path /path/to/install` 指定安装目录。若安装目录含有 `~/`，则必须加上单引号，如`--install-path '~/path'`。若获取 `trzsz` 的最新版本号失败，可以通过 `--trzsz-version x.x.x` 参数自行指定。若下载 `trzsz` 的安装包失败，可以自行下载并通过 `--trzsz-bin-path /path/to/trzsz.tar.gz` 参数指定。
+- 运行 `tssh --install-trzsz` 可以自动安装 [trzsz](https://github.com/trzsz/trzsz-go) 到服务器上。默认安装到 `~/.local/bin/` 目录，可以通过 `--install-path /path/to/install` 指定安装目录。若安装目录含有 `~/`，则必须加上单引号，如`--install-path '~/path'`。若获取 `trzsz` 的最新版本号失败，可以通过 `--trzsz-version x.x.x` 参数自行指定。若下载 `trzsz` 的安装包失败，可以自行下载并通过 `--trzsz-bin-path /path/to/trzsz.tar.gz` 参数指定。注意：`--install-trzsz` 不支持跳板机，除非以 `ProxyJump` 的方式绕过跳板机；支持本地是 Windows ，但不支持服务器是 Windows 。
+
+- 关于修改终端标题，其实无需 `tssh` 就能实现，只要在服务器的 shell 配置文件中（如`~/.bashrc`）配置：
+
+  ```sh
+  # 设置固定的服务器标题
+  PROMPT_COMMAND='echo -ne "\033]0;固定的服务器标题\007"'
+
+  # 根据环境变量动态变化的标题
+  PROMPT_COMMAND='echo -ne "\033]0;${USER}@${HOSTNAME}: ${PWD}\007"'
+  ```
 
 ## 快捷键
 
@@ -456,16 +469,6 @@ _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\
 - 如果在 `~/.ssh/config` 中配置了 `tssh` 特有的配置项后，标准 `ssh` 报错 `Bad configuration option`。
 
   - 可以在出错配置项中加上前缀 `#!!`，标准 `ssh` 会将它当作注释，而 `tssh` 则会认为它是有效配置之一。
-
-- 关于动态修改终端标题，其实不需要 `tssh` 就能实现，只要在服务器的 shell 配置文件中（如`~/.bashrc`）配置：
-
-  ```sh
-  # 设置固定的服务器标题
-  PROMPT_COMMAND='echo -ne "\033]0;固定的服务器标题\007"'
-
-  # 根据环境变量动态变化的标题
-  PROMPT_COMMAND='echo -ne "\033]0;${USER}@${HOSTNAME}: ${PWD}\007"'
-  ```
 
 ## 录屏演示
 

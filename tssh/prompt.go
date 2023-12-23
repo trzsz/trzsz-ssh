@@ -473,6 +473,10 @@ func (p *sshPrompt) wrapStdin() {
 	defer p.selector.Stdin.Close()
 	defer p.pipeOut.Close()
 	buffer := make([]byte, 100)
+	if strings.ToLower(userConfig.promptDefaultMode) == "search" {
+		p.search = true
+		_, _ = p.pipeOut.Write([]byte{'/'})
+	}
 	for {
 		n, err := os.Stdin.Read(buffer)
 		buf := buffer[:n]

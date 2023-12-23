@@ -73,6 +73,7 @@ type tsshConfig struct {
 	defaultUploadPath   string
 	defaultDownloadPath string
 	promptPageSize      uint8
+	promptDefaultMode   string
 	promptDetailItems   string
 	loadConfig          sync.Once
 	loadExConfig        sync.Once
@@ -133,6 +134,8 @@ func parseTsshConfig() {
 			} else {
 				userConfig.promptPageSize = uint8(pageSize)
 			}
+		case name == "promptdefaultmode" && userConfig.promptDefaultMode == "":
+			userConfig.promptDefaultMode = value
 		case name == "promptdetailitems" && userConfig.promptDetailItems == "":
 			userConfig.promptDetailItems = value
 		}
@@ -152,6 +155,9 @@ func parseTsshConfig() {
 	}
 	if userConfig.promptPageSize != 0 {
 		debug("PromptPageSize = %d", userConfig.promptPageSize)
+	}
+	if userConfig.promptDefaultMode != "" {
+		debug("PromptDefaultMode = %s", userConfig.promptDefaultMode)
 	}
 	if userConfig.promptDetailItems != "" {
 		debug("PromptDetailItems = %s", userConfig.promptDetailItems)
