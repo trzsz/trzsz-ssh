@@ -75,6 +75,7 @@ type tsshConfig struct {
 	promptPageSize      uint8
 	promptDefaultMode   string
 	promptDetailItems   string
+	setTerminalTitle    string
 	loadConfig          sync.Once
 	loadExConfig        sync.Once
 	loadHosts           sync.Once
@@ -138,9 +139,17 @@ func parseTsshConfig() {
 			userConfig.promptDefaultMode = value
 		case name == "promptdetailitems" && userConfig.promptDetailItems == "":
 			userConfig.promptDetailItems = value
+		case name == "setterminaltitle" && userConfig.setTerminalTitle == "":
+			userConfig.setTerminalTitle = value
 		}
 	}
 
+	if enableDebugLogging {
+		showTsshConfig()
+	}
+}
+
+func showTsshConfig() {
 	if userConfig.configPath != "" {
 		debug("ConfigPath = %s", userConfig.configPath)
 	}
@@ -161,6 +170,9 @@ func parseTsshConfig() {
 	}
 	if userConfig.promptDetailItems != "" {
 		debug("PromptDetailItems = %s", userConfig.promptDetailItems)
+	}
+	if userConfig.setTerminalTitle != "" {
+		debug("SetTerminalTitle = %s", userConfig.setTerminalTitle)
 	}
 }
 

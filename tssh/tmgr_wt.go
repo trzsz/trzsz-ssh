@@ -75,6 +75,7 @@ func (m *wtMgr) execWt(alias string, args ...string) error {
 }
 
 func (m *wtMgr) openWindows(hosts []*sshHost) {
+	setTerminalTitle(hosts[0].Alias)
 	for _, host := range hosts[1:] {
 		if err := m.execWt(host.Alias, "-w", "-1"); err != nil {
 			warning("Failed to open wt window: %v", err)
@@ -83,6 +84,7 @@ func (m *wtMgr) openWindows(hosts []*sshHost) {
 }
 
 func (m *wtMgr) openTabs(hosts []*sshHost) {
+	setTerminalTitle(hosts[0].Alias)
 	for _, host := range hosts[1:] {
 		if err := m.execWt(host.Alias, "-w", "0", "nt"); err != nil {
 			warning("Failed to open wt tab: %v", err)
@@ -91,6 +93,7 @@ func (m *wtMgr) openTabs(hosts []*sshHost) {
 }
 
 func (m *wtMgr) openPanes(hosts []*sshHost) {
+	setTerminalTitle(hosts[0].Alias)
 	matrix := getPanesMatrix(hosts)
 	for i := len(matrix) - 1; i > 0; i-- {
 		percentage := "." + strconv.Itoa(100/(i+1))
@@ -101,12 +104,14 @@ func (m *wtMgr) openPanes(hosts []*sshHost) {
 		if err := exec.Command("cmd", "/c", "wt", "-w", "0", "mf", "up").Run(); err != nil {
 			warning("Failed to move wt focus: %v", err)
 		}
+		time.Sleep(100 * time.Millisecond) // wait for new pane focus
 	}
 	for i := 0; i < len(matrix); i++ {
 		if i > 0 {
 			if err := exec.Command("cmd", "/c", "wt", "-w", "0", "mf", "down").Run(); err != nil {
 				warning("Failed to move wt focus: %v", err)
 			}
+			time.Sleep(100 * time.Millisecond) // wait for new pane focus
 		}
 		for j := 1; j < len(matrix[i]); j++ {
 			percentage := "." + strconv.Itoa(100-100/(len(matrix[i])-j+1))

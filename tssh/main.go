@@ -288,6 +288,14 @@ func sshStart(args *sshArgs) error {
 		return nil
 	}
 
+	// set terminal title
+	if userConfig.setTerminalTitle != "" {
+		switch strings.ToLower(userConfig.setTerminalTitle) {
+		case "yes", "true":
+			setTerminalTitle(args.Destination)
+		}
+	}
+
 	// execute remote tools if necessary
 	execRemoteTools(args, client)
 

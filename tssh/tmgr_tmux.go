@@ -72,12 +72,14 @@ func (m *tmuxMgr) openWindows(hosts []*sshHost) {
 
 func (m *tmuxMgr) openPanes(hosts []*sshHost) {
 	matrix := getPanesMatrix(hosts)
-	out, err := exec.Command("tmux", "display", "-p", "#{pane_id}").Output()
+	out, err := exec.Command("tmux", "display", "-p", "#{pane_id}|#{pane_title}").Output()
 	if err != nil {
-		warning("Failed to get tmux pane id: %v", err)
+		warning("Failed to get tmux pane id and title: %v", err)
 		return
 	}
-	matrix[0][0].paneId = strings.TrimSpace(string(out))
+	output := strings.TrimSpace(string(out))
+	tokens := strings.SplitN(output, "|", 2)
+	matrix[0][0].paneId = tokens[0]
 	for i := len(matrix) - 1; i > 0; i-- {
 		matrix[i][0].paneId = m.splitWindow(matrix[i][0].alias, "-v", matrix[0][0].paneId, strconv.Itoa(100/(i+1)))
 	}
@@ -86,6 +88,21 @@ func (m *tmuxMgr) openPanes(hosts []*sshHost) {
 			matrix[i][j].paneId = m.splitWindow(matrix[i][j].alias, "-h", matrix[i][0].paneId, strconv.Itoa(100/(j+1)))
 		}
 	}
+	// change panes title
+	for i := 0; i < len(matrix); i++ {
+		for j := 0; j < len(matrix[i]); j++ {
+			if matrix[i][j].paneId != "" {
+				_ = exec.Command("tmux", "selectp", "-t", matrix[i][j].paneId, "-T", matrix[i][j].alias).Run()
+			}
+		}
+	}
+	if len(tokens) > 1 && tokens[1] != "" {
+		// reset pane title after exit
+		onExitFuncs = append(onExitFuncs, func() {
+			_ = exec.Command("tmux", "selectp", "-t", tokens[0], "-T", tokens[1]).Run()
+		})
+	}
+	// reset panes order
 	for i := 0; i < len(matrix); i++ {
 		for j := 0; j < len(matrix[i]); j++ {
 			if matrix[i][j].paneId != "" {

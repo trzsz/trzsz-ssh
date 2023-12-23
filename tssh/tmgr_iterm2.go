@@ -60,6 +60,10 @@ func (m *iterm2Mgr) openTerminals(openType int, hosts []*sshHost) {
 	}
 }
 
+func (m *iterm2Mgr) setTitle(session iterm2.Session, alias string) {
+	_ = session.Inject([]byte(fmt.Sprintf("\033]0;%s\007", alias)))
+}
+
 func (m *iterm2Mgr) execCmd(session iterm2.Session, alias string) {
 	cmd := shellescape.QuoteCommand(append(os.Args, alias))
 	if err := session.SendText(fmt.Sprintf("%s\n", cmd)); err != nil {
@@ -98,6 +102,9 @@ func (m *iterm2Mgr) getCurrentWindowSession() (iterm2.Window, iterm2.Session) {
 }
 
 func (m *iterm2Mgr) openWindows(hosts []*sshHost) {
+	if _, session := m.getCurrentWindowSession(); session != nil {
+		m.setTitle(session, hosts[0].Alias)
+	}
 	for _, host := range hosts[1:] {
 		window, err := m.app.CreateWindow()
 		if err != nil {
@@ -114,15 +121,18 @@ func (m *iterm2Mgr) openWindows(hosts []*sshHost) {
 			warning("Failed to list sessions: %v", err)
 			continue
 		}
-		_ = window.SetTitle(host.Alias)
+		m.setTitle(sessions[0], host.Alias)
 		m.execCmd(sessions[0], host.Alias)
 	}
 }
 
 func (m *iterm2Mgr) openTabs(hosts []*sshHost) {
-	window, _ := m.getCurrentWindowSession()
+	window, session := m.getCurrentWindowSession()
 	if window == nil {
 		return
+	}
+	if session != nil {
+		m.setTitle(session, hosts[0].Alias)
 	}
 	for _, host := range hosts[1:] {
 		tab, err := window.CreateTab()
@@ -135,13 +145,17 @@ func (m *iterm2Mgr) openTabs(hosts []*sshHost) {
 			warning("Failed to list sessions: %v", err)
 			continue
 		}
-		_ = tab.SetTitle(host.Alias)
+		m.setTitle(sessions[0], host.Alias)
 		m.execCmd(sessions[0], host.Alias)
 	}
 }
 
 func (m *iterm2Mgr) openPanes(hosts []*sshHost) {
 	_, session := m.getCurrentWindowSession()
+	if session == nil {
+		return
+	}
+	m.setTitle(session, hosts[0].Alias)
 	matrix := getPanesMatrix(hosts)
 	sessions := make([]iterm2.Session, len(matrix))
 	sessions[0] = session
@@ -152,6 +166,7 @@ func (m *iterm2Mgr) openPanes(hosts []*sshHost) {
 			continue
 		}
 		sessions[i] = pane
+		m.setTitle(pane, matrix[i][0].alias)
 		m.execCmd(pane, matrix[i][0].alias)
 	}
 	for i := 0; i < len(matrix); i++ {
@@ -165,6 +180,7 @@ func (m *iterm2Mgr) openPanes(hosts []*sshHost) {
 				warning("Failed to split pane: %v", err)
 				continue
 			}
+			m.setTitle(pane, matrix[i][j].alias)
 			m.execCmd(pane, matrix[i][j].alias)
 		}
 	}

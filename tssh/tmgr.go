@@ -26,6 +26,7 @@ SOFTWARE.
 package tssh
 
 import (
+	"fmt"
 	"math"
 	"os"
 )
@@ -82,4 +83,8 @@ func appendArgs(alias string, args ...string) []string {
 	args = append(args, os.Args...)
 	args = append(args, alias)
 	return args
+}
+
+func setTerminalTitle(title string) {
+	fmt.Printf("\033]0;%s\007", title)
 }
