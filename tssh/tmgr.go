@@ -86,5 +86,5 @@ func appendArgs(alias string, args ...string) []string {
 }
 
 func setTerminalTitle(title string) {
-	fmt.Printf("\033]0;%s\007", title)
+	fmt.Fprintf(os.Stderr, "\033]0;%s\007", title)
 }
