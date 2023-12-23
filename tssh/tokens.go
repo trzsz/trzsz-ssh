@@ -29,8 +29,43 @@ import (
 	"crypto/sha1"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
+	"unicode"
 )
+
+func isHostValid(host string) bool {
+	if strings.HasPrefix(host, "-") {
+		return false
+	}
+	for _, ch := range host {
+		if strings.ContainsRune("'`\"$\\;&<>|(){}", ch) {
+			return false
+		}
+		if unicode.IsSpace(ch) || unicode.IsControl(ch) {
+			return false
+		}
+	}
+	return true
+}
+
+func isUserValid(user string) bool {
+	if strings.HasPrefix(user, "-") {
+		return false
+	}
+	if strings.ContainsAny(user, "'`\";&<>|(){}") {
+		return false
+	}
+	// disallow '-' after whitespace
+	if regexp.MustCompile(`\s-`).MatchString(user) {
+		return false
+	}
+	// disallow \ in last position
+	if strings.HasSuffix(user, "\\") {
+		return false
+	}
+	return true
+}
 
 var getHostname = func() string {
 	hostname, err := os.Hostname()
@@ -41,7 +76,7 @@ var getHostname = func() string {
 	return hostname
 }
 
-func expandTokens(str string, args *sshArgs, param *loginParam, tokens string) string {
+func expandTokens(str string, args *sshArgs, param *loginParam, tokens string) (string, error) {
 	var buf strings.Builder
 	state := byte(0)
 	for _, c := range str {
@@ -56,19 +91,22 @@ func expandTokens(str string, args *sshArgs, param *loginParam, tokens string) s
 		}
 		state = 0
 		if !strings.ContainsRune(tokens, c) {
-			warning("token [%%%c] in [%s] is not supported", c, str)
-			buf.WriteRune('%')
-			buf.WriteRune(c)
-			continue
+			return "", fmt.Errorf("token [%%%c] in [%s] is not supported", c, str)
 		}
 		switch c {
 		case '%':
 			buf.WriteRune('%')
 		case 'h':
+			if !isHostValid(param.host) {
+				return "", fmt.Errorf("hostname contains invalid characters")
+			}
 			buf.WriteString(param.host)
 		case 'p':
 			buf.WriteString(param.port)
 		case 'r':
+			if !isUserValid(param.user) {
+				return "", fmt.Errorf("remote username contains invalid characters")
+			}
 			buf.WriteString(param.user)
 		case 'n':
 			buf.WriteString(args.Destination)
@@ -84,14 +122,11 @@ func expandTokens(str string, args *sshArgs, param *loginParam, tokens string) s
 			hashStr := fmt.Sprintf("%s%s%s%s", getHostname(), param.host, param.port, param.user)
 			buf.WriteString(fmt.Sprintf("%x", sha1.Sum([]byte(hashStr))))
 		default:
-			warning("token [%%%c] in [%s] is not supported yet", c, str)
-			buf.WriteRune('%')
-			buf.WriteRune(c)
+			return "", fmt.Errorf("token [%%%c] in [%s] is not supported yet", c, str)
 		}
 	}
 	if state != 0 {
-		warning("[%s] ends with %% is invalid", str)
-		buf.WriteRune('%')
+		return "", fmt.Errorf("[%s] ends with %% is invalid", str)
 	}
-	return buf.String()
+	return buf.String(), nil
 }

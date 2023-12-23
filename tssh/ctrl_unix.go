@@ -301,7 +301,12 @@ func connectViaControl(args *sshArgs, param *loginParam) *ssh.Client {
 		return nil
 	}
 
-	socket := resolveHomeDir(expandTokens(ctrlPath, args, param, "%CdhikLlnpru"))
+	socket, err := expandTokens(ctrlPath, args, param, "%CdhikLlnpru")
+	if err != nil {
+		warning("expand control socket [%s] failed: %v", socket, err)
+		return nil
+	}
+	socket = resolveHomeDir(socket)
 
 	switch strings.ToLower(ctrlMaster) {
 	case "yes", "ask":

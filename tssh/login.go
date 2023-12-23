@@ -649,7 +649,11 @@ func (p *cmdPipe) Close() error {
 }
 
 func execProxyCommand(args *sshArgs, param *loginParam) (net.Conn, string, error) {
-	command := resolveHomeDir(expandTokens(param.command, args, param, "%hnpr"))
+	command, err := expandTokens(param.command, args, param, "%hnpr")
+	if err != nil {
+		return nil, param.command, err
+	}
+	command = resolveHomeDir(command)
 	debug("exec proxy command: %s", command)
 
 	argv, err := splitCommandLine(command)

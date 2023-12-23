@@ -26,22 +26,15 @@ SOFTWARE.
 package tssh
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestExpandTokens(t *testing.T) {
 	assert := assert.New(t)
-	originalWarning := warning
-	defer func() {
-		warning = originalWarning
-	}()
-	var output string
-	warning = func(format string, a ...any) {
-		output = fmt.Sprintf(format, a...)
-	}
+	require := require.New(t)
 	originalGetHostname := getHostname
 	defer func() {
 		getHostname = originalGetHostname
@@ -56,11 +49,16 @@ func TestExpandTokens(t *testing.T) {
 		port: "1337",
 		user: "penny",
 	}
-	assertProxyCommand := func(original, expanded, result string) {
+	assertProxyCommand := func(original, expanded, errMsg string) {
 		t.Helper()
-		output = ""
-		assert.Equal(expanded, expandTokens(original, args, param, "%hnpr"))
-		assert.Equal(result, output)
+		result, err := expandTokens(original, args, param, "%hnpr")
+		if errMsg != "" {
+			require.NotNil(err)
+			assert.Equal(errMsg, err.Error())
+			return
+		}
+		require.Nil(err)
+		assert.Equal(expanded, result)
 	}
 
 	assertProxyCommand("%%", "%", "")
@@ -73,11 +71,16 @@ func TestExpandTokens(t *testing.T) {
 	assertProxyCommand("%l", "%l", "token [%l] in [%l] is not supported")
 	assertProxyCommand("a_%h_%C", "a_127.0.0.1_%C", "token [%C] in [a_%h_%C] is not supported")
 
-	assertControlPath := func(original, expanded, result string) {
+	assertControlPath := func(original, expanded, errMsg string) {
 		t.Helper()
-		output = ""
-		assert.Equal(expanded, expandTokens(original, args, param, "%CdhikLlnpru"))
-		assert.Equal(result, output)
+		result, err := expandTokens(original, args, param, "%CdhikLlnpru")
+		if errMsg != "" {
+			require.NotNil(err)
+			assert.Equal(errMsg, err.Error())
+			return
+		}
+		require.Nil(err)
+		assert.Equal(expanded, result)
 	}
 
 	assertControlPath("%p和%r", "1337和penny", "")
@@ -90,4 +93,74 @@ func TestExpandTokens(t *testing.T) {
 	assertControlPath("%j", "%j", "token [%j] in [%j] is not supported")
 	assertControlPath("p_%h_%d", "p_127.0.0.1_%d", "token [%d] in [p_%h_%d] is not supported yet")
 	assertControlPath("h%", "h%", "[h%] ends with % is invalid")
+}
+
+func TestInvalidHost(t *testing.T) {
+	assert := assert.New(t)
+	require := require.New(t)
+
+	assertInvalidHost := func(host string) {
+		t.Helper()
+		_, err := expandTokens("%h", &sshArgs{}, &loginParam{host: host}, "%hnpr")
+		require.NotNil(err)
+		assert.Equal("hostname contains invalid characters", err.Error())
+	}
+
+	assertInvalidHost("-invalidhostname")
+	assertInvalidHost("invalid'hostname")
+	assertInvalidHost("invalid`hostname")
+	assertInvalidHost("invalid\"hostname")
+	assertInvalidHost("invalid$hostname")
+	assertInvalidHost("invalid\\hostname")
+	assertInvalidHost("invalid;hostname")
+	assertInvalidHost("invalid&hostname")
+	assertInvalidHost("invalid<hostname")
+	assertInvalidHost("invalid>hostname")
+	assertInvalidHost("invalid|hostname")
+	assertInvalidHost("invalid(hostname")
+	assertInvalidHost("invalid)hostname")
+	assertInvalidHost("invalid{hostname")
+	assertInvalidHost("invalid}hostname")
+	assertInvalidHost("invalid hostname")
+	assertInvalidHost("invalid\thostname")
+	assertInvalidHost("invalid\rhostname")
+	assertInvalidHost("invalid\nhostname")
+	assertInvalidHost("invalid\vhostname")
+	assertInvalidHost("invalid\fhostname")
+	assertInvalidHost("invalid\u0007hostname")
+	assertInvalidHost("invalid\u0018hostname")
+	assertInvalidHost("invalid\u007fhostname")
+	assertInvalidHost("invalid\u2028hostname")
+	assertInvalidHost("invalid\u2029hostname")
+}
+
+func TestInvalidUser(t *testing.T) {
+	assert := assert.New(t)
+	require := require.New(t)
+
+	assertInvalidUser := func(user string) {
+		t.Helper()
+		_, err := expandTokens("%r", &sshArgs{}, &loginParam{user: user}, "%hnpr")
+		require.NotNil(err)
+		assert.Equal("remote username contains invalid characters", err.Error())
+	}
+
+	assertInvalidUser("-invalidusername")
+	assertInvalidUser("invalid'username")
+	assertInvalidUser("invalid`username")
+	assertInvalidUser("invalid\"username")
+	assertInvalidUser("invalid;username")
+	assertInvalidUser("invalid&username")
+	assertInvalidUser("invalid<username")
+	assertInvalidUser("invalid>username")
+	assertInvalidUser("invalid|username")
+	assertInvalidUser("invalid(username")
+	assertInvalidUser("invalid)username")
+	assertInvalidUser("invalid{username")
+	assertInvalidUser("invalid}username")
+	assertInvalidUser("invalid -username")
+	assertInvalidUser("invalid\t-username")
+	assertInvalidUser("invalid\r-username")
+	assertInvalidUser("invalid\n-username")
+	assertInvalidUser("invalidusername\\")
 }
