@@ -17,7 +17,7 @@ Website: [https://trzsz.github.io/ssh](https://trzsz.github.io/ssh) ( English ) 
 
 - tssh 支持一次选择多台服务器，批量登录，并支持批量执行预先指定的命令，方便快速完成批量服务器操作。
 
-- tssh 支持配置服务器登录密码，解决每次手工输入密码的麻烦（ 在自己能控制的服务器，推荐使用公私钥登录 ）。
+- tssh 支持配置服务器登录密码，解决每次手工输入密码的麻烦（ 自己能控制的服务器，推荐使用公钥登录 ）。
 
 - tssh 内置支持 [trzsz](https://trzsz.github.io/cn/) ( trz / tsz ) 文件传输工具，一并解决了 Windows 中使用 `trzsz ssh` 上传速度很慢的问题。
 
