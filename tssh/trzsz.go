@@ -54,7 +54,7 @@ func writeAll(dst io.Writer, data []byte) error {
 
 func wrapStdIO(serverIn io.WriteCloser, serverOut io.Reader, serverErr io.Reader, tty bool) {
 	win := runtime.GOOS == "windows"
-	forwardIO := func(reader io.Reader, writer io.WriteCloser, oldVal, newVal []byte) {
+	forwardIO := func(reader io.Reader, writer io.WriteCloser, input bool) {
 		defer writer.Close()
 		buffer := make([]byte, 32*1024)
 		for {
@@ -62,7 +62,11 @@ func wrapStdIO(serverIn io.WriteCloser, serverOut io.Reader, serverErr io.Reader
 			if n > 0 {
 				buf := buffer[:n]
 				if win && !tty {
-					buf = bytes.ReplaceAll(buf, oldVal, newVal)
+					if input {
+						buf = bytes.ReplaceAll(buf, []byte("\r\n"), []byte("\n"))
+					} else {
+						buf = bytes.ReplaceAll(buf, []byte("\n"), []byte("\r\n"))
+					}
 				}
 				if err := writeAll(writer, buf); err != nil {
 					warning("wrap stdio write failed: %v", err)
@@ -70,7 +74,7 @@ func wrapStdIO(serverIn io.WriteCloser, serverOut io.Reader, serverErr io.Reader
 				}
 			}
 			if err == io.EOF {
-				if win && tty {
+				if win && tty && input {
 					_, _ = writer.Write([]byte{0x1A}) // ctrl + z
 					continue
 				}
@@ -83,13 +87,13 @@ func wrapStdIO(serverIn io.WriteCloser, serverOut io.Reader, serverErr io.Reader
 		}
 	}
 	if serverIn != nil {
-		go forwardIO(os.Stdin, serverIn, []byte("\r\n"), []byte("\n"))
+		go forwardIO(os.Stdin, serverIn, true)
 	}
 	if serverOut != nil {
-		go forwardIO(serverOut, os.Stdout, []byte("\n"), []byte("\r\n"))
+		go forwardIO(serverOut, os.Stdout, false)
 	}
 	if serverErr != nil {
-		go forwardIO(serverErr, os.Stderr, []byte("\n"), []byte("\r\n"))
+		go forwardIO(serverErr, os.Stderr, false)
 	}
 }
 
