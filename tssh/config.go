@@ -177,15 +177,6 @@ func showTsshConfig() {
 }
 
 func initUserConfig(configFile string) error {
-	cleanupAfterLogined = append(cleanupAfterLogined, func() {
-		userConfig.config = nil
-		userConfig.sysConfig = nil
-		userConfig.exConfig = nil
-		userConfig.allHosts = nil
-		userConfig.wildcardPatterns = nil
-		userConfig = nil
-	})
-
 	var err error
 	userHomeDir, err = os.UserHomeDir()
 	if err != nil {
@@ -358,14 +349,16 @@ func getAllExConfig(alias, key string) []string {
 func getAllHosts() []*sshHost {
 	userConfig.loadHosts.Do(func() {
 		userConfig.doLoadConfig()
-
 		if userConfig.config != nil {
 			userConfig.allHosts = append(userConfig.allHosts, recursiveGetHosts(userConfig.config.Hosts)...)
 		}
-
 		if userConfig.sysConfig != nil {
 			userConfig.allHosts = append(userConfig.allHosts, recursiveGetHosts(userConfig.sysConfig.Hosts)...)
 		}
+		afterLoginFuncs = append(afterLoginFuncs, func() {
+			userConfig.allHosts = nil
+			userConfig.wildcardPatterns = nil
+		})
 	})
 
 	return userConfig.allHosts

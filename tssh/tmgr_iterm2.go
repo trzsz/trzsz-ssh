@@ -196,7 +196,7 @@ func getIterm2Manager() terminalManager {
 		debug("new iTerm2 app failed: %v", err)
 		return nil
 	}
-	cleanupAfterLogined = append(cleanupAfterLogined, func() {
+	afterLoginFuncs = append(afterLoginFuncs, func() {
 		app.Close()
 	})
 	debug("running in iTerm2")

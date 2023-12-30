@@ -75,7 +75,7 @@ func getAgentClient(args *sshArgs) agent.ExtendedAgent {
 		agentClient = agent.NewClient(conn)
 		debug("new ssh agent client [%s] success", addr)
 
-		cleanupAfterLogined = append(cleanupAfterLogined, func() {
+		afterLoginFuncs = append(afterLoginFuncs, func() {
 			conn.Close()
 			agentClient = nil
 		})

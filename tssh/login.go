@@ -39,6 +39,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/skeema/knownhosts"
@@ -183,8 +184,23 @@ func getLoginParam(args *sshArgs) (*loginParam, error) {
 	return param, nil
 }
 
+var acceptHostKeys []string
+var sshLoginSuccess atomic.Bool
+
 func addHostKey(path, host string, remote net.Addr, key ssh.PublicKey, ask bool) error {
+	keyNormalizedLine := knownhosts.Line([]string{host}, key)
+	for _, acceptKey := range acceptHostKeys {
+		if acceptKey == keyNormalizedLine {
+			return nil
+		}
+	}
+
 	if ask {
+		if sshLoginSuccess.Load() {
+			fmt.Fprintf(os.Stderr, "\r\n\033[0;31mThe public key of the remote server has changed after login.\033[0m\r\n")
+			return fmt.Errorf("host key changed")
+		}
+
 		fingerprint := ssh.FingerprintSHA256(key)
 		fmt.Fprintf(os.Stderr, "The authenticity of host '%s' can't be established.\r\n"+
 			"%s key fingerprint is %s.\r\n", host, key.Type(), fingerprint)
@@ -215,6 +231,8 @@ func addHostKey(path, host string, remote net.Addr, key ssh.PublicKey, ask bool)
 			fmt.Fprintf(os.Stderr, "Please type 'yes', 'no' or the fingerprint: ")
 		}
 	}
+
+	acceptHostKeys = append(acceptHostKeys, keyNormalizedLine)
 
 	writeKnownHost := func() error {
 		file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
@@ -272,6 +290,9 @@ func getHostKeyCallback(args *sshArgs) (ssh.HostKeyCallback, knownhosts.HostKeyC
 
 	cb := func(host string, remote net.Addr, key ssh.PublicKey) error {
 		err := kh(host, remote, key)
+		if err == nil {
+			return nil
+		}
 		strictHostKeyChecking := strings.ToLower(getOptionConfig(args, "StrictHostKeyChecking"))
 		if knownhosts.IsHostKeyChanged(err) {
 			path := primaryPath
@@ -906,12 +927,10 @@ func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session
 			if client != nil {
 				client.Close()
 			}
+		} else {
+			sshLoginSuccess.Store(true)
 		}
 	}()
-
-	cleanupAfterLogined = append(cleanupAfterLogined, func() {
-		getDefaultSigners = nil
-	})
 
 	// ssh login
 	var control bool

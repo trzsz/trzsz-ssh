@@ -110,11 +110,11 @@ func cleanupOnExit() {
 	}
 }
 
-var cleanupAfterLogined []func()
+var afterLoginFuncs []func()
 
-func cleanupForGC() {
-	for i := len(cleanupAfterLogined) - 1; i >= 0; i-- {
-		cleanupAfterLogined[i]()
+func cleanupAfterLogin() {
+	for i := len(afterLoginFuncs) - 1; i >= 0; i-- {
+		afterLoginFuncs[i]()
 	}
 }
 
@@ -276,14 +276,14 @@ func sshStart(args *sshArgs) error {
 		if err != nil {
 			return err
 		}
-		cleanupForGC()
+		cleanupAfterLogin()
 		wg.Wait()
 		return nil
 	}
 
 	// no command
 	if args.NoCommand {
-		cleanupForGC()
+		cleanupAfterLogin()
 		_ = client.Wait()
 		return nil
 	}
@@ -328,7 +328,7 @@ func sshStart(args *sshArgs) error {
 	}
 
 	// cleanup and wait for exit
-	cleanupForGC()
+	cleanupAfterLogin()
 	_ = session.Wait()
 	if args.Background {
 		_ = client.Wait()
