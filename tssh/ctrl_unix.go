@@ -96,7 +96,8 @@ func (c *controlMaster) handleStdout() <-chan error {
 
 func (c *controlMaster) fillPassword(args *sshArgs, expectCount uint32) (cancel context.CancelFunc) {
 	var ctx context.Context
-	if expectTimeout := getExpectTimeout(args, "Ctrl"); expectTimeout > 0 {
+	expectTimeout := getExpectTimeout(args, "Ctrl")
+	if expectTimeout > 0 {
 		ctx, cancel = context.WithTimeout(context.Background(), time.Duration(expectTimeout)*time.Second)
 	} else {
 		ctx, cancel = context.WithCancel(context.Background())
@@ -105,10 +106,15 @@ func (c *controlMaster) fillPassword(args *sshArgs, expectCount uint32) (cancel 
 	expect := &sshExpect{
 		ctx: ctx,
 		pre: "Ctrl",
-		out: make(chan []byte, 1),
+		out: make(chan []byte, 100),
 	}
 	go expect.wrapOutput(c.ptmx, nil, expect.out)
-	go expect.execInteractions(args.Destination, c.ptmx, expectCount)
+	go func() {
+		expect.execInteractions(args.Destination, c.ptmx, expectCount)
+		if ctx.Err() == context.DeadlineExceeded {
+			warning("expect timeout after %d seconds", expectTimeout)
+		}
+	}()
 	return
 }
 
@@ -187,7 +193,7 @@ func (c *controlMaster) start(args *sshArgs) error {
 	}
 }
 
-func (c *controlMaster) quit(exit <-chan struct{}) {
+func (c *controlMaster) quit(exitCh <-chan struct{}) {
 	if c.exited.Load() {
 		return
 	}
@@ -195,7 +201,10 @@ func (c *controlMaster) quit(exit <-chan struct{}) {
 	timer := time.AfterFunc(500*time.Millisecond, func() {
 		_ = c.cmd.Process.Kill()
 	})
-	<-exit
+	select {
+	case <-time.After(time.Second):
+	case <-exitCh:
+	}
 	timer.Stop()
 }
 

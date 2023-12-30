@@ -229,10 +229,10 @@ _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\
 
   ```
   Host auto
-      #!! ExpectCount 3  # 配置自动交互的次数，默认是 0 即无自动交互
+      #!! ExpectCount 5  # 配置自动交互的次数，默认是 0 即无自动交互
       #!! ExpectTimeout 30  # 配置自动交互的超时时间（单位：秒），默认是 30 秒
       #!! ExpectPattern1 *assword  # 配置第一个自动交互的匹配表达式
-      # 配置第一个自动输入（密文），填 tssh --enc-secret 编码后的字符串，会自动发送 \r 回车
+      # 配置第一个自动输入（密文），这是由 tssh --enc-secret 编码得到的字符串，tssh 会自动发送 \r 回车
       #!! ExpectSendPass1 d7983b4a8ac204bd073ed04741913befd4fbf813ad405d7404cb7d779536f8b87e71106d7780b2
       #!! ExpectPattern2 hostname*$  # 配置第二个自动交互的匹配表达式
       #!! ExpectSendText2 echo tssh expect\r  # 配置第二个自动输入（明文），需要指定 \r 才会发送回车
@@ -243,10 +243,16 @@ _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\
       #!! ExpectSendText3 ssh xxx\r  # 配置第三个自动输入，也可以换成 ExpectSendPass3 然后配置密文
       #!! ExpectCaseSendText3 yes/no y\r  # 在 ExpectPattern3 匹配之前，若遇到 yes/no 则发送 y 并回车
       #!! ExpectCaseSendText3 y/n yes\r   # 在 ExpectPattern3 匹配之前，若遇到 y/n 则发送 yes 并回车
-      #!! ExpectCaseSendPass3 token d7... # 在 ExpectPattern3 匹配之前，若遇到 token 则解码并发送 d7...
+      #!! ExpectCaseSendPass3 token d7... # 在 ExpectPattern3 匹配之前，若遇到 token 则解码 d7... 并发送
+      # --------------------------------------------------
+      #!! ExpectPattern4 token:  # 配置第四个自动交互的匹配表达式（这里以动态密码举例）
+      #!! ExpectSendOtp4 oathtool --totp -b xxxxx  # 配置获取动态密码的命令（明文）
+      #!! ExpectPattern5 token:  # 配置第五个自动交互的匹配表达式（这里以动态密码举例）
+      # 下面是运行 tssh --enc-secret 输入命令 oathtool --totp -b xxxxx 得到的密文串
+      #!! ExpectSendEncOtp5 77b4ce85d087b39909e563efb165659b22b9ea700a537f1258bdf56ce6fdd6ea70bc7591ea5c01918537a65433133bc0bd5ed3e4
   ```
 
-  - 使用 `tssh --debug` 登录，可以看到 `expect` 捕获到的输出，以及其匹配结果和自动输入的交互。
+  - 配置 `ExpectCount` 大于 `0` 之后，使用 `tssh --debug` 登录，可以看到 `expect` 捕获到的输出。
 
 ## 记住密码
 
@@ -311,7 +317,7 @@ _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\
 
 - 除了私钥和密码，还有一种登录方式，英文叫 keyboard interactive ，是服务器返回一些问题，客户端提供正确的答案就能登录，很多自定义的一次性密码就是利用这种方式实现的。
 
-- 如果答案是固定不变的，`tssh` 支持“记住答案”。大部分都是只有一个问题，只要配置 `QuestionAnswer1` 即可。对于有多个问题的，每个问题答案可按序号进行配置，也可以按问题的 hex 编码进行配置。
+- 对于只有一个问题，且答案（密码）固定不变的，只要配置 `QuestionAnswer1` 即可。对于有多个问题的，可以按问题的序号进行配置，也可以按问题的 hex 编码进行配置。
 
 - 使用 `tssh --debug` 登录，会输出问题的 hex 编码，从而知道该如何使用 hex 编码进行配置。配置举例：
 
@@ -332,7 +338,26 @@ _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\
       636f64653a20 my_code  # 其中 `636f64653a20` 是问题 `code: ` 的 hex 编码, `my_code` 是明文答案
   ```
 
+- 对于可以通过命令行获取到的动态密码，则可以如下配置（同样支持按序号或 hex 编码进行配置）：
+
+  ```
+  Host otp
+      OtpCommand1 oathtool --totp -b xxxxx  # 按序号配置获取动态密码的命令
+      otp636f64653a20 oathtool --totp -b xxxxx  # 按 `code: ` 的 hex 编码 `636f64653a20` 配置获取动态密码的命令
+      # 下面是运行 tssh --enc-secret 输入命令 oathtool --totp -b xxxxx 得到的密文串，加上 `enc` 前缀进行配置
+      encOtpCommand2 77b4ce85d087b39909e563efb165659b22b9ea700a537f1258bdf56ce6fdd6ea70bc7591ea5c01918537a65433133bc0bd5ed3e4
+      encotp636f64653a20 77b4ce85d087b39909e563efb165659b22b9ea700a537f1258bdf56ce6fdd6ea70bc7591ea5c01918537a65433133bc0bd5ed3e4
+  ```
+
 - 如果启用了 `ControlMaster` 多路复用，或者是在 `Warp` 终端，请参考前面 `自动交互` 加 `Ctrl` 前缀来实现。
+
+  ```
+  Host ctrl_otp
+      #!! CtrlExpectCount 1  # 配置自动交互的次数，一般只要输入一次密码
+      #!! CtrlExpectPattern1 token:  # 配置密码提示语的匹配表达式（这里以动态密码举例）
+      #!! CtrlExpectSendOtp1 oathtool --totp -b xxxxx  # 配置获取动态密码的命令（明文）
+      #!! CtrlExpectSendEncOtp1 77b4ce85d0...  # 或者配置 tssh --enc-secret 得到的密文串
+  ```
 
 ## 可选配置
 
