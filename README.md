@@ -360,6 +360,10 @@ _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\
   # tssh 搜索和选择服务器时，详情中显示的配置列表，默认如下：
   PromptDetailItems = Alias Host Port User GroupLabels IdentityFile ProxyCommand ProxyJump RemoteCommand
 
+  # tssh 搜索和选择服务器时，可以自定义光标和选中的图标：
+  PromptCursorIcon = 🧨
+  PromptSelectedIcon = 🍺
+
   # 登录后自动设置终端标题，退出后不会重置，你需要参考下文在本地 shell 中设置 PROMPT_COMMAND
   SetTerminalTitle = Yes
   ```

@@ -75,6 +75,8 @@ type tsshConfig struct {
 	promptPageSize      uint8
 	promptDefaultMode   string
 	promptDetailItems   string
+	promptCursorIcon    string
+	promptSelectedIcon  string
 	setTerminalTitle    string
 	loadConfig          sync.Once
 	loadExConfig        sync.Once
@@ -139,9 +141,20 @@ func parseTsshConfig() {
 			userConfig.promptDefaultMode = value
 		case name == "promptdetailitems" && userConfig.promptDetailItems == "":
 			userConfig.promptDetailItems = value
+		case name == "promptcursoricon" && userConfig.promptCursorIcon == "":
+			userConfig.promptCursorIcon = value
+		case name == "promptselectedicon" && userConfig.promptSelectedIcon == "":
+			userConfig.promptSelectedIcon = value
 		case name == "setterminaltitle" && userConfig.setTerminalTitle == "":
 			userConfig.setTerminalTitle = value
 		}
+	}
+
+	if userConfig.promptCursorIcon != "" {
+		promptCursorIcon = userConfig.promptCursorIcon
+	}
+	if userConfig.promptSelectedIcon != "" {
+		promptSelectedIcon = userConfig.promptSelectedIcon
 	}
 
 	if enableDebugLogging {
@@ -170,6 +183,12 @@ func showTsshConfig() {
 	}
 	if userConfig.promptDetailItems != "" {
 		debug("PromptDetailItems = %s", userConfig.promptDetailItems)
+	}
+	if userConfig.promptCursorIcon != "" {
+		debug("PromptCursorIcon = %s", userConfig.promptCursorIcon)
+	}
+	if userConfig.promptSelectedIcon != "" {
+		debug("PromptSelectedIcon = %s", userConfig.promptSelectedIcon)
 	}
 	if userConfig.setTerminalTitle != "" {
 		debug("SetTerminalTitle = %s", userConfig.setTerminalTitle)

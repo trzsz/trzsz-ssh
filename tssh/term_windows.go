@@ -161,8 +161,12 @@ func setupVirtualTerminal() error {
 		if !sttyExecutable() {
 			return fmt.Errorf("enable virtual terminal failed: %v", err)
 		}
-		promptCursorIcon = ">>"
-		promptSelectedIcon = "++"
+		if userConfig.promptCursorIcon == "" {
+			promptCursorIcon = ">>"
+		}
+		if userConfig.promptSelectedIcon == "" {
+			promptSelectedIcon = "++"
+		}
 	}
 
 	// set code page to UTF8
