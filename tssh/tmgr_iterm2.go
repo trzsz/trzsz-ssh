@@ -37,13 +37,15 @@ import (
 )
 
 type iterm2Mgr struct {
-	app iterm2.App
+	app      iterm2.App
+	keywords string
 }
 
-func (m *iterm2Mgr) openTerminals(openType int, hosts []*sshHost) {
+func (m *iterm2Mgr) openTerminals(keywords string, openType int, hosts []*sshHost) {
 	if len(hosts) < 2 {
 		return
 	}
+	m.keywords = keywords
 	switch openType {
 	case openTermDefault:
 		if len(hosts) > 36 {
@@ -64,11 +66,30 @@ func (m *iterm2Mgr) setTitle(session iterm2.Session, alias string) {
 	_ = session.Inject([]byte(fmt.Sprintf("\033]0;%s\007", alias)))
 }
 
-func (m *iterm2Mgr) execCmd(session iterm2.Session, alias string) {
-	cmd := shellescape.QuoteCommand(append(os.Args, alias))
-	if err := session.SendText(fmt.Sprintf("%s\n", cmd)); err != nil {
-		warning("Failed to send text: %v", err)
+func (m *iterm2Mgr) execCmd(session iterm2.Session, alias string) error {
+	var cmdArgs []string
+	keywordsMatched := false
+	for _, arg := range os.Args {
+		if m.keywords != "" && arg == m.keywords {
+			if keywordsMatched {
+				return fmt.Errorf("unable to handle duplicate keywords '%s'", m.keywords)
+			}
+			keywordsMatched = true
+			cmdArgs = append(cmdArgs, alias)
+			continue
+		}
+		cmdArgs = append(cmdArgs, arg)
 	}
+	if m.keywords == "" {
+		cmdArgs = append(cmdArgs, alias)
+	} else if !keywordsMatched {
+		return fmt.Errorf("unable to handle replace keywords '%s'", m.keywords)
+	}
+	cmd := shellescape.QuoteCommand(cmdArgs)
+	if err := session.SendText(fmt.Sprintf("%s\n", cmd)); err != nil {
+		return fmt.Errorf("failed to send text: %v", err)
+	}
+	return nil
 }
 
 func (m *iterm2Mgr) getCurrentWindowSession() (iterm2.Window, iterm2.Session) {
@@ -109,20 +130,23 @@ func (m *iterm2Mgr) openWindows(hosts []*sshHost) {
 		window, err := m.app.CreateWindow()
 		if err != nil {
 			warning("Failed to create window: %v", err)
-			continue
+			return
 		}
 		tabs, err := window.ListTabs()
 		if err != nil || len(tabs) == 0 {
 			warning("Failed to list tabs: %v", err)
-			continue
+			return
 		}
 		sessions, err := tabs[0].ListSessions()
 		if err != nil || len(sessions) == 0 {
 			warning("Failed to list sessions: %v", err)
-			continue
+			return
 		}
 		m.setTitle(sessions[0], host.Alias)
-		m.execCmd(sessions[0], host.Alias)
+		if err := m.execCmd(sessions[0], host.Alias); err != nil {
+			warning("Failed to execute command: %v", err)
+			return
+		}
 	}
 }
 
@@ -138,15 +162,18 @@ func (m *iterm2Mgr) openTabs(hosts []*sshHost) {
 		tab, err := window.CreateTab()
 		if err != nil {
 			warning("Failed to create tab: %v", err)
-			continue
+			return
 		}
 		sessions, err := tab.ListSessions()
 		if err != nil || len(sessions) == 0 {
 			warning("Failed to list sessions: %v", err)
-			continue
+			return
 		}
 		m.setTitle(sessions[0], host.Alias)
-		m.execCmd(sessions[0], host.Alias)
+		if err := m.execCmd(sessions[0], host.Alias); err != nil {
+			warning("Failed to execute command: %v", err)
+			return
+		}
 	}
 }
 
@@ -163,11 +190,14 @@ func (m *iterm2Mgr) openPanes(hosts []*sshHost) {
 		pane, err := session.SplitPane(iterm2.SplitPaneOptions{Vertical: false})
 		if err != nil {
 			warning("Failed to split pane: %v", err)
-			continue
+			return
 		}
 		sessions[i] = pane
 		m.setTitle(pane, matrix[i][0].alias)
-		m.execCmd(pane, matrix[i][0].alias)
+		if err := m.execCmd(pane, matrix[i][0].alias); err != nil {
+			warning("Failed to execute command: %v", err)
+			return
+		}
 	}
 	for i := 0; i < len(matrix); i++ {
 		session := sessions[i]
@@ -178,10 +208,13 @@ func (m *iterm2Mgr) openPanes(hosts []*sshHost) {
 			pane, err := session.SplitPane(iterm2.SplitPaneOptions{Vertical: true})
 			if err != nil {
 				warning("Failed to split pane: %v", err)
-				continue
+				return
 			}
 			m.setTitle(pane, matrix[i][j].alias)
-			m.execCmd(pane, matrix[i][j].alias)
+			if err := m.execCmd(pane, matrix[i][j].alias); err != nil {
+				warning("Failed to execute command: %v", err)
+				return
+			}
 		}
 	}
 }
@@ -200,5 +233,5 @@ func getIterm2Manager() terminalManager {
 		app.Close()
 	})
 	debug("running in iTerm2")
-	return &iterm2Mgr{app}
+	return &iterm2Mgr{app: app}
 }

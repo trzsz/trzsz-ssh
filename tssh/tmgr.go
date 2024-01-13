@@ -39,7 +39,7 @@ const (
 )
 
 type terminalManager interface {
-	openTerminals(openType int, hosts []*sshHost)
+	openTerminals(keywords string, openType int, hosts []*sshHost)
 }
 
 func getTerminalManager() terminalManager {
@@ -77,12 +77,6 @@ func getPanesMatrix(hosts []*sshHost) [][]*paneHost {
 		}
 	}
 	return matrix
-}
-
-func appendArgs(alias string, args ...string) []string {
-	args = append(args, os.Args...)
-	args = append(args, alias)
-	return args
 }
 
 func setTerminalTitle(title string) {

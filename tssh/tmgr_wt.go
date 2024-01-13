@@ -38,12 +38,14 @@ import (
 )
 
 type wtMgr struct {
+	keywords string
 }
 
-func (m *wtMgr) openTerminals(openType int, hosts []*sshHost) {
+func (m *wtMgr) openTerminals(keywords string, openType int, hosts []*sshHost) {
 	if len(hosts) < 2 {
 		return
 	}
+	m.keywords = keywords
 	switch openType {
 	case openTermDefault:
 		if len(hosts) > 36 {
@@ -64,13 +66,26 @@ func (m *wtMgr) execWt(alias string, args ...string) error {
 	cmdArgs := []string{"/c", "wt"}
 	cmdArgs = append(cmdArgs, args...)
 	cmdArgs = append(cmdArgs, "--title", alias)
+	keywordsMatched := false
 	for _, arg := range os.Args {
 		if strings.Contains(arg, ";") {
 			return fmt.Errorf("Windows Terminal does not support ';', use '|cat&&' instead.")
 		}
+		if m.keywords != "" && arg == m.keywords {
+			if keywordsMatched {
+				return fmt.Errorf("unable to handle duplicate keywords '%s'", m.keywords)
+			}
+			keywordsMatched = true
+			cmdArgs = append(cmdArgs, alias)
+			continue
+		}
 		cmdArgs = append(cmdArgs, arg)
 	}
-	cmdArgs = append(cmdArgs, alias)
+	if m.keywords == "" {
+		cmdArgs = append(cmdArgs, alias)
+	} else if !keywordsMatched {
+		return fmt.Errorf("unable to handle replace keywords '%s'", m.keywords)
+	}
 	return exec.Command("cmd", cmdArgs...).Run()
 }
 
@@ -79,6 +94,7 @@ func (m *wtMgr) openWindows(hosts []*sshHost) {
 	for _, host := range hosts[1:] {
 		if err := m.execWt(host.Alias, "-w", "-1"); err != nil {
 			warning("Failed to open wt window: %v", err)
+			return
 		}
 	}
 }
@@ -88,6 +104,7 @@ func (m *wtMgr) openTabs(hosts []*sshHost) {
 	for _, host := range hosts[1:] {
 		if err := m.execWt(host.Alias, "-w", "0", "nt"); err != nil {
 			warning("Failed to open wt tab: %v", err)
+			return
 		}
 	}
 }
@@ -99,10 +116,12 @@ func (m *wtMgr) openPanes(hosts []*sshHost) {
 		percentage := "." + strconv.Itoa(100/(i+1))
 		if err := m.execWt(matrix[i][0].alias, "-w", "0", "sp", "-H", "-s", percentage); err != nil {
 			warning("Failed to split wt pane: %v", err)
+			return
 		}
 		time.Sleep(100 * time.Millisecond) // wait for new pane focus
 		if err := exec.Command("cmd", "/c", "wt", "-w", "0", "mf", "up").Run(); err != nil {
 			warning("Failed to move wt focus: %v", err)
+			return
 		}
 		time.Sleep(100 * time.Millisecond) // wait for new pane focus
 	}
@@ -110,6 +129,7 @@ func (m *wtMgr) openPanes(hosts []*sshHost) {
 		if i > 0 {
 			if err := exec.Command("cmd", "/c", "wt", "-w", "0", "mf", "down").Run(); err != nil {
 				warning("Failed to move wt focus: %v", err)
+				return
 			}
 			time.Sleep(100 * time.Millisecond) // wait for new pane focus
 		}
@@ -117,6 +137,7 @@ func (m *wtMgr) openPanes(hosts []*sshHost) {
 			percentage := "." + strconv.Itoa(100-100/(len(matrix[i])-j+1))
 			if err := m.execWt(matrix[i][j].alias, "-w", "0", "sp", "-V", "-s", percentage); err != nil {
 				warning("Failed to split wt pane: %v", err)
+				return
 			}
 			time.Sleep(100 * time.Millisecond) // wait for new pane focus
 		}

@@ -608,7 +608,7 @@ func chooseAlias(keywords string) (string, bool, error) {
 		fmt.Fprintf(os.Stderr, "\033[0;32m%s %s\033[0m\r\n", promptSelectedIcon, h.Alias)
 	}
 	if len(selectedHosts) > 1 && termMgr != nil {
-		termMgr.openTerminals(prompt.openType, selectedHosts)
+		termMgr.openTerminals(keywords, prompt.openType, selectedHosts)
 	}
 	return selectedHosts[0].Alias, false, nil
 }

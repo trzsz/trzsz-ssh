@@ -28,6 +28,7 @@ SOFTWARE.
 package tssh
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"strconv"
@@ -35,12 +36,14 @@ import (
 )
 
 type tmuxMgr struct {
+	keywords string
 }
 
-func (m *tmuxMgr) openTerminals(openType int, hosts []*sshHost) {
+func (m *tmuxMgr) openTerminals(keywords string, openType int, hosts []*sshHost) {
 	if len(hosts) < 2 {
 		return
 	}
+	m.keywords = keywords
 	switch openType {
 	case openTermDefault:
 		if len(hosts) > 36 {
@@ -55,6 +58,28 @@ func (m *tmuxMgr) openTerminals(openType int, hosts []*sshHost) {
 	}
 }
 
+func (m *tmuxMgr) appendArgs(alias string, args ...string) ([]string, error) {
+	cmdArgs := args
+	keywordsMatched := false
+	for _, arg := range os.Args {
+		if m.keywords != "" && arg == m.keywords {
+			if keywordsMatched {
+				return nil, fmt.Errorf("unable to handle duplicate keywords '%s'", m.keywords)
+			}
+			keywordsMatched = true
+			cmdArgs = append(cmdArgs, alias)
+			continue
+		}
+		cmdArgs = append(cmdArgs, arg)
+	}
+	if m.keywords == "" {
+		cmdArgs = append(cmdArgs, alias)
+	} else if !keywordsMatched {
+		return nil, fmt.Errorf("unable to handle replace keywords '%s'", m.keywords)
+	}
+	return cmdArgs, nil
+}
+
 func (m *tmuxMgr) openWindows(hosts []*sshHost) {
 	if err := exec.Command("tmux", "renamew", hosts[0].Alias).Run(); err != nil {
 		warning("Failed to rename tmux window: %v", err)
@@ -64,8 +89,14 @@ func (m *tmuxMgr) openWindows(hosts []*sshHost) {
 		})
 	}
 	for _, host := range hosts[1:] {
-		if err := exec.Command("tmux", appendArgs(host.Alias, "neww", "-n", host.Alias)...).Run(); err != nil {
+		args, err := m.appendArgs(host.Alias, "neww", "-n", host.Alias)
+		if err != nil {
 			warning("Failed to open tmux window: %v", err)
+			return
+		}
+		if err := exec.Command("tmux", args...).Run(); err != nil {
+			warning("Failed to open tmux window: %v", err)
+			return
 		}
 	}
 }
@@ -116,8 +147,12 @@ func (m *tmuxMgr) splitWindow(alias, axes, target, percentage string) string {
 	if target == "" {
 		return ""
 	}
-	out, err := exec.Command("tmux",
-		appendArgs(alias, "splitw", axes, "-t", target, "-p", percentage, "-P", "-F", "#{pane_id}")...).Output()
+	args, err := m.appendArgs(alias, "splitw", axes, "-t", target, "-p", percentage, "-P", "-F", "#{pane_id}")
+	if err != nil {
+		warning("Failed to split tmux window: %v", err)
+		return ""
+	}
+	out, err := exec.Command("tmux", args...).Output()
 	if err != nil {
 		warning("Failed to split tmux window: %v", err)
 		return ""
