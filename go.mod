@@ -20,10 +20,10 @@ require (
 	github.com/trzsz/iterm2 v0.1.2
 	github.com/trzsz/promptui v0.10.5
 	github.com/trzsz/ssh_config v1.3.4
-	github.com/trzsz/trzsz-go v1.1.7
-	golang.org/x/crypto v0.17.0
-	golang.org/x/sys v0.15.0
-	golang.org/x/term v0.15.0
+	github.com/trzsz/trzsz-go v1.1.8-0.20240113105526-ca0b2b345ee3
+	golang.org/x/crypto v0.18.0
+	golang.org/x/sys v0.16.0
+	golang.org/x/term v0.16.0
 )
 
 require (
@@ -50,12 +50,12 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/randall77/makefat v0.0.0-20210315173500-7ddd0e42c844 // indirect
 	github.com/rivo/uniseg v0.4.4 // indirect
-	golang.org/x/image v0.14.0 // indirect
+	golang.org/x/image v0.15.0 // indirect
 	golang.org/x/mod v0.14.0 // indirect
-	golang.org/x/net v0.19.0 // indirect
-	golang.org/x/sync v0.5.0 // indirect
+	golang.org/x/net v0.20.0 // indirect
+	golang.org/x/sync v0.6.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
-	golang.org/x/tools v0.16.1 // indirect
+	golang.org/x/tools v0.17.0 // indirect
 	google.golang.org/protobuf v1.32.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
