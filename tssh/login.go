@@ -1047,7 +1047,11 @@ func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session
 		err = fmt.Errorf("get terminal size failed: %v", err)
 		return
 	}
-	if err = session.RequestPty("xterm-256color", height, width, ssh.TerminalModes{}); err != nil {
+	term := os.Getenv("TERM")
+	if term == "" {
+		term = "xterm-256color"
+	}
+	if err = session.RequestPty(term, height, width, ssh.TerminalModes{}); err != nil {
 		err = fmt.Errorf("request pty failed: %v", err)
 		return
 	}
