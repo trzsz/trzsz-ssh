@@ -2,6 +2,8 @@
 
 [![MIT License](https://img.shields.io/badge/license-MIT-green.svg?style=flat)](https://choosealicense.com/licenses/mit/)
 [![GitHub Release](https://img.shields.io/github/v/release/trzsz/trzsz-ssh)](https://github.com/trzsz/trzsz-ssh/releases)
+[![WebSite](https://img.shields.io/badge/WebSite-https%3A%2F%2Ftrzsz.github.io%2Fssh-blue?style=flat)](https://trzsz.github.io/ssh)
+[![中文文档](https://img.shields.io/badge/%E4%B8%AD%E6%96%87%E6%96%87%E6%A1%A3-https%3A%2F%2Ftrzsz.github.io%2Fcn%2Fssh-blue?style=flat)](https://trzsz.github.io/cn/ssh)
 
 ## Introduction
 
@@ -18,8 +20,8 @@ trzsz-ssh ( tssh ) works exactly like the openssh client. The following common f
 |  Multiplexing  |                                   `ControlMaster` `ControlPath` `ControlPersist`                                   |
 |   SSH Agent    |                              `-a` `-A` `ForwardAgent` `IdentityAgent` `SSH_AUTH_SOCK`                              |
 |  Known Hosts   |                        `UserKnownHostsFile` `GlobalKnownHostsFile` `StrictHostKeyChecking`                         |
-| Authentication |                   `PubkeyAuthentication` `PasswordAuthentication` `KbdInteractiveAuthentication`                   |
 |  Basic Login   |                   `-l` `-p` `-i` `-F` `HostName` `Port` `User` `IdentityFile` `SendEnv` `SetEnv`                   |
+| Authentication |                   `PubkeyAuthentication` `PasswordAuthentication` `KbdInteractiveAuthentication`                   |
 |  Port Forward  | `-g` `-f` `-N` `-L` `-R` `-D` `LocalForward` `RemoteForward` `DynamicForward` `GatewayPorts` `ClearAllForwardings` |
 
 ## Extra Features
@@ -170,7 +172,7 @@ Welcome and thank you for considering contributing. We appreciate all forms of s
 
 - Fork and clone the repository `https://github.com/trzsz/trzsz-ssh.git`.
 
-- Make your changes just don't break or fix the unit tests `go test ./tssh`.
+- Make your changes just ensure that the unit tests `go test ./tssh` pass.
 
 - Build the binary `go build -o ./bin/ ./cmd/tssh` and test it `./bin/tssh`.
 

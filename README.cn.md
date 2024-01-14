@@ -2,10 +2,10 @@
 
 支持 [trzsz](https://trzsz.github.io/cn/) ( trz / tsz ) 的 ssh 客户端，支持搜索和选择服务器进行批量登录，支持记住密码。
 
-Website: [https://trzsz.github.io/ssh](https://trzsz.github.io/ssh) ( English ) 　中文文档：[https://trzsz.github.io/cn/ssh](https://trzsz.github.io/cn/ssh)
-
 [![MIT License](https://img.shields.io/badge/license-MIT-green.svg?style=flat)](https://choosealicense.com/licenses/mit/)
 [![GitHub Release](https://img.shields.io/github/v/release/trzsz/trzsz-ssh)](https://github.com/trzsz/trzsz-ssh/releases)
+[![WebSite](https://img.shields.io/badge/WebSite-https%3A%2F%2Ftrzsz.github.io%2Fssh-blue?style=flat)](https://trzsz.github.io/ssh)
+[![中文文档](https://img.shields.io/badge/%E4%B8%AD%E6%96%87%E6%96%87%E6%A1%A3-https%3A%2F%2Ftrzsz.github.io%2Fcn%2Fssh-blue?style=flat)](https://trzsz.github.io/cn/ssh)
 
 ## tssh 简介
 
@@ -416,9 +416,11 @@ _`~/` 代表 HOME 目录。在 Windows 中，请将下文的 `~/` 替换成 `C:\
   - 需要在客户端（ 本地电脑 ）上安装 `lrzsz`，Windows 可以从 [lrzsz-win32](https://github.com/trzsz/lrzsz-win32/releases) 下载解压并加到 `PATH` 中，也可以如下安装：
 
     ```
-    scoop install https://trzsz.github.io/lrzsz.json
+    scoop install lrzsz
+    ```
 
-    choco install lrzsz --version=0.12.21
+    ```
+    choco install lrzsz
     ```
 
   - 关于 `rz / sz` 进度条，己传大小和传输速度会有一点偏差，它的主要作用只是指示传输正在进行中。

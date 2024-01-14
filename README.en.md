@@ -2,10 +2,10 @@
 
 An ssh client that supports [trzsz](https://trzsz.github.io/), supports searching and selecting servers for batch login.
 
-Website: [https://trzsz.github.io/ssh](https://trzsz.github.io/ssh) ( English ) 　中文文档：[https://trzsz.github.io/cn/ssh](https://trzsz.github.io/cn/ssh)
-
 [![MIT License](https://img.shields.io/badge/license-MIT-green.svg?style=flat)](https://choosealicense.com/licenses/mit/)
 [![GitHub Release](https://img.shields.io/github/v/release/trzsz/trzsz-ssh)](https://github.com/trzsz/trzsz-ssh/releases)
+[![WebSite](https://img.shields.io/badge/WebSite-https%3A%2F%2Ftrzsz.github.io%2Fssh-blue?style=flat)](https://trzsz.github.io/ssh)
+[![中文文档](https://img.shields.io/badge/%E4%B8%AD%E6%96%87%E6%96%87%E6%A1%A3-https%3A%2F%2Ftrzsz.github.io%2Fcn%2Fssh-blue?style=flat)](https://trzsz.github.io/cn/ssh)
 
 ## Introduce
 
@@ -415,9 +415,11 @@ _`~/` represents the HOME directory. Please replace `~/` below with `C:\Users\yo
   - `lrzsz` needs to be installed on the client ( local computer ). For Windows, you can download and unzip it from [lrzsz-win32](https://github.com/trzsz/lrzsz-win32/releases) and add it to `PATH`, or install it as follows:
 
     ```
-    scoop install https://trzsz.github.io/lrzsz.json
+    scoop install lrzsz
+    ```
 
-    choco install lrzsz --version=0.12.21
+    ```
+    choco install lrzsz
     ```
 
   - About the progress, the transferred and speed are not precise. It just indicating that the transfer is in progress.
