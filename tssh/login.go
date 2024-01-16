@@ -115,11 +115,13 @@ func getLoginParam(args *sshArgs) (*loginParam, error) {
 	args.Destination = destHost
 
 	// login host
-	hostName := getConfig(destHost, "HostName")
-	if hostName != "" {
-		param.host = hostName
-	} else {
-		param.host = destHost
+	param.host = destHost
+	if hostName := getConfig(destHost, "HostName"); hostName != "" {
+		var err error
+		param.host, err = expandTokens(hostName, args, param, "%h")
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// login user
