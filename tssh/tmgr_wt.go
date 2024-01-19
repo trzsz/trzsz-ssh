@@ -3,8 +3,7 @@
 /*
 MIT License
 
-Copyright (c) 2023 Lonny Wong <lonnywong@qq.com>
-Copyright (c) 2023 [Contributors](https://github.com/trzsz/trzsz-ssh/graphs/contributors)
+Copyright (c) 2023-2024 The Trzsz SSH Authors.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
