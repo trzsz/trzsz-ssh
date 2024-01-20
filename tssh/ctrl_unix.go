@@ -27,6 +27,7 @@ SOFTWARE.
 package tssh
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"fmt"
@@ -47,27 +48,35 @@ import (
 )
 
 type controlMaster struct {
-	path      string
-	args      []string
-	cmd       *exec.Cmd
-	ptmx      *os.File
-	stdout    io.ReadCloser
-	stderr    io.ReadCloser
-	loggingIn atomic.Bool
-	exited    atomic.Bool
+	path    string
+	args    []string
+	cmd     *exec.Cmd
+	ptmx    *os.File
+	stdout  io.ReadCloser
+	stderr  io.ReadCloser
+	exited  atomic.Bool
+	success atomic.Bool
 }
 
 func (c *controlMaster) handleStderr() {
 	go func() {
 		defer c.stderr.Close()
-		buf := make([]byte, 100)
-		for c.loggingIn.Load() {
-			n, err := c.stderr.Read(buf)
-			if n > 0 {
-				fmt.Fprintf(os.Stderr, "%s", string(buf[:n]))
+		var output []string
+		scanner := bufio.NewScanner(c.stderr)
+		for scanner.Scan() {
+			out := scanner.Text()
+			if c.success.Load() {
+				continue
 			}
-			if err != nil {
-				break
+			if strings.HasPrefix(out, "debug") {
+				fmt.Fprintf(os.Stderr, "%s\r\n", out)
+			} else {
+				output = append(output, out)
+			}
+		}
+		if !c.success.Load() {
+			for _, out := range output {
+				warning("%s", out)
 			}
 		}
 	}()
@@ -160,8 +169,6 @@ func (c *controlMaster) start(args *sshArgs) error {
 		return fmt.Errorf("control master start failed: %v", err)
 	}
 
-	c.loggingIn.Store(true)
-
 	intCh := make(chan os.Signal, 1)
 	signal.Notify(intCh, os.Interrupt)
 	defer func() { signal.Stop(intCh); close(intCh) }()
@@ -171,7 +178,6 @@ func (c *controlMaster) start(args *sshArgs) error {
 	doneCh := c.handleStdout()
 
 	defer func() {
-		c.loggingIn.Store(false)
 		if !c.exited.Load() {
 			onExitFuncs = append(onExitFuncs, func() {
 				c.quit(exitCh)
@@ -182,7 +188,11 @@ func (c *controlMaster) start(args *sshArgs) error {
 	for {
 		select {
 		case err := <-doneCh:
-			return err
+			if err != nil {
+				return err
+			}
+			c.success.Store(true)
+			return nil
 		case <-exitCh:
 			return fmt.Errorf("control master process exited")
 		case <-intCh:
