@@ -559,27 +559,29 @@ func chooseAlias(keywords string) (string, bool, error) {
 
 	hosts := getAllHosts()
 
-	templates := &promptui.SelectTemplates{
-		Help: `{{ "Use ← ↓ ↑ → h j k l to navigate, / toggles search, ? toggles help" | faint }}`,
-		Active: fmt.Sprintf(`%s {{ if .Selected }}{{ "✔ " | green }}{{ end }}{{ .Alias | cyan }} ({{ .Host | red }})`+
-			`	{{ .GroupLabels }}`, promptCursorIcon),
-		Inactive: `   {{ if .Selected }}{{ "✔ " | green }}{{ end }}{{ .Alias | cyan }} ({{ .Host | red }})` +
-			`	 {{ .GroupLabels }}`,
-		Details: getPromptDetailTemplate(),
-	}
-
 	searcher := func(input string, index int) bool {
 		return matchHost(hosts[index], strings.Fields(strings.ToLower(input)))
 	}
 
+	theme := getPromptTheme()
 	termMgr := getTerminalManager()
 
 	pipeIn, pipeOut := io.Pipe()
 	prompt := sshPrompt{
 		selector: &promptui.Select{
-			Label:        "SSH Alias",
-			Items:        hosts,
-			Templates:    templates,
+			Label: "SSH Alias",
+			Items: hosts,
+			Templates: &promptui.SelectTemplates{
+				Help:            theme.Help,
+				Label:           theme.Label,
+				Active:          theme.Active,
+				Inactive:        theme.Inactive,
+				Details:         theme.Details,
+				Shortcuts:       theme.Shortcuts,
+				HideLabel:       theme.HideLabel,
+				ItemsRenderer:   theme.ItemsRenderer,
+				DetailsRenderer: theme.DetailsRenderer,
+			},
 			Size:         getPromptPageSize(),
 			Searcher:     searcher,
 			Stdin:        pipeIn,

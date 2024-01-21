@@ -13,14 +13,15 @@ require (
 	github.com/creack/pty v1.1.21
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
 	github.com/mattn/go-isatty v0.0.20
+	github.com/mattn/go-runewidth v0.0.15
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/skeema/knownhosts v1.2.1
 	github.com/stretchr/testify v1.8.4
 	github.com/trzsz/go-arg v1.5.3
 	github.com/trzsz/iterm2 v0.1.2
-	github.com/trzsz/promptui v0.10.5
+	github.com/trzsz/promptui v0.10.6
 	github.com/trzsz/ssh_config v1.3.4
-	github.com/trzsz/trzsz-go v1.1.8-0.20240113105526-ca0b2b345ee3
+	github.com/trzsz/trzsz-go v1.1.8-0.20240121141752-82a3e0a97899
 	golang.org/x/crypto v0.18.0
 	golang.org/x/sys v0.16.0
 	golang.org/x/term v0.16.0
@@ -41,7 +42,6 @@ require (
 	github.com/klauspost/compress v1.17.4 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/mattn/go-localereader v0.0.1 // indirect
-	github.com/mattn/go-runewidth v0.0.15 // indirect
 	github.com/muesli/ansi v0.0.0-20230316100256-276c6243b2f6 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/muesli/reflow v0.3.0 // indirect

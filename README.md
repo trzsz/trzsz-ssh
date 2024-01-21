@@ -5,9 +5,7 @@
 [![WebSite](https://img.shields.io/badge/WebSite-https%3A%2F%2Ftrzsz.github.io%2Fssh-blue?style=flat)](https://trzsz.github.io/ssh)
 [![中文文档](https://img.shields.io/badge/%E4%B8%AD%E6%96%87%E6%96%87%E6%A1%A3-https%3A%2F%2Ftrzsz.github.io%2Fcn%2Fssh-blue?style=flat)](https://trzsz.github.io/cn/ssh)
 
-## Introduction
-
-trzsz-ssh ( tssh ) is an open-source project written in golang, designed as a drop-in replacement for the openssh client. It aims to provide complete compatibility with openssh, mirroring all its features, while also offering additional useful features not found in the openssh client.
+trzsz-ssh ( tssh ) is an ssh client designed as a drop-in replacement for the openssh client. It aims to provide complete compatibility with openssh, mirroring all its features, while also offering additional useful features not found in the openssh client.
 
 ## Basic Features
 
@@ -30,16 +28,16 @@ trzsz-ssh ( tssh ) offers additional useful features:
 
 |                           English                           |                             中文                              |
 | :---------------------------------------------------------: | :-----------------------------------------------------------: |
-|       [trzsz ( trz / tsz )](https://trzsz.github.io/)       |      [trzsz ( trz / tsz )](https://trzsz.github.io/cn/)       |
-|           [Login Prompt](README.en.md#how-to-use)           | [界面登录](README.cn.md#%E4%BD%BF%E7%94%A8%E6%96%B9%E6%B3%95) |
+|          [Login Prompt](README.en.md#login-prompt)          | [登录界面](README.cn.md#%E7%99%BB%E5%BD%95%E7%95%8C%E9%9D%A2) |
+|          [Custom Theme](README.en.md#custom-theme)          | [主题风格](README.cn.md#%E4%B8%BB%E9%A2%98%E9%A3%8E%E6%A0%BC) |
+|      [trzsz ( trz / tsz )](README.en.md#support-trzsz)      | [trzsz ( trz / tsz )](README.cn.md#%E6%94%AF%E6%8C%81-trzsz)  |
+|      [zmodem ( rz / sz )](README.en.md#support-zmodem)      | [zmodem ( rz / sz )](README.cn.md#%E6%94%AF%E6%8C%81-zmodem)  |
 |           [Batch Login](README.en.md#batch-login)           | [批量登录](README.cn.md#%E6%89%B9%E9%87%8F%E7%99%BB%E5%BD%95) |
 |          [Group Labels](README.en.md#group-labels)          | [分组标签](README.cn.md#%E5%88%86%E7%BB%84%E6%A0%87%E7%AD%BE) |
 | [Automated Interaction](README.en.md#automated-interaction) | [自动交互](README.cn.md#%E8%87%AA%E5%8A%A8%E4%BA%A4%E4%BA%92) |
 |     [Remember Password](README.en.md#remember-password)     | [记住密码](README.cn.md#%E8%AE%B0%E4%BD%8F%E5%AF%86%E7%A0%81) |
-|    [Personal Configuration](README.en.md#configuration)     | [个性配置](README.cn.md#%E5%8F%AF%E9%80%89%E9%85%8D%E7%BD%AE) |
+|  [Custom Configuration](README.en.md#custom-configuration)  | [个性配置](README.cn.md#%E4%B8%AA%E6%80%A7%E9%85%8D%E7%BD%AE) |
 |        [Other Features](README.en.md#other-features)        | [其他功能](README.cn.md#%E5%85%B6%E4%BB%96%E5%8A%9F%E8%83%BD) |
-|         [Prompt Shortcuts](README.en.md#shortcuts)          |    [界面快捷键](README.cn.md#%E5%BF%AB%E6%8D%B7%E9%94%AE)     |
-|      [Trouble Shooting](README.en.md#trouble-shooting)      | [故障排除](README.cn.md#%E6%95%85%E9%9A%9C%E6%8E%92%E9%99%A4) |
 
 ## Installation
 
@@ -180,9 +178,15 @@ Welcome and thank you for considering contributing. We appreciate all forms of s
 
 ## Screenshot
 
-![tssh login demo](https://trzsz.github.io/images/tssh.gif)
+![tssh tiny](https://trzsz.github.io/images/tssh_tiny.gif)
 
-![tssh batch login](https://trzsz.github.io/images/batch_ssh.gif)
+![tssh simple](https://trzsz.github.io/images/tssh_simple.gif)
+
+![tssh table](https://trzsz.github.io/images/tssh_table.gif)
+
+![tssh trzsz](https://trzsz.github.io/images/tssh_trzsz.gif)
+
+![tssh batch](https://trzsz.github.io/images/tssh_batch.gif)
 
 ## Contact
 

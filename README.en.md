@@ -1,25 +1,23 @@
-# trzsz-ssh ( tssh )
-
-An ssh client that supports [trzsz](https://trzsz.github.io/), supports searching and selecting servers for batch login.
+# trzsz-ssh ( tssh ) - an openssh client alternative
 
 [![MIT License](https://img.shields.io/badge/license-MIT-green.svg?style=flat)](https://choosealicense.com/licenses/mit/)
 [![GitHub Release](https://img.shields.io/github/v/release/trzsz/trzsz-ssh)](https://github.com/trzsz/trzsz-ssh/releases)
 [![WebSite](https://img.shields.io/badge/WebSite-https%3A%2F%2Ftrzsz.github.io%2Fssh-blue?style=flat)](https://trzsz.github.io/ssh)
 [![中文文档](https://img.shields.io/badge/%E4%B8%AD%E6%96%87%E6%96%87%E6%A1%A3-https%3A%2F%2Ftrzsz.github.io%2Fcn%2Fssh-blue?style=flat)](https://trzsz.github.io/cn/ssh)
 
-## Introduce
+trzsz-ssh ( tssh ) is an ssh client designed as a drop-in replacement for the openssh client. It aims to provide complete compatibility with openssh, mirroring all its features, while also offering additional useful features not found in the openssh client.
 
-- Does your favorite ssh terminal have server management feature? Does it support remembering password? Does it have a cool file transfer tool?
+## Why to do
 
-- tssh supports selecting or searching servers configured in `~/.ssh/config`, supports vim operation habit, provides a server management solution.
+- Can't remember all server aliases, `tssh` login prompt supports searching and selecting servers to log in.
 
-- tssh supports selecting multiple servers, logging in to them in batches, and executing pre-specified commands in batches.
+- `tssh` has built-in support for [trzsz](https://trzsz.github.io/) ( trz / tsz ), no need to open a new session to transfer files.
 
-- tssh supports configuring server login password, solves the trouble of entering password each time ( It's recommended to use the public key to login ).
+- `tssh` supports multiple selection and batch login, and supports executing the preset remote command.
 
-- tssh supports [trzsz](https://trzsz.github.io/) ( trz / tsz ) natively, solved the issue of slow upload speeds while using `trzsz ssh` in Windows.
+- `tssh` supports remember password, supports automated interaction, improving your login efficiency.
 
-- _On the author's MacOS, the upload speed using `trzsz ssh` is about 10 MB/s, while using `tssh` can reach over 80 MB/s._
+- Use `tssh` instead of `trzsz ssh` on Windows, which solves the issue of slow upload speed of `trz`.
 
 ## Installation
 
@@ -148,43 +146,195 @@ An ssh client that supports [trzsz](https://trzsz.github.io/), supports searchin
 
 - Download from the [Releases](https://github.com/trzsz/trzsz-ssh/releases)
 
-**_[trzsz](https://trzsz.github.io/) needs to be installed on the server to use `trz / tsz` for uploading and downloading files._**
+## Login Prompt
 
-_Choose either the [Go version](https://trzsz.github.io/go) ( ⭐ Recommended ), [Py version](https://trzsz.github.io/), or [Js version](https://trzsz.github.io/js)._
+- Before use, you need to configure `~/.ssh/config` (for Windows, it is `C:\Users\xxx\.ssh\config`, replace `xxx` with your username).
 
-_If trzsz is not installed on the server, you can still use `tssh`, but can't use `trz / tsz` for uploading and downloading._
+- For how to configure `~/.ssh/config`, please refer to the documentation of [openssh](https://manpages.debian.org/bookworm/openssh-client/ssh_config.5.en.html) ( `Match` section is not supported yet ).
 
-## How to use
+- Running `tssh` without arguments will open the login prompt. If there are arguments except destination will also open the login prompt.
 
-_`~/` represents the HOME directory. Please replace `~/` below with `C:\Users\your_name\` on Windows._
+- If the destination is part of the aliases in `~/.ssh/config`, and can't completely match an alias, the login prompt will also be opened.
 
-- Generate a key pair on the client, generally stored in `~/.ssh/` ( choose one of the following ):
+- The aliases with `*` or `?` wildcard will not be displayed in the login prompt. To hide the alias, you can add a `*` prefix or suffix.
 
-  - `ssh-keygen -t ed25519` generates a ED25519 key pair, private key `~/.ssh/id_ed25519`, public key `~/.ssh/id_ed25519.pub`.
-  - `ssh-keygen -t rsa -b 4096` generates a RSA key pair, private key `~/.ssh/id_rsa`, public key `~/.ssh/id_rsa.pub`.
+- `tssh` supports shortcuts, supports search, and supports multi-selection when used in `tmux`, `iTerm2`, and `Windows Terminal`, etc.
 
-- Append the public key to the `~/.ssh/authorized_keys` file on the server, and set the correct permissions:
+  | Action    | Global shortcuts                | Non search shortcuts | Shortcuts description      |
+  | --------- | ------------------------------- | -------------------- | -------------------------- |
+  | Confirm   | Enter                           |                      | Confirm and login          |
+  | Quit/Exit | Ctrl+C Ctrl+Q                   | q Q                  | Cancel and quit            |
+  | Move Prev | Ctrl+K Shift+Tab ↑              | k K                  | Move cursor up             |
+  | Move Next | Ctrl+J Tab ↓                    | j J                  | Move cursor down           |
+  | Page Up   | Ctrl+H Ctrl+U Ctrl+B PageUp ←   | h H u U b B          | Page up                    |
+  | Page Down | Ctrl+L Ctrl+D Ctrl+F PageDown → | l L d D f F          | Page down                  |
+  | Goto Home | Home                            | g                    | Go to the first item       |
+  | Goto End  | End                             | G                    | Go to the last item        |
+  | EraseKeys | Ctrl+E                          | e E                  | Erase search keywords      |
+  | TglSearch | /                               |                      | Toggle search function     |
+  | Tgl Help  | ?                               |                      | Toggle help information    |
+  | TglSelect | Ctrl+X Ctrl+Space Alt+Space     | Space x X            | Toggle selection           |
+  | SelectAll | Ctrl+A                          | a A                  | Select all current items   |
+  | SelectOpp | Ctrl+O                          | o O                  | Select the opposite items  |
+  | Open Wins | Ctrl+W                          | w W                  | Batch login in new windows |
+  | Open Tabs | Ctrl+T                          | t T                  | Batch login in new tabs    |
+  | Open Pane | Ctrl+P                          | p P                  | Batch login in new panes   |
 
-  ```sh
-  chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys
+## Custom Theme
+
+- `tssh` supports a few themes. Choose one by setting `PromptThemeLayout` in `~/.tssh.conf`. Welcome to create more and better themes together.
+
+- Each theme supports custom colors. Just configure the `PromptThemeColors` in `~/.tssh.conf` to override the default colors as you prefer.
+
+- Please [❤️vote❤️](https://github.com/trzsz/trzsz-ssh/issues/75) for your favorite theme. The theme with the highest number of votes will be set as the default theme in the next version.
+
+### tiny theme
+
+- Configure `PromptThemeLayout = tiny` in `~/.tssh.conf` to choose `tiny theme`.
+  ![tssh tiny](https://trzsz.github.io/images/tssh_tiny.gif)
+
+- Configure `PromptThemeColors` in `~/.tssh.conf` and configure it in one line. `tiny theme` supports the following color items:
+
+  <details><summary><code>tiny theme colors and default values:</code></summary>
+
+  ```json
+  {
+    "help_tips": "faint",
+    "shortcuts": "faint",
+    "label_icon": "blue",
+    "label_text": "default",
+    "cursor_icon": "green|bold",
+    "active_selected": "green|bold",
+    "active_alias": "cyan|bold",
+    "active_host": "magenta|bold",
+    "active_group": "blue|bold",
+    "inactive_selected": "green|bold",
+    "inactive_alias": "cyan",
+    "inactive_host": "magenta",
+    "inactive_group": "blue",
+    "details_title": "default",
+    "details_name": "faint",
+    "details_value": "default"
+  }
   ```
 
-- Configure the `~/.ssh/config` file on the client, for example:
+  </details>
+
+  <details><summary><code>tiny theme color enumerations which can be concatenated with `|`:</code></summary>
 
   ```
-  Host alias1
-      HostName 192.168.0.1
-      Port 22
-      User your_name
-  Host alias2
-      HostName 192.168.0.2
-      Port 22
-      User your_name
+  default
+  black
+  red
+  green
+  yellow
+  blue
+  magenta
+  cyan
+  white
+  bgBlack
+  bgRed
+  bgGreen
+  bgYellow
+  bgBlue
+  bgMagenta
+  bgCyan
+  bgWhite
+  bold
+  faint
+  italic
+  underline
   ```
 
-- Use `tssh` command to log in to the server, `tssh alias1` command to log in to the server corresponding to `alias1` in `~/.ssh/config`.
+  </details>
 
-- Execute the `tssh` command without arguments, you can select or search the configured servers in `~/.ssh/config` to log in.
+### simple theme
+
+- Configure `PromptThemeLayout = simple` in `~/.tssh.conf` to choose `simple theme`.
+  ![tssh simple](https://trzsz.github.io/images/tssh_simple.gif)
+
+- The custom colors and default values of `simple theme` are exactly the same as the `tiny theme`.
+
+### table theme
+
+- Configure `PromptThemeLayout = table` in `~/.tssh.conf` to choose `table theme`.
+  ![tssh table](https://trzsz.github.io/images/tssh_table.gif)
+
+- Configure `PromptThemeColors` in `~/.tssh.conf` and configure it in one line. `table theme` supports the following color items:
+
+  <details><summary><code>table theme colors and default values:</code></summary>
+
+  ```json
+  {
+    "help_tips": "faint",
+    "shortcuts": "faint",
+    "table_header": "10",
+    "default_alias": "6",
+    "default_host": "5",
+    "default_group": "4",
+    "selected_icon": "2",
+    "selected_alias": "14",
+    "selected_host": "13",
+    "selected_group": "12",
+    "default_border": "8",
+    "selected_border": "10",
+    "details_name": "4",
+    "details_value": "3",
+    "details_border": "8"
+  }
+  ```
+
+  </details>
+
+- For supported color enumerations, please refer to [lipgloss](https://github.com/charmbracelet/lipgloss#colors), except `help_tips` and `shortcuts` are the same as the `tiny theme`.
+
+## Support trzsz
+
+- [trzsz](https://trzsz.github.io/) needs to be installed on the server to use `trz / tsz` for uploading and downloading files. Choose either the [Go version](https://trzsz.github.io/go) ( ⭐ Recommended ), [Py version](https://trzsz.github.io/), or [Js version](https://trzsz.github.io/js).
+
+- In the `~/.ssh/config` or `ExConfigPath` configuration file, configure `EnableDragFile` to `Yes` to enable the drag and drop to upload feature.
+
+  ```
+  Host *
+    # If configured in ~/.ssh/config, add `#!!` prefix to be compatible with openssh.
+    EnableDragFile Yes
+  ```
+
+- If you want to temporarily enable the drag and drop to upload feature, use `tssh --dragfile` to log in.
+
+- In the `~/.ssh/config` or `ExConfigPath` configuration file, configure `EnableTrzsz` to `No` to disable the trzsz and zmodem feature.
+
+  ```
+  Host no_trzsz_nor_zmodem
+    # If configured in ~/.ssh/config, add `#!!` prefix to be compatible with openssh.
+    EnableTrzsz No
+  ```
+
+![tssh trzsz](https://trzsz.github.io/images/tssh_trzsz.gif)
+
+## Support zmodem
+
+- In the `~/.ssh/config` or `ExConfigPath` configuration file, configure `EnableZmodem` to `Yes` to enable the zmodem ( rz / sz ) feature.
+
+  ```
+  Host *
+    # If configured in ~/.ssh/config, add `#!!` prefix to be compatible with openssh.
+    EnableZmodem Yes
+  ```
+
+- Not only the server, but also the local computer needs to install `lrzsz`. For Windows, you can download and unzip it from [lrzsz-win32](https://github.com/trzsz/lrzsz-win32/releases) and add it to `PATH`, or install it as follows:
+
+  ```
+  scoop install lrzsz
+  ```
+
+  ```
+  choco install lrzsz
+  ```
+
+- If you want to temporarily enable the zmodem ( rz / sz ) feature, use `tssh --zmodem` to log in.
+
+- About the progress, the transferred and speed are not precise. It just indicating that the transfer is in progress.
 
 ## Batch Login
 
@@ -200,6 +350,8 @@ _`~/` represents the HOME directory. Please replace `~/` below with `C:\Users\yo
   tssh -t -o RemoteCommand='ping -c3 trzsz.github.io ; bash'
   tssh -t -o RemoteCommand="ping -c3 trzsz.github.io |cat&& bash"
   ```
+
+![tssh batch](https://trzsz.github.io/images/tssh_batch.gif)
 
 ## Group Labels
 
@@ -255,9 +407,9 @@ _`~/` represents the HOME directory. Please replace `~/` below with `C:\Users\yo
 
 ## Remember Password
 
-- In order to be compatible with openssh, the password can be configured separately in `~/.ssh/password`, or you can add `#!!` prefix in `~/.ssh/config`.
+- It is recommended to use public key authentication to log in. Please refer to openssh documentation.
 
-- It's recommended to use the public key authentication. If you have to use the password authentication, it's recommended to set the permissions:
+- If you can only log in with a password, it is recommended to at least set the permissions of the configuration file:
 
   ```sh
   chmod 700 ~/.ssh && chmod 600 ~/.ssh/password ~/.ssh/config
@@ -312,6 +464,8 @@ _`~/` represents the HOME directory. Please replace `~/` below with `C:\Users\yo
       Passphrase 111111  # supports plain text, but it is recommended to encrypt with `tssh --enc-secret`.
   ```
 
+- Still ask for password after `Remember Password`? Maybe it's `keyboard interactive authentication`, please refer to `Remember Answers` below.
+
 ## Remember Answers
 
 - In addition, there is a keyboard interactive authentication. The server returns some questions, and log in by providing the correct answers. Many custom one-time passwords are implemented by it.
@@ -358,7 +512,7 @@ _`~/` represents the HOME directory. Please replace `~/` below with `C:\Users\yo
       #!! CtrlExpectSendEncOtp1 77b4ce85d0...  # Or configure the encrypted command line encoded using `tssh --enc-secret`
   ```
 
-## Configuration
+## Custom Configuration
 
 - The following custom configurations are supported in `~/.tssh.conf` (`C:\Users\your_name\.tssh.conf` on Windows):
 
@@ -374,6 +528,10 @@ _`~/` represents the HOME directory. Please replace `~/` below with `C:\Users\yo
 
   # The automatically save path for tsz downloading, the default is empty which poping up a folder dialog.
   DefaultDownloadPath = ~/Downloads
+
+  # When searching and selecting servers with tssh, the theme and colors.
+  PromptThemeLayout = simple
+  PromptThemeColors = {"active_host": "magenta|bold", "inactive_host": "magenta"}
 
   # When searching and selecting servers with tssh, the number of records displayed on each page, the default is 10.
   PromptPageSize = 10
@@ -396,45 +554,10 @@ _`~/` represents the HOME directory. Please replace `~/` below with `C:\Users\yo
 
 - Use `-f` to run in the background, you can add `--reconnect`, it will automatically reconnect when the background process exits.
 
-- Use `--dragfile` to enable the drag and drop to upload feature. If you want to enable it by default, you can configure it in `~/.ssh/config` or in the extended configuration `ExConfigPath`:
+- Run `tssh --enc-secret`, enter the password or answer, and you can get the ciphertext for configuration (the encryption result for the same password is different each time):
 
-  ```
-  Host *
-    # If configured in ~/.ssh/config, add `#!!` prefix to be compatible with openssh.
-    EnableDragFile Yes
-  ```
-
-- Use `--zmodem` to enable the `rz / sz` feature. If you want to enable it by default, you can configure it in `~/.ssh/config` or in the extended configuration `ExConfigPath`:
-
-  ```
-  Host server0
-    # If configured in ~/.ssh/config, add `#!!` prefix to be compatible with openssh.
-    EnableZmodem Yes
-  ```
-
-  - `lrzsz` needs to be installed on the client ( local computer ). For Windows, you can download and unzip it from [lrzsz-win32](https://github.com/trzsz/lrzsz-win32/releases) and add it to `PATH`, or install it as follows:
-
-    ```
-    scoop install lrzsz
-    ```
-
-    ```
-    choco install lrzsz
-    ```
-
-  - About the progress, the transferred and speed are not precise. It just indicating that the transfer is in progress.
-
-- Use `-oEnableTrzsz=No` to disable the trzsz feature. If you want to disable it by default, you can configure it in `~/.ssh/config` or in the extended configuration `ExConfigPath`:
-
-  ```
-  Host server1
-    # If configured in ~/.ssh/config, add `#!!` prefix to be compatible with openssh.
-    EnableTrzsz No
-  ```
-
-- For the "remember password" and "remember answer" mentioned above, add `enc` in front of the configuration item, you can configure the ciphertext to prevent people from snooping on the screen. Cipher text can solve the issue of passwords containing `#` too.
-
-  Run `tssh --enc-secret`, enter the plaintext of the password or answer, and you can get the ciphertext used for configuration (the same password will have different encryption results each time):
+  - The `remember password` and `remember answer` mentioned above can be configured as ciphertext by adding `enc` prefix to prevent screen snooping.
+  - If the password contains special characters such as `#`, you have to configure it with ciphertext.
 
   ```
   Host server2
@@ -466,28 +589,6 @@ _`~/` represents the HOME directory. Please replace `~/` below with `C:\Users\yo
   - If `SetTerminalTitle = Yes` is set in `~/.tssh.conf`, the terminal title is automatically set after login, but `PROMPT_COMMAND` on the server overrides the title set by `tssh`.
   - `tssh` does not reset to the original title after exiting, you need to set `PROMPT_COMMAND` in the local shell so that it overrides the title set by `tssh`.
 
-## Shortcuts
-
-| Action    | Global shortcuts                | Non search shortcuts | Shortcuts description      |
-| --------- | ------------------------------- | -------------------- | -------------------------- |
-| Confirm   | Enter                           |                      | Confirm and login          |
-| Quit/Exit | Ctrl+C Ctrl+Q                   | q Q                  | Cancel and quit            |
-| Move Prev | Ctrl+K Shift+Tab ↑              | k K                  | Move cursor up             |
-| Move Next | Ctrl+J Tab ↓                    | j J                  | Move cursor down           |
-| Page Up   | Ctrl+H Ctrl+U Ctrl+B PageUp ←   | h H u U b B          | Page up                    |
-| Page Down | Ctrl+L Ctrl+D Ctrl+F PageDown → | l L d D f F          | Page down                  |
-| Goto Home | Home                            | g                    | Go to the first item       |
-| Goto End  | End                             | G                    | Go to the last item        |
-| EraseKeys | Ctrl+E                          | e E                  | Erase search keywords      |
-| TglSearch | /                               |                      | Toggle search function     |
-| Tgl Help  | ?                               |                      | Toggle help information    |
-| TglSelect | Ctrl+X Ctrl+Space Alt+Space     | Space x X            | Toggle selection           |
-| SelectAll | Ctrl+A                          | a A                  | Select all current items   |
-| SelectOpp | Ctrl+O                          | o O                  | Select the opposite items  |
-| Open Wins | Ctrl+W                          | w W                  | Batch login in new windows |
-| Open Tabs | Ctrl+T                          | t T                  | Batch login in new tabs    |
-| Open Pane | Ctrl+P                          | p P                  | Batch login in new panes   |
-
 ## Trouble shooting
 
 - In the Warp terminal, the features like Blocks requires renaming `tssh` to `ssh`. It is recommended to create a soft link (friendly for updates):
@@ -511,12 +612,6 @@ _`~/` represents the HOME directory. Please replace `~/` below with `C:\Users\yo
 - If the `tssh` specific configuration items are configured in `~/.ssh/config`, and openssh report an error `Bad configuration option`.
 
   - You can add `#!!` prefix to the items, openssh will treat it as a comment, while `tssh` will treat it as one of the valid configurations.
-
-## Screenshot
-
-![tssh login demo](https://trzsz.github.io/images/tssh.gif)
-
-![tssh batch login](https://trzsz.github.io/images/batch_ssh.gif)
 
 ## Contact
 

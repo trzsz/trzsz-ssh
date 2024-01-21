@@ -30,6 +30,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -71,6 +72,8 @@ type tsshConfig struct {
 	exConfigPath        string
 	defaultUploadPath   string
 	defaultDownloadPath string
+	promptThemeLayout   string
+	promptThemeColors   map[string]string
 	promptPageSize      uint8
 	promptDefaultMode   string
 	promptDetailItems   string
@@ -83,6 +86,8 @@ type tsshConfig struct {
 	config              *ssh_config.Config
 	sysConfig           *ssh_config.Config
 	exConfig            *ssh_config.Config
+	loadDefaultColors   sync.Once
+	defaultThemeColors  map[string]string
 	allHosts            []*sshHost
 	wildcardPatterns    []*ssh_config.Pattern
 }
@@ -129,6 +134,12 @@ func parseTsshConfig() {
 			userConfig.defaultUploadPath = resolveHomeDir(value)
 		case name == "defaultdownloadpath" && userConfig.defaultDownloadPath == "":
 			userConfig.defaultDownloadPath = resolveHomeDir(value)
+		case name == "promptthemelayout" && userConfig.promptThemeLayout == "":
+			userConfig.promptThemeLayout = value
+		case name == "promptthemecolors" && len(userConfig.promptThemeColors) == 0:
+			if err := json.Unmarshal([]byte(value), &userConfig.promptThemeColors); err != nil {
+				warning("PromptThemeColors %s is invalid: %v", value, err)
+			}
 		case name == "promptpagesize" && userConfig.promptPageSize == 0:
 			pageSize, err := strconv.ParseUint(value, 10, 8)
 			if err != nil {
@@ -173,6 +184,12 @@ func showTsshConfig() {
 	}
 	if userConfig.defaultDownloadPath != "" {
 		debug("DefaultDownloadPath = %s", userConfig.defaultDownloadPath)
+	}
+	if userConfig.promptThemeLayout != "" {
+		debug("PromptThemeLayout = %s", userConfig.promptThemeLayout)
+	}
+	if len(userConfig.promptThemeColors) > 0 {
+		debug("PromptThemeColors = %s", userConfig.promptThemeColors)
 	}
 	if userConfig.promptPageSize != 0 {
 		debug("PromptPageSize = %d", userConfig.promptPageSize)
@@ -522,36 +539,40 @@ func getPromptPageSize() int {
 	return 10
 }
 
-func getPromptDetailTemplate() string {
+func getPromptDetailItems() []string {
 	promptDetailItems := userConfig.promptDetailItems
 	if promptDetailItems == "" {
 		promptDetailItems = "Alias Host Port User GroupLabels IdentityFile ProxyCommand ProxyJump RemoteCommand"
 	}
-	var builder strings.Builder
-	builder.WriteString(`{{ "--------- SSH Alias ----------\n" }}`)
-	for _, item := range strings.Fields(promptDetailItems) {
-		switch strings.ToLower(item) {
-		case "alias":
-			builder.WriteString(`{{- if .Alias }}{{ "Alias:" | faint }}{{ "\t" }}{{ .Alias }}{{ "\n" }}{{ end }}`)
-		case "host":
-			builder.WriteString(`{{- if .Host }}{{ "Host:" | faint }}{{ "\t" }}{{ .Host }}{{ "\n" }}{{ end }}`)
-		case "port":
-			builder.WriteString(`{{- if ne .Port "22" }}{{ "Port:" | faint }}{{ "\t" }}{{ .Port }}{{ "\n" }}{{ end }}`)
-		case "user":
-			builder.WriteString(`{{- if .User }}{{ "User:" | faint }}{{ "\t" }}{{ .User }}{{ "\n" }}{{ end }}`)
-		case "grouplabels":
-			builder.WriteString(`{{- if .GroupLabels }}{{ "GroupLabels:" | faint }}{{ "\t" }}{{ .GroupLabels }}{{ "\n" }}{{ end }}`)
-		case "identityfile":
-			builder.WriteString(`{{- if .IdentityFile }}{{ "IdentityFile:" | faint }}{{ "\t" }}{{ .IdentityFile }}{{ "\n" }}{{ end }}`)
-		case "proxycommand":
-			builder.WriteString(`{{- if .ProxyCommand }}{{ "ProxyCommand:" | faint }}{{ "\t" }}{{ .ProxyCommand }}{{ "\n" }}{{ end }}`)
-		case "proxyjump":
-			builder.WriteString(`{{- if .ProxyJump }}{{ "ProxyJump:" | faint }}{{ "\t" }}{{ .ProxyJump }}{{ "\n" }}{{ end }}`)
-		case "remotecommand":
-			builder.WriteString(`{{- if .RemoteCommand }}{{ "RemoteCommand:" | faint }}{{ "\t" }}{{ .RemoteCommand }}{{ "\n" }}{{ end }}`)
-		default:
-			warning("Unknown prompt detail item: %s", item)
+	return strings.Fields(promptDetailItems)
+}
+
+func getThemeColor(key string) string {
+	userConfig.loadDefaultColors.Do(func() {
+		colors := "{}"
+		switch strings.ToLower(userConfig.promptThemeLayout) {
+		case "tiny", "simple":
+			colors = `{"help_tips": "faint", "shortcuts": "faint", "label_icon": "blue", "label_text": "default", "cursor_icon": "green|bold",` +
+				`"active_selected": "green|bold", "active_alias": "cyan|bold", "active_host": "magenta|bold", "active_group": "blue|bold",` +
+				`"inactive_selected": "green|bold", "inactive_alias": "cyan", "inactive_host": "magenta", "inactive_group": "blue",` +
+				`"details_title": "default", "details_name": "faint", "details_value": "default"}`
+		case "table":
+			colors = `{"help_tips": "faint", "shortcuts": "faint", "table_header": "10",` +
+				`"default_alias": "6", "default_host": "5", "default_group": "4",` +
+				`"selected_icon": "2", "selected_alias": "14", "selected_host": "13", "selected_group": "12",` +
+				`"default_border": "8", "selected_border": "10",` +
+				`"details_name": "4", "details_value": "3", "details_border": "8"}`
 		}
+		if err := json.Unmarshal([]byte(colors), &userConfig.defaultThemeColors); err != nil {
+			warning("load theme [%s] colors %s failed: %v", userConfig.promptThemeLayout, colors, err)
+		}
+	})
+	if value, ok := userConfig.promptThemeColors[key]; ok {
+		return value
 	}
-	return builder.String()
+	if value, ok := userConfig.defaultThemeColors[key]; ok {
+		return value
+	}
+	warning("no theme color for key [%s]", key)
+	return ""
 }
