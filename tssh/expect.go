@@ -430,11 +430,10 @@ func getExpectTimeout(args *sshArgs, prefix string) int {
 	return int(count)
 }
 
-func execExpectInteractions(args *sshArgs, serverIn io.Writer,
-	serverOut io.Reader, serverErr io.Reader) (io.Reader, io.Reader) {
+func execExpectInteractions(args *sshArgs, ss *sshSession) {
 	expectCount := getExpectCount(args, "")
 	if expectCount <= 0 {
-		return serverOut, serverErr
+		return
 	}
 
 	outReader, outWriter := io.Pipe()
@@ -456,15 +455,16 @@ func execExpectInteractions(args *sshArgs, serverIn io.Writer,
 		out:   make(chan []byte, 10),
 		err:   make(chan []byte, 10),
 	}
-	go expect.wrapOutput(serverOut, outWriter, expect.out)
-	go expect.wrapOutput(serverErr, errWriter, expect.err)
+	go expect.wrapOutput(ss.serverOut, outWriter, expect.out)
+	go expect.wrapOutput(ss.serverErr, errWriter, expect.err)
 
-	expect.execInteractions(serverIn, expectCount)
+	expect.execInteractions(ss.serverIn, expectCount)
 
 	if ctx.Err() == context.DeadlineExceeded {
 		warning("expect timeout after %d seconds", expectTimeout)
-		_, _ = serverIn.Write([]byte("\r")) // enter for shell prompt if timeout
+		_, _ = ss.serverIn.Write([]byte("\r")) // enter for shell prompt if timeout
 	}
 
-	return outReader, errReader
+	ss.serverOut = outReader
+	ss.serverErr = errReader
 }

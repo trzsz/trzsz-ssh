@@ -311,7 +311,7 @@ func startControlMaster(args *sshArgs) error {
 	return nil
 }
 
-func connectViaControl(args *sshArgs, param *loginParam) *ssh.Client {
+func connectViaControl(args *sshArgs, param *sshParam) *ssh.Client {
 	ctrlMaster := getOptionConfig(args, "ControlMaster")
 	ctrlPath := getOptionConfig(args, "ControlPath")
 
@@ -322,7 +322,7 @@ func connectViaControl(args *sshArgs, param *loginParam) *ssh.Client {
 
 	socket, err := expandTokens(ctrlPath, args, param, "%CdhikLlnpru")
 	if err != nil {
-		warning("expand control socket [%s] failed: %v", socket, err)
+		warning("expand ControlPath [%s] failed: %v", socket, err)
 		return nil
 	}
 	socket = resolveHomeDir(socket)

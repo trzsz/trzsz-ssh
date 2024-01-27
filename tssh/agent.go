@@ -41,25 +41,33 @@ var (
 	agentClient agent.ExtendedAgent
 )
 
-func getAgentAddr(args *sshArgs) string {
+func getAgentAddr(args *sshArgs, param *sshParam) (string, error) {
 	if addr := getOptionConfig(args, "IdentityAgent"); addr != "" {
 		if strings.ToLower(addr) == "none" {
-			return ""
+			return "", nil
 		}
-		return addr
+		expandedAddr, err := expandTokens(addr, args, param, "%CdhikLlnpru")
+		if err != nil {
+			return "", fmt.Errorf("expand IdentityAgent [%s] failed: %v", addr, err)
+		}
+		return resolveHomeDir(expandedAddr), nil
 	}
 	if addr := os.Getenv("SSH_AUTH_SOCK"); addr != "" {
-		return addr
+		return resolveHomeDir(addr), nil
 	}
 	if addr := defaultAgentAddr; addr != "" && isFileExist(addr) {
-		return addr
+		return addr, nil
 	}
-	return ""
+	return "", nil
 }
 
-func getAgentClient(args *sshArgs) agent.ExtendedAgent {
+func getAgentClient(args *sshArgs, param *sshParam) agent.ExtendedAgent {
 	agentOnce.Do(func() {
-		addr := resolveHomeDir(getAgentAddr(args))
+		addr, err := getAgentAddr(args, param)
+		if err != nil {
+			warning("get agent addr failed: %v", err)
+			return
+		}
 		if addr == "" {
 			debug("ssh agent address is not set")
 			return

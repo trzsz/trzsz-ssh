@@ -382,7 +382,7 @@ func remoteForward(client *ssh.Client, f *forwardCfg, args *sshArgs) {
 	}
 }
 
-func sshForward(client *ssh.Client, args *sshArgs) error {
+func sshForward(client *ssh.Client, args *sshArgs, param *sshParam) error {
 	// clear all forwardings
 	if strings.ToLower(getOptionConfig(args, "ClearAllForwardings")) == "yes" {
 		return nil
@@ -406,7 +406,12 @@ func sshForward(client *ssh.Client, args *sshArgs) error {
 		localForward(client, f, args)
 	}
 	for _, s := range getAllOptionConfig(args, "LocalForward") {
-		f, err := parseForwardCfg(s)
+		es, err := expandTokens(s, args, param, "%CdhikLlnpru")
+		if err != nil {
+			warning("expand LocalForward [%s] failed: %v", s, err)
+			continue
+		}
+		f, err := parseForwardCfg(es)
 		if err != nil {
 			warning("local forward failed: %v", err)
 			continue
@@ -419,7 +424,12 @@ func sshForward(client *ssh.Client, args *sshArgs) error {
 		remoteForward(client, f, args)
 	}
 	for _, s := range getAllOptionConfig(args, "RemoteForward") {
-		f, err := parseForwardCfg(s)
+		es, err := expandTokens(s, args, param, "%CdhikLlnpru")
+		if err != nil {
+			warning("expand RemoteForward [%s] failed: %v", s, err)
+			continue
+		}
+		f, err := parseForwardCfg(es)
 		if err != nil {
 			warning("remote forward failed: %v", err)
 			continue

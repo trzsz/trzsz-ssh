@@ -117,61 +117,7 @@ func cleanupAfterLogin() {
 	}
 }
 
-func parseRemoteCommand(args *sshArgs) (string, error) {
-	command := args.Option.get("RemoteCommand")
-	if args.Command != "" && command != "" && strings.ToLower(command) != "none" {
-		return "", fmt.Errorf("cannot execute command-line and remote command")
-	}
-	if args.Command != "" {
-		if len(args.Argument) == 0 {
-			return args.Command, nil
-		}
-		return fmt.Sprintf("%s %s", args.Command, strings.Join(args.Argument, " ")), nil
-	}
-	if strings.ToLower(command) == "none" {
-		return "", nil
-	} else if command != "" {
-		return command, nil
-	}
-	return getConfig(args.Destination, "RemoteCommand"), nil
-}
-
 var isTerminal bool = isatty.IsTerminal(os.Stdin.Fd()) || isatty.IsCygwinTerminal(os.Stdin.Fd())
-
-func parseCmdAndTTY(args *sshArgs) (cmd string, tty bool, err error) {
-	cmd, err = parseRemoteCommand(args)
-	if err != nil {
-		return
-	}
-
-	if args.DisableTTY && args.ForceTTY {
-		err = fmt.Errorf("cannot specify -t with -T")
-		return
-	}
-	if args.DisableTTY {
-		tty = false
-		return
-	}
-	if args.ForceTTY {
-		tty = true
-		return
-	}
-
-	requestTTY := getConfig(args.Destination, "RequestTTY")
-	switch strings.ToLower(requestTTY) {
-	case "", "auto":
-		tty = isTerminal && (cmd == "")
-	case "no":
-		tty = false
-	case "force":
-		tty = true
-	case "yes":
-		tty = isTerminal
-	default:
-		err = fmt.Errorf("unknown RequestTTY option: %s", requestTTY)
-	}
-	return
-}
 
 func TsshMain() int {
 	var args sshArgs
@@ -252,26 +198,17 @@ func TsshMain() int {
 }
 
 func sshStart(args *sshArgs) error {
-	// parse cmd and tty
-	command, tty, err := parseCmdAndTTY(args)
-	if err != nil {
-		return err
-	}
-
 	// ssh login
-	client, session, serverIn, serverOut, serverErr, err := sshLogin(args, tty)
+	ss, err := sshLogin(args)
 	if err != nil {
 		return err
 	}
-	defer client.Close()
-	if session != nil {
-		defer session.Close()
-	}
+	defer ss.Close()
 
 	// stdio forward
 	if args.StdioForward != "" {
 		var wg *sync.WaitGroup
-		wg, err = stdioForward(client, args.StdioForward)
+		wg, err = stdioForward(ss.client, args.StdioForward)
 		if err != nil {
 			return err
 		}
@@ -283,7 +220,7 @@ func sshStart(args *sshArgs) error {
 	// no command
 	if args.NoCommand {
 		cleanupAfterLogin()
-		_ = client.Wait()
+		_ = ss.client.Wait()
 		return nil
 	}
 
@@ -296,24 +233,24 @@ func sshStart(args *sshArgs) error {
 	}
 
 	// execute remote tools if necessary
-	execRemoteTools(args, client)
+	execRemoteTools(args, ss.client)
 
 	// run command or start shell
-	if command != "" {
-		if err := session.Start(command); err != nil {
-			return fmt.Errorf("start command [%s] failed: %v", command, err)
+	if ss.cmd != "" {
+		if err := ss.session.Start(ss.cmd); err != nil {
+			return fmt.Errorf("start command [%s] failed: %v", ss.cmd, err)
 		}
 	} else {
-		if err := session.Shell(); err != nil {
+		if err := ss.session.Shell(); err != nil {
 			return fmt.Errorf("start shell failed: %v", err)
 		}
 	}
 
 	// execute expect interactions if necessary
-	serverOut, serverErr = execExpectInteractions(args, serverIn, serverOut, serverErr)
+	execExpectInteractions(args, ss)
 
 	// make stdin raw
-	if isTerminal && tty {
+	if isTerminal && ss.tty {
 		state, err := makeStdinRaw()
 		if err != nil {
 			return err
@@ -322,15 +259,15 @@ func sshStart(args *sshArgs) error {
 	}
 
 	// enable trzsz
-	if err := enableTrzsz(args, client, session, serverIn, serverOut, serverErr, tty); err != nil {
+	if err := enableTrzsz(args, ss); err != nil {
 		return err
 	}
 
 	// cleanup and wait for exit
 	cleanupAfterLogin()
-	_ = session.Wait()
+	_ = ss.session.Wait()
 	if args.Background {
-		_ = client.Wait()
+		_ = ss.client.Wait()
 	}
 	return nil
 }

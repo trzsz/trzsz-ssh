@@ -30,7 +30,7 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-func connectViaControl(args *sshArgs, param *loginParam) *ssh.Client {
+func connectViaControl(args *sshArgs, param *sshParam) *ssh.Client {
 	ctrlMaster := getOptionConfig(args, "ControlMaster")
 	ctrlPath := getOptionConfig(args, "ControlPath")
 

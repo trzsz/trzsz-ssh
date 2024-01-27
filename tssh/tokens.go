@@ -75,7 +75,10 @@ var getHostname = func() string {
 	return hostname
 }
 
-func expandTokens(str string, args *sshArgs, param *loginParam, tokens string) (string, error) {
+func expandTokens(str string, args *sshArgs, param *sshParam, tokens string) (string, error) {
+	if !strings.ContainsRune(str, '%') {
+		return str, nil
+	}
 	var buf strings.Builder
 	state := byte(0)
 	for _, c := range str {

@@ -43,7 +43,7 @@ func TestExpandTokens(t *testing.T) {
 	args := &sshArgs{
 		Destination: "dest",
 	}
-	param := &loginParam{
+	param := &sshParam{
 		host: "127.0.0.1",
 		port: "1337",
 		user: "penny",
@@ -100,7 +100,7 @@ func TestInvalidHost(t *testing.T) {
 
 	assertInvalidHost := func(host string) {
 		t.Helper()
-		_, err := expandTokens("%h", &sshArgs{}, &loginParam{host: host}, "%hnpr")
+		_, err := expandTokens("%h", &sshArgs{}, &sshParam{host: host}, "%hnpr")
 		require.NotNil(err)
 		assert.Equal("hostname contains invalid characters", err.Error())
 	}
@@ -139,7 +139,7 @@ func TestInvalidUser(t *testing.T) {
 
 	assertInvalidUser := func(user string) {
 		t.Helper()
-		_, err := expandTokens("%r", &sshArgs{}, &loginParam{user: user}, "%hnpr")
+		_, err := expandTokens("%r", &sshArgs{}, &sshParam{user: user}, "%hnpr")
 		require.NotNil(err)
 		assert.Equal("remote username contains invalid characters", err.Error())
 	}

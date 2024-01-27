@@ -42,6 +42,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/alessio/shellescape"
 	"github.com/skeema/knownhosts"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
@@ -65,13 +66,35 @@ var warning = func(format string, a ...any) {
 	fmt.Fprintf(os.Stderr, fmt.Sprintf("\033[0;33mWarning: %s\033[0m\r\n", format), a...)
 }
 
-type loginParam struct {
+type sshParam struct {
 	host    string
 	port    string
 	user    string
 	addr    string
 	proxy   []string
 	command string
+}
+
+type sshSession struct {
+	client    *ssh.Client
+	session   *ssh.Session
+	serverIn  io.WriteCloser
+	serverOut io.Reader
+	serverErr io.Reader
+	cmd       string
+	tty       bool
+}
+
+func (s *sshSession) Close() {
+	if s.serverIn != nil {
+		s.serverIn.Close()
+	}
+	if s.session != nil {
+		s.session.Close()
+	}
+	if s.client != nil {
+		s.client.Close()
+	}
 }
 
 func joinHostPort(host, port string) string {
@@ -106,8 +129,8 @@ func parseDestination(dest string) (user, host, port string) {
 	return
 }
 
-func getLoginParam(args *sshArgs) (*loginParam, error) {
-	param := &loginParam{}
+func getSshParam(args *sshArgs) (*sshParam, error) {
+	param := &sshParam{}
 
 	// login dest
 	destUser, destHost, destPort := parseDestination(args.Destination)
@@ -180,6 +203,21 @@ func getLoginParam(args *sshArgs) (*loginParam, error) {
 			if command != "" {
 				param.command = command
 			}
+		}
+	}
+
+	// expand proxy
+	var err error
+	if param.command != "" {
+		param.command, err = expandTokens(param.command, args, param, "%hnpr")
+		if err != nil {
+			return nil, fmt.Errorf("expand ProxyCommand [%s] failed: %v", param.command, err)
+		}
+	}
+	for i := 0; i < len(param.proxy); i++ {
+		param.proxy[i], err = expandTokens(param.proxy[i], args, param, "%hnpr")
+		if err != nil {
+			return nil, fmt.Errorf("expand ProxyJump [%s] failed: %v", param.proxy[i], err)
 		}
 	}
 
@@ -271,7 +309,7 @@ func addHostKey(path, host string, remote net.Addr, key ssh.PublicKey, ask bool)
 	return nil
 }
 
-func getHostKeyCallback(args *sshArgs, param *loginParam) (ssh.HostKeyCallback, knownhosts.HostKeyCallback, error) {
+func getHostKeyCallback(args *sshArgs, param *sshParam) (ssh.HostKeyCallback, knownhosts.HostKeyCallback, error) {
 	primaryPath := ""
 	var files []string
 	addKnownHostsFiles := func(key string, user bool) error {
@@ -285,7 +323,7 @@ func getHostKeyCallback(args *sshArgs, param *loginParam) (ssh.HostKeyCallback, 
 			if user {
 				expandedPath, err := expandTokens(path, args, param, "%CdhikLlnpru")
 				if err != nil {
-					return err
+					return fmt.Errorf("expand UserKnownHostsFile [%s] failed: %v", path, err)
 				}
 				resolvedPath = resolveHomeDir(expandedPath)
 				if primaryPath == "" {
@@ -632,7 +670,7 @@ var getDefaultSigners = func() func() []*sshSigner {
 	}
 }()
 
-func getPublicKeysAuthMethod(args *sshArgs) ssh.AuthMethod {
+func getPublicKeysAuthMethod(args *sshArgs, param *sshParam) ssh.AuthMethod {
 	if strings.ToLower(getOptionConfig(args, "PubkeyAuthentication")) == "no" {
 		debug("disable auth method: public key authentication")
 		return nil
@@ -653,7 +691,7 @@ func getPublicKeysAuthMethod(args *sshArgs) ssh.AuthMethod {
 		}
 	}
 
-	if agentClient := getAgentClient(args); agentClient != nil {
+	if agentClient := getAgentClient(args, param); agentClient != nil {
 		signers, err := agentClient.Signers()
 		if err != nil {
 			warning("get ssh agent signers failed: %v", err)
@@ -664,7 +702,16 @@ func getPublicKeysAuthMethod(args *sshArgs) ssh.AuthMethod {
 		}
 	}
 
-	identities := append(args.Identity.values, getAllOptionConfig(args, "IdentityFile")...)
+	identities := args.Identity.values
+	for _, identity := range getAllOptionConfig(args, "IdentityFile") {
+		expandedIdentity, err := expandTokens(identity, args, param, "%CdhikLlnpru")
+		if err != nil {
+			warning("expand IdentityFile [%s] failed: %v", identity, err)
+			continue
+		}
+		identities = append(identities, expandedIdentity)
+	}
+
 	if len(identities) == 0 {
 		addPubKeySigners(getDefaultSigners())
 	} else {
@@ -681,17 +728,17 @@ func getPublicKeysAuthMethod(args *sshArgs) ssh.AuthMethod {
 	return ssh.PublicKeys(pubKeySigners...)
 }
 
-func getAuthMethods(args *sshArgs, host, user string) []ssh.AuthMethod {
+func getAuthMethods(args *sshArgs, param *sshParam) []ssh.AuthMethod {
 	var authMethods []ssh.AuthMethod
-	if authMethod := getPublicKeysAuthMethod(args); authMethod != nil {
+	if authMethod := getPublicKeysAuthMethod(args, param); authMethod != nil {
 		debug("add auth method: public key authentication")
 		authMethods = append(authMethods, authMethod)
 	}
-	if authMethod := getKeyboardInteractiveAuthMethod(args, host, user); authMethod != nil {
+	if authMethod := getKeyboardInteractiveAuthMethod(args, param.host, param.user); authMethod != nil {
 		debug("add auth method: keyboard interactive authentication")
 		authMethods = append(authMethods, authMethod)
 	}
-	if authMethod := getPasswordAuthMethod(args, host, user); authMethod != nil {
+	if authMethod := getPasswordAuthMethod(args, param.host, param.user); authMethod != nil {
 		debug("add auth method: password authentication")
 		authMethods = append(authMethods, authMethod)
 	}
@@ -753,7 +800,7 @@ func (p *cmdPipe) Close() error {
 	return err2
 }
 
-func execProxyCommand(args *sshArgs, param *loginParam) (net.Conn, string, error) {
+func execProxyCommand(args *sshArgs, param *sshParam) (net.Conn, string, error) {
 	command, err := expandTokens(param.command, args, param, "%hnpr")
 	if err != nil {
 		return nil, param.command, err
@@ -787,7 +834,7 @@ func execProxyCommand(args *sshArgs, param *loginParam) (net.Conn, string, error
 	return &cmdPipe{stdin: cmdIn, stdout: cmdOut, addr: param.addr}, command, nil
 }
 
-func execLocalCommand(args *sshArgs, param *loginParam) {
+func execLocalCommand(args *sshArgs, param *sshParam) {
 	if strings.ToLower(getOptionConfig(args, "PermitLocalCommand")) != "yes" {
 		return
 	}
@@ -797,7 +844,7 @@ func execLocalCommand(args *sshArgs, param *loginParam) {
 	}
 	expandedCmd, err := expandTokens(localCmd, args, param, "%CdfHhIiKkLlnprTtu")
 	if err != nil {
-		warning("expand local command [%s] failed: %v", localCmd, err)
+		warning("expand LocalCommand [%s] failed: %v", localCmd, err)
 		return
 	}
 	resolvedCmd := resolveHomeDir(expandedCmd)
@@ -820,6 +867,65 @@ func execLocalCommand(args *sshArgs, param *loginParam) {
 	if err := cmd.Run(); err != nil {
 		warning("exec local command [%s] failed: %v", resolvedCmd, err)
 	}
+}
+
+func parseRemoteCommand(args *sshArgs, param *sshParam) (string, error) {
+	command := args.Option.get("RemoteCommand")
+	if args.Command != "" && command != "" && strings.ToLower(command) != "none" {
+		return "", fmt.Errorf("cannot execute command-line and remote command")
+	}
+	if args.Command != "" {
+		if len(args.Argument) == 0 {
+			return args.Command, nil
+		}
+		return shellescape.QuoteCommand(append([]string{args.Command}, args.Argument...)), nil
+	}
+	if strings.ToLower(command) == "none" {
+		return "", nil
+	}
+	if command == "" {
+		command = getConfig(args.Destination, "RemoteCommand")
+	}
+	expandedCmd, err := expandTokens(command, args, param, "%CdhikLlnpru")
+	if err != nil {
+		return "", fmt.Errorf("expand RemoteCommand [%s] failed: %v", command, err)
+	}
+	return expandedCmd, nil
+}
+
+func parseCmdAndTTY(args *sshArgs, param *sshParam) (cmd string, tty bool, err error) {
+	cmd, err = parseRemoteCommand(args, param)
+	if err != nil {
+		return
+	}
+
+	if args.DisableTTY && args.ForceTTY {
+		err = fmt.Errorf("cannot specify -t with -T")
+		return
+	}
+	if args.DisableTTY {
+		tty = false
+		return
+	}
+	if args.ForceTTY {
+		tty = true
+		return
+	}
+
+	requestTTY := getConfig(args.Destination, "RequestTTY")
+	switch strings.ToLower(requestTTY) {
+	case "", "auto":
+		tty = isTerminal && (cmd == "")
+	case "no":
+		tty = false
+	case "force":
+		tty = true
+	case "yes":
+		tty = isTerminal
+	default:
+		err = fmt.Errorf("unknown RequestTTY option: %s", requestTTY)
+	}
+	return
 }
 
 func dialWithTimeout(client *ssh.Client, network, addr string, timeout time.Duration) (conn net.Conn, err error) {
@@ -890,8 +996,8 @@ func setupLogLevel(args *sshArgs) func() {
 	return reset
 }
 
-func sshConnect(args *sshArgs, client *ssh.Client, proxy string) (*ssh.Client, *loginParam, bool, error) {
-	param, err := getLoginParam(args)
+func sshConnect(args *sshArgs, client *ssh.Client, proxy string) (*ssh.Client, *sshParam, bool, error) {
+	param, err := getSshParam(args)
 	if err != nil {
 		return nil, nil, false, err
 	}
@@ -903,7 +1009,7 @@ func sshConnect(args *sshArgs, client *ssh.Client, proxy string) (*ssh.Client, *
 		return client, param, true, nil
 	}
 
-	authMethods := getAuthMethods(args, param.host, param.user)
+	authMethods := getAuthMethods(args, param)
 	cb, kh, err := getHostKeyCallback(args, param)
 	if err != nil {
 		return nil, param, false, err
@@ -920,7 +1026,7 @@ func sshConnect(args *sshArgs, client *ssh.Client, proxy string) (*ssh.Client, *
 		},
 	}
 
-	proxyConnect := func(client *ssh.Client, proxy string) (*ssh.Client, *loginParam, bool, error) {
+	proxyConnect := func(client *ssh.Client, proxy string) (*ssh.Client, *sshParam, bool, error) {
 		debug("login to [%s], addr: %s", args.Destination, param.addr)
 		conn, err := dialWithTimeout(client, "tcp", param.addr, 10*time.Second)
 		if err != nil {
@@ -1016,11 +1122,15 @@ func keepAlive(client *ssh.Client, args *sshArgs) {
 	}()
 }
 
-func sshAgentForward(args *sshArgs, client *ssh.Client, session *ssh.Session) {
+func sshAgentForward(args *sshArgs, param *sshParam, client *ssh.Client, session *ssh.Session) {
 	if args.NoForwardAgent || !args.ForwardAgent && strings.ToLower(getOptionConfig(args, "ForwardAgent")) != "yes" {
 		return
 	}
-	addr := resolveHomeDir(getAgentAddr(args))
+	addr, err := getAgentAddr(args, param)
+	if err != nil {
+		warning("get agent addr failed: %v", err)
+		return
+	}
 	if addr == "" {
 		warning("forward agent but the socket address is not set")
 		return
@@ -1036,17 +1146,12 @@ func sshAgentForward(args *sshArgs, client *ssh.Client, session *ssh.Session) {
 	debug("request ssh agent forwarding success")
 }
 
-func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session,
-	serverIn io.WriteCloser, serverOut io.Reader, serverErr io.Reader, err error) {
-	var param *loginParam
+func sshLogin(args *sshArgs) (ss *sshSession, err error) {
+	ss = &sshSession{}
+	var param *sshParam
 	defer func() {
 		if err != nil {
-			if session != nil {
-				session.Close()
-			}
-			if client != nil {
-				client.Close()
-			}
+			ss.Close()
 		} else {
 			sshLoginSuccess.Store(true)
 			// execute local command if necessary
@@ -1056,14 +1161,20 @@ func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session
 
 	// ssh login
 	var control bool
-	client, param, control, err = sshConnect(args, nil, "")
+	ss.client, param, control, err = sshConnect(args, nil, "")
+	if err != nil {
+		return
+	}
+
+	// parse cmd and tty
+	ss.cmd, ss.tty, err = parseCmdAndTTY(args, param)
 	if err != nil {
 		return
 	}
 
 	// keep alive
 	if !control {
-		keepAlive(client, args)
+		keepAlive(ss.client, args)
 	}
 
 	// stdio forward
@@ -1073,7 +1184,7 @@ func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session
 
 	// ssh forward
 	if !control {
-		if err = sshForward(client, args); err != nil {
+		if err = sshForward(ss.client, args, param); err != nil {
 			return
 		}
 	}
@@ -1084,29 +1195,29 @@ func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session
 	}
 
 	// new session
-	session, err = client.NewSession()
+	ss.session, err = ss.client.NewSession()
 	if err != nil {
 		err = fmt.Errorf("ssh new session failed: %v", err)
 		return
 	}
 
 	// send and set env
-	if err = sendAndSetEnv(args, session); err != nil {
+	if err = sendAndSetEnv(args, ss.session); err != nil {
 		return
 	}
 
 	// session input and output
-	serverIn, err = session.StdinPipe()
+	ss.serverIn, err = ss.session.StdinPipe()
 	if err != nil {
 		err = fmt.Errorf("stdin pipe failed: %v", err)
 		return
 	}
-	serverOut, err = session.StdoutPipe()
+	ss.serverOut, err = ss.session.StdoutPipe()
 	if err != nil {
 		err = fmt.Errorf("stdout pipe failed: %v", err)
 		return
 	}
-	serverErr, err = session.StderrPipe()
+	ss.serverErr, err = ss.session.StderrPipe()
 	if err != nil {
 		err = fmt.Errorf("stderr pipe failed: %v", err)
 		return
@@ -1114,11 +1225,11 @@ func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session
 
 	// ssh agent forward
 	if !control {
-		sshAgentForward(args, client, session)
+		sshAgentForward(args, param, ss.client, ss.session)
 	}
 
 	// not terminal or not tty
-	if !isTerminal || !tty {
+	if !isTerminal || !ss.tty {
 		return
 	}
 
@@ -1132,7 +1243,7 @@ func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session
 	if term == "" {
 		term = "xterm-256color"
 	}
-	if err = session.RequestPty(term, height, width, ssh.TerminalModes{}); err != nil {
+	if err = ss.session.RequestPty(term, height, width, ssh.TerminalModes{}); err != nil {
 		err = fmt.Errorf("request pty failed: %v", err)
 		return
 	}

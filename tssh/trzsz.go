@@ -35,7 +35,6 @@ import (
 	"time"
 
 	"github.com/trzsz/trzsz-go/trzsz"
-	"golang.org/x/crypto/ssh"
 )
 
 func writeAll(dst io.Writer, data []byte) error {
@@ -96,37 +95,36 @@ func wrapStdIO(serverIn io.WriteCloser, serverOut io.Reader, serverErr io.Reader
 	}
 }
 
-func enableTrzsz(args *sshArgs, client *ssh.Client, session *ssh.Session,
-	serverIn io.WriteCloser, serverOut io.Reader, serverErr io.Reader, tty bool) error {
+func enableTrzsz(args *sshArgs, ss *sshSession) error {
 	// not terminal or not tty
-	if !isTerminal || !tty {
-		wrapStdIO(serverIn, serverOut, serverErr, tty)
+	if !isTerminal || !ss.tty {
+		wrapStdIO(ss.serverIn, ss.serverOut, ss.serverErr, ss.tty)
 		return nil
 	}
 
 	// disable trzsz ( trz / tsz )
 	if strings.ToLower(getExOptionConfig(args, "EnableTrzsz")) == "no" {
-		wrapStdIO(serverIn, serverOut, serverErr, tty)
-		onTerminalResize(func(width, height int) { _ = session.WindowChange(height, width) })
+		wrapStdIO(ss.serverIn, ss.serverOut, ss.serverErr, ss.tty)
+		onTerminalResize(func(width, height int) { _ = ss.session.WindowChange(height, width) })
 		return nil
 	}
 
 	// support trzsz ( trz / tsz )
 
-	wrapStdIO(nil, nil, serverErr, tty)
+	wrapStdIO(nil, nil, ss.serverErr, ss.tty)
 
 	trzsz.SetAffectedByWindows(false)
 
 	if args.Relay || isNoGUI() {
 		// run as a relay
-		trzszRelay := trzsz.NewTrzszRelay(os.Stdin, os.Stdout, serverIn, serverOut, trzsz.TrzszOptions{
+		trzszRelay := trzsz.NewTrzszRelay(os.Stdin, os.Stdout, ss.serverIn, ss.serverOut, trzsz.TrzszOptions{
 			DetectTraceLog: args.TraceLog,
 		})
 		// reset terminal size on resize
-		onTerminalResize(func(width, height int) { _ = session.WindowChange(height, width) })
+		onTerminalResize(func(width, height int) { _ = ss.session.WindowChange(height, width) })
 		// setup tunnel connect
 		trzszRelay.SetTunnelConnector(func(port int) net.Conn {
-			conn, _ := dialWithTimeout(client, "tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second)
+			conn, _ := dialWithTimeout(ss.client, "tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second)
 			return conn
 		})
 		return nil
@@ -146,7 +144,7 @@ func enableTrzsz(args *sshArgs, client *ssh.Client, session *ssh.Session,
 	//   os.Stdout │        │   os.Stdout  └─────────────┘   ServerOut  │        │
 	// ◄───────────│        │◄──────────────────────────────────────────┤        │
 	//   os.Stderr └────────┘                  stderr                   └────────┘
-	trzszFilter := trzsz.NewTrzszFilter(os.Stdin, os.Stdout, serverIn, serverOut, trzsz.TrzszOptions{
+	trzszFilter := trzsz.NewTrzszFilter(os.Stdin, os.Stdout, ss.serverIn, ss.serverOut, trzsz.TrzszOptions{
 		TerminalColumns: int32(width),
 		DetectDragFile:  args.DragFile || strings.ToLower(getExOptionConfig(args, "EnableDragFile")) == "yes",
 		DetectTraceLog:  args.TraceLog,
@@ -156,7 +154,7 @@ func enableTrzsz(args *sshArgs, client *ssh.Client, session *ssh.Session,
 	// reset terminal size on resize
 	onTerminalResize(func(width, height int) {
 		trzszFilter.SetTerminalColumns(int32(width))
-		_ = session.WindowChange(height, width)
+		_ = ss.session.WindowChange(height, width)
 	})
 
 	// setup default paths
@@ -165,7 +163,7 @@ func enableTrzsz(args *sshArgs, client *ssh.Client, session *ssh.Session,
 
 	// setup tunnel connect
 	trzszFilter.SetTunnelConnector(func(port int) net.Conn {
-		conn, _ := dialWithTimeout(client, "tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second)
+		conn, _ := dialWithTimeout(ss.client, "tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second)
 		return conn
 	})
 
