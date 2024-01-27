@@ -102,7 +102,7 @@ func (c *controlMaster) handleStdout() <-chan error {
 	return doneCh
 }
 
-func (c *controlMaster) fillPassword(args *sshArgs, expectCount uint32) (cancel context.CancelFunc) {
+func (c *controlMaster) fillPassword(args *sshArgs, expectCount int) (cancel context.CancelFunc) {
 	var ctx context.Context
 	expectTimeout := getExpectTimeout(args, "Ctrl")
 	if expectTimeout > 0 {
@@ -112,13 +112,14 @@ func (c *controlMaster) fillPassword(args *sshArgs, expectCount uint32) (cancel 
 	}
 
 	expect := &sshExpect{
-		ctx: ctx,
-		pre: "Ctrl",
-		out: make(chan []byte, 100),
+		alias: args.Destination,
+		ctx:   ctx,
+		pre:   "Ctrl",
+		out:   make(chan []byte, 100),
 	}
 	go expect.wrapOutput(c.ptmx, nil, expect.out)
 	go func() {
-		expect.execInteractions(args.Destination, c.ptmx, expectCount)
+		expect.execInteractions(c.ptmx, expectCount)
 		if ctx.Err() == context.DeadlineExceeded {
 			warning("expect timeout after %d seconds", expectTimeout)
 		}

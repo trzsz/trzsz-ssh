@@ -342,7 +342,9 @@ trzsz-ssh ( tssh ) 设计为 ssh 客户端的直接替代品，提供与 openssh
 
 - 按下 `Space`、`Ctrl+X` 等可以选中或取消当前服务器，若不能选中说明还不支持当前终端，请先运行 `tmux`。
 
-- 按下 `Ctrl+P` 会以分屏的方式批量登录，`Ctrl+W` 会打开新窗口批量登录，`Ctrl+T` 会打开新 tab 批量登录。
+- 按下 `a` 或 `Ctrl+A` 全选当前页所有机器，`o` 或 `Ctrl+O` 反选当前页所有机器，`d` 或 `l` 翻到下一页。
+
+- 按下 `p` 或 `Ctrl+P` 以分屏的方式登录，`w` 或 `Ctrl+W` 以新窗口登录，`t` 或 `Ctrl+T` 以新 tab 登录。
 
 - `tssh` 不带参数启动可以批量登录服务器，若带 `-o RemoteCommand` 参数启动则可以批量执行指定的命令。支持执行指定命令之后进入交互式 shell，但 `Windows Terminal` 不支持分号 `;`，可以用 `|cat&&` 代替。举例：
 
@@ -376,11 +378,11 @@ trzsz-ssh ( tssh ) 设计为 ssh 客户端的直接替代品，提供与 openssh
 
 ## 自动交互
 
-- 支持类似 `expect` 的自动交互功能，可以在登录服务器之后，自动匹配服务器的输出，然后自动输入。
+- 支持类似 `expect` 的自动交互功能，在登录服务器之后，自动匹配服务器的输出，然后自动输入。
 
   ```
   Host auto
-      #!! ExpectCount 5  # 配置自动交互的次数，默认是 0 即无自动交互
+      #!! ExpectCount 2  # 配置自动交互的次数，默认是 0 即无自动交互
       #!! ExpectTimeout 30  # 配置自动交互的超时时间（单位：秒），默认是 30 秒
       #!! ExpectPattern1 *assword  # 配置第一个自动交互的匹配表达式
       # 配置第一个自动输入（密文），这是由 tssh --enc-secret 编码得到的字符串，tssh 会自动发送 \r 回车
@@ -388,22 +390,45 @@ trzsz-ssh ( tssh ) 设计为 ssh 客户端的直接替代品，提供与 openssh
       #!! ExpectPattern2 hostname*$  # 配置第二个自动交互的匹配表达式
       #!! ExpectSendText2 echo tssh expect\r  # 配置第二个自动输入（明文），需要指定 \r 才会发送回车
       # 以上 ExpectSendPass? 和 ExpectSendText? 只要二选一即可，若都配置则 ExpectSendPass? 的优先级更高
-      # --------------------------------------------------
-      # 在每个 ExpectPattern 匹配之前，可以配置一个或多个可选的匹配，用法如下：
-      #!! ExpectPattern3 hostname*$  # 配置第三个自动交互的匹配表达式
-      #!! ExpectSendText3 ssh xxx\r  # 配置第三个自动输入，也可以换成 ExpectSendPass3 然后配置密文
-      #!! ExpectCaseSendText3 yes/no y\r  # 在 ExpectPattern3 匹配之前，若遇到 yes/no 则发送 y 并回车
-      #!! ExpectCaseSendText3 y/n yes\r   # 在 ExpectPattern3 匹配之前，若遇到 y/n 则发送 yes 并回车
-      #!! ExpectCaseSendPass3 token d7... # 在 ExpectPattern3 匹配之前，若遇到 token 则解码 d7... 并发送
-      # --------------------------------------------------
-      #!! ExpectPattern4 token:  # 配置第四个自动交互的匹配表达式（这里以动态密码举例）
-      #!! ExpectSendOtp4 oathtool --totp -b xxxxx  # 配置获取动态密码的命令（明文）
-      #!! ExpectPattern5 token:  # 配置第五个自动交互的匹配表达式（这里以动态密码举例）
-      # 下面是运行 tssh --enc-secret 输入命令 oathtool --totp -b xxxxx 得到的密文串
-      #!! ExpectSendEncOtp5 77b4ce85d087b39909e563efb165659b22b9ea700a537f1258bdf56ce6fdd6ea70bc7591ea5c01918537a65433133bc0bd5ed3e4
   ```
 
-  - 配置 `ExpectCount` 大于 `0` 之后，使用 `tssh --debug` 登录，可以看到 `expect` 捕获到的输出。
+- 在每个 `ExpectPattern?` 匹配之前，如果遇到可选的匹配则自动输入，用法如下：
+
+  ```
+  Host case
+      #!! ExpectCount 1  # 配置自动交互的次数，默认是 0 即无自动交互
+      #!! ExpectPattern1 hostname*$  # 配置第一个自动交互的匹配表达式
+      #!! ExpectSendText1 ssh xxx\r  # 配置第一个自动输入，也可以换成 ExpectSendPass1 然后配置密文
+      #!! ExpectCaseSendText1 yes/no y\r  # 在 ExpectPattern1 匹配之前，若遇到 yes/no 则发送 y 并回车
+      #!! ExpectCaseSendText1 y/n yes\r   # 在 ExpectPattern1 匹配之前，若遇到 y/n 则发送 yes 并回车
+      #!! ExpectCaseSendPass1 token d7... # 在 ExpectPattern1 匹配之前，若遇到 token 则解码 d7... 并发送
+  ```
+
+- 在匹配到指定输出时，执行指定的命令获取动态密码，然后自动输入，用法如下：
+
+  ```
+  Host otp
+      #!! ExpectCount 2  # 配置自动交互的次数，默认是 0 即无自动交互
+      #!! ExpectPattern1 token:  # 配置第一个自动交互的匹配表达式
+      #!! ExpectSendOtp1 oathtool --totp -b xxxxx  # 配置获取动态密码的命令（明文）
+      #!! ExpectPattern2 token:  # 配置第二个自动交互的匹配表达式
+      # 下面是运行 tssh --enc-secret 输入命令 oathtool --totp -b xxxxx 得到的密文串
+      #!! ExpectSendEncOtp2 77b4ce85d087b39909e563efb165659b22b9ea700a537f1258bdf56ce6fdd6ea70bc7591ea5c01918537a65433133bc0bd5ed3e4
+  ```
+
+- 可能有些服务器不支持连着发送数据，如输入 `1\r`，要求在 `1` 之后有一点延迟，然后再 `\r` 回车，则可以用 `\|` 间开。
+
+  ```
+  Host sleep
+      #!! ExpectCount 2  # 配置自动交互的次数，默认是 0 即无自动交互
+      #!! ExpectSleepMS 100  # 当要间开输入时，sleep 的毫秒数，默认 100ms
+      #!! ExpectPattern1 x>  # 配置第一个自动交互的匹配表达式
+      #!! ExpectSendText1 1\|\r  # 配置第一个自动输入，在发送 1 之后，先 sleep 100ms，再发送 \r 回车
+      #!! ExpectPattern2 y>  # 配置第二个自动交互的匹配表达式
+      #!! ExpectSendText2 \|1\|\|\r  # 先 sleep 100ms，然后发送 1，再 sleep 200ms，最后发送 \r 回车
+  ```
+
+- 如果不知道 `ExpectPattern2` 如何配置，可以先将 `ExpectCount` 配置为 `2`，然后使用 `tssh --debug` 登录，就会看到 `expect` 捕获到的输出，可以直接复制输出的最后部分来配置 `ExpectPattern2`。把 `2` 换成其他任意的数字也适用。
 
 ## 记住密码
 
