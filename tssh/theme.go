@@ -139,6 +139,7 @@ type tableTheme struct {
 	detailsNameStyle    lipgloss.Style
 	detailsValueStyle   lipgloss.Style
 	detailsBorderStyle  lipgloss.Style
+	tableWidth          int
 }
 
 func (t *tableTheme) cellStyle(host *sshHost, row, col int) lipgloss.Style {
@@ -199,7 +200,7 @@ func (t *tableTheme) renderItems(items []interface{}, idx int) string {
 		}
 		data = append(data, []string{icon, host.Alias, host.Host, host.GroupLabels})
 	}
-	return table.New().BorderRow(true).
+	tbl := table.New().BorderRow(true).
 		Headers("", "Alias", "Host Name", "Group Labels").Rows(data...).
 		StyleFunc(func(row, col int) lipgloss.Style {
 			var host *sshHost
@@ -210,7 +211,10 @@ func (t *tableTheme) renderItems(items []interface{}, idx int) string {
 		}).
 		BorderStyleFunc(func(row, col int, borderType table.BorderType) lipgloss.Style {
 			return t.borderStyle(idx, row, col, borderType)
-		}).String()
+		})
+	result := tbl.String()
+	t.tableWidth = tbl.GetTotalWidth()
+	return result
 }
 
 func (t *tableTheme) renderDetails(item interface{}) string {
@@ -247,14 +251,18 @@ func (t *tableTheme) renderDetails(item interface{}) string {
 			warning("Unknown prompt detail item: %s", item)
 		}
 	}
-	return table.New().BorderRow(true).Rows(data...).
+	tbl := table.New().BorderRow(true).Rows(data...).
 		BorderStyle(t.detailsBorderStyle).
 		StyleFunc(func(row, col int) lipgloss.Style {
 			if col == 0 {
 				return t.detailsNameStyle
 			}
 			return t.detailsValueStyle
-		}).String()
+		}).FixedColumns(0)
+	if t.tableWidth > 0 {
+		tbl.Width(t.tableWidth)
+	}
+	return tbl.String()
 }
 
 func getTableTheme() *promptTheme {
