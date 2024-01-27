@@ -745,6 +745,41 @@ func execProxyCommand(args *sshArgs, param *loginParam) (net.Conn, string, error
 	return &cmdPipe{stdin: cmdIn, stdout: cmdOut, addr: param.addr}, command, nil
 }
 
+func execLocalCommand(args *sshArgs, param *loginParam) {
+	if strings.ToLower(getOptionConfig(args, "PermitLocalCommand")) != "yes" {
+		return
+	}
+	localCmd := getOptionConfig(args, "LocalCommand")
+	if localCmd == "" {
+		return
+	}
+	expandedCmd, err := expandTokens(localCmd, args, param, "%CdfHhIiKkLlnprTtu")
+	if err != nil {
+		warning("expand local command [%s] failed: %v", localCmd, err)
+		return
+	}
+	resolvedCmd := resolveHomeDir(expandedCmd)
+	debug("exec local command: %s", resolvedCmd)
+
+	argv, err := splitCommandLine(resolvedCmd)
+	if err != nil || len(argv) == 0 {
+		warning("split local command [%s] failed: %v", resolvedCmd, err)
+		return
+	}
+	if enableDebugLogging {
+		for i, arg := range argv {
+			debug("local command argv[%d] = %s", i, arg)
+		}
+	}
+	cmd := exec.Command(argv[0], argv[1:]...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		warning("exec local command [%s] failed: %v", resolvedCmd, err)
+	}
+}
+
 func dialWithTimeout(client *ssh.Client, network, addr string, timeout time.Duration) (conn net.Conn, err error) {
 	done := make(chan struct{}, 1)
 	go func() {
@@ -813,23 +848,23 @@ func setupLogLevel(args *sshArgs) func() {
 	return reset
 }
 
-func sshConnect(args *sshArgs, client *ssh.Client, proxy string) (*ssh.Client, bool, error) {
+func sshConnect(args *sshArgs, client *ssh.Client, proxy string) (*ssh.Client, *loginParam, bool, error) {
 	param, err := getLoginParam(args)
 	if err != nil {
-		return nil, false, err
+		return nil, nil, false, err
 	}
 
 	resetLogLevel := setupLogLevel(args)
 	defer resetLogLevel()
 
 	if client := connectViaControl(args, param); client != nil {
-		return client, true, nil
+		return client, param, true, nil
 	}
 
 	authMethods := getAuthMethods(args, param.host, param.user)
 	cb, kh, err := getHostKeyCallback(args)
 	if err != nil {
-		return nil, false, err
+		return nil, param, false, err
 	}
 	config := &ssh.ClientConfig{
 		User:              param.user,
@@ -843,18 +878,18 @@ func sshConnect(args *sshArgs, client *ssh.Client, proxy string) (*ssh.Client, b
 		},
 	}
 
-	proxyConnect := func(client *ssh.Client, proxy string) (*ssh.Client, bool, error) {
+	proxyConnect := func(client *ssh.Client, proxy string) (*ssh.Client, *loginParam, bool, error) {
 		debug("login to [%s], addr: %s", args.Destination, param.addr)
 		conn, err := dialWithTimeout(client, "tcp", param.addr, 10*time.Second)
 		if err != nil {
-			return nil, false, fmt.Errorf("proxy [%s] dial tcp [%s] failed: %v", proxy, param.addr, err)
+			return nil, param, false, fmt.Errorf("proxy [%s] dial tcp [%s] failed: %v", proxy, param.addr, err)
 		}
 		ncc, chans, reqs, err := ssh.NewClientConn(&connWithTimeout{conn, config.Timeout, true}, param.addr, config)
 		if err != nil {
-			return nil, false, fmt.Errorf("proxy [%s] new conn [%s] failed: %v", proxy, param.addr, err)
+			return nil, param, false, fmt.Errorf("proxy [%s] new conn [%s] failed: %v", proxy, param.addr, err)
 		}
 		debug("login to [%s] success", args.Destination)
-		return ssh.NewClient(ncc, chans, reqs), false, nil
+		return ssh.NewClient(ncc, chans, reqs), param, false, nil
 	}
 
 	// has parent client
@@ -867,14 +902,14 @@ func sshConnect(args *sshArgs, client *ssh.Client, proxy string) (*ssh.Client, b
 		debug("login to [%s], addr: %s", args.Destination, param.addr)
 		conn, cmd, err := execProxyCommand(args, param)
 		if err != nil {
-			return nil, false, fmt.Errorf("exec proxy command [%s] failed: %v", cmd, err)
+			return nil, param, false, fmt.Errorf("exec proxy command [%s] failed: %v", cmd, err)
 		}
 		ncc, chans, reqs, err := ssh.NewClientConn(conn, param.addr, config)
 		if err != nil {
-			return nil, false, fmt.Errorf("proxy command [%s] new conn [%s] failed: %v", cmd, param.addr, err)
+			return nil, param, false, fmt.Errorf("proxy command [%s] new conn [%s] failed: %v", cmd, param.addr, err)
 		}
 		debug("login to [%s] success", args.Destination)
-		return ssh.NewClient(ncc, chans, reqs), false, nil
+		return ssh.NewClient(ncc, chans, reqs), param, false, nil
 	}
 
 	// no proxy
@@ -882,22 +917,22 @@ func sshConnect(args *sshArgs, client *ssh.Client, proxy string) (*ssh.Client, b
 		debug("login to [%s], addr: %s", args.Destination, param.addr)
 		conn, err := net.DialTimeout("tcp", param.addr, config.Timeout)
 		if err != nil {
-			return nil, false, fmt.Errorf("dial tcp [%s] failed: %v", param.addr, err)
+			return nil, param, false, fmt.Errorf("dial tcp [%s] failed: %v", param.addr, err)
 		}
 		ncc, chans, reqs, err := ssh.NewClientConn(&connWithTimeout{conn, config.Timeout, true}, param.addr, config)
 		if err != nil {
-			return nil, false, fmt.Errorf("new conn [%s] failed: %v", param.addr, err)
+			return nil, param, false, fmt.Errorf("new conn [%s] failed: %v", param.addr, err)
 		}
 		debug("login to [%s] success", args.Destination)
-		return ssh.NewClient(ncc, chans, reqs), false, nil
+		return ssh.NewClient(ncc, chans, reqs), param, false, nil
 	}
 
 	// has proxies
 	var proxyClient *ssh.Client
 	for _, proxy = range param.proxy {
-		proxyClient, _, err = sshConnect(&sshArgs{Destination: proxy}, proxyClient, proxy)
+		proxyClient, _, _, err = sshConnect(&sshArgs{Destination: proxy}, proxyClient, proxy)
 		if err != nil {
-			return nil, false, err
+			return nil, param, false, err
 		}
 	}
 	return proxyConnect(proxyClient, proxy)
@@ -961,6 +996,7 @@ func sshAgentForward(args *sshArgs, client *ssh.Client, session *ssh.Session) {
 
 func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session,
 	serverIn io.WriteCloser, serverOut io.Reader, serverErr io.Reader, err error) {
+	var param *loginParam
 	defer func() {
 		if err != nil {
 			if session != nil {
@@ -971,12 +1007,14 @@ func sshLogin(args *sshArgs, tty bool) (client *ssh.Client, session *ssh.Session
 			}
 		} else {
 			sshLoginSuccess.Store(true)
+			// execute local command if necessary
+			execLocalCommand(args, param)
 		}
 	}()
 
 	// ssh login
 	var control bool
-	client, control, err = sshConnect(args, nil, "")
+	client, param, control, err = sshConnect(args, nil, "")
 	if err != nil {
 		return
 	}
