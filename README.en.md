@@ -144,7 +144,7 @@ trzsz-ssh ( tssh ) is an ssh client designed as a drop-in replacement for the op
 
   </details>
 
-- Download from the [Releases](https://github.com/trzsz/trzsz-ssh/releases)
+- Download from the [GitHub Releases](https://github.com/trzsz/trzsz-ssh/releases), unzip and add to `PATH` environment.
 
 ## Login Prompt
 
@@ -322,7 +322,7 @@ trzsz-ssh ( tssh ) is an ssh client designed as a drop-in replacement for the op
     EnableZmodem Yes
   ```
 
-- Not only the server, but also the local computer needs to install `lrzsz`. For Windows, you can download and unzip it from [lrzsz-win32](https://github.com/trzsz/lrzsz-win32/releases) and add it to `PATH`, or install it as follows:
+- Not only the server, but also the local computer needs to install `lrzsz`. For Windows, you can download from [lrzsz-win32](https://github.com/trzsz/lrzsz-win32/releases), unzip and add to `PATH` environment, or install it as follows:
 
   ```
   scoop install lrzsz
@@ -349,8 +349,8 @@ trzsz-ssh ( tssh ) is an ssh client designed as a drop-in replacement for the op
 - Execute the `tssh` command without arguments, you can log in to servers in batches. And you can specify the commands to be executed in batches by `-o RemoteCommand`. And you can switch to an interactive shell after executing the specified command. `Windows Terminal` does not support semicolon `;`, you can use `|cat&&` instead. For example:
 
   ```sh
-  tssh -t -o RemoteCommand='ping -c3 trzsz.github.io ; bash'
-  tssh -t -o RemoteCommand="ping -c3 trzsz.github.io |cat&& bash"
+  tssh -t -o RemoteCommand='ping -c3 trzsz.github.io ; bash -l'
+  tssh -t -o RemoteCommand="ping -c3 trzsz.github.io |cat&& bash -l"
   ```
 
 ![tssh batch](https://trzsz.github.io/images/tssh_batch.gif)

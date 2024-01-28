@@ -144,7 +144,7 @@ trzsz-ssh ( tssh ) 设计为 ssh 客户端的直接替代品，提供与 openssh
 
   </details>
 
-- 可从 [Releases](https://github.com/trzsz/trzsz-ssh/releases) 中直接下载适用的版本
+- 可从 [GitHub Releases](https://github.com/trzsz/trzsz-ssh/releases) 中下载，国内可从 [Gitee 发行版](https://gitee.com/trzsz/tssh/releases) 中下载，解压并加到 `PATH` 环境变量中。
 
 ## 登录界面
 
@@ -322,7 +322,7 @@ trzsz-ssh ( tssh ) 设计为 ssh 客户端的直接替代品，提供与 openssh
     EnableZmodem Yes
   ```
 
-- 除了服务器，本地电脑也要安装 `lrzsz`，Windows 可以从 [lrzsz-win32](https://github.com/trzsz/lrzsz-win32/releases) 下载解压并加到 `PATH` 中，也可以如下安装：
+- 除了服务器，本地电脑也要安装 `lrzsz`，Windows 可以从 [lrzsz-win32](https://github.com/trzsz/lrzsz-win32/releases) 下载，解压并加到 `PATH` 环境变量中，也可以如下安装：
 
   ```
   scoop install lrzsz
@@ -349,8 +349,8 @@ trzsz-ssh ( tssh ) 设计为 ssh 客户端的直接替代品，提供与 openssh
 - `tssh` 不带参数启动可以批量登录服务器，若带 `-o RemoteCommand` 参数启动则可以批量执行指定的命令。支持执行指定命令之后进入交互式 shell，但 `Windows Terminal` 不支持分号 `;`，可以用 `|cat&&` 代替。举例：
 
   ```sh
-  tssh -t -o RemoteCommand='ping -c3 trzsz.github.io ; bash'
-  tssh -t -o RemoteCommand="ping -c3 trzsz.github.io |cat&& bash"
+  tssh -t -o RemoteCommand='ping -c3 trzsz.github.io ; bash -l'
+  tssh -t -o RemoteCommand="ping -c3 trzsz.github.io |cat&& bash -l"
   ```
 
 ![tssh batch](https://trzsz.github.io/images/tssh_batch.gif)
