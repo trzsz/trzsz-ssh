@@ -21,7 +21,7 @@ require (
 	github.com/trzsz/iterm2 v0.1.2
 	github.com/trzsz/promptui v0.10.6
 	github.com/trzsz/ssh_config v1.3.4
-	github.com/trzsz/trzsz-go v1.1.8-0.20240121141752-82a3e0a97899
+	github.com/trzsz/trzsz-go v1.1.8-0.20240128115521-b72e541d6a18
 	golang.org/x/crypto v0.18.0
 	golang.org/x/sys v0.16.0
 	golang.org/x/term v0.16.0
@@ -39,17 +39,17 @@ require (
 	github.com/dchest/jsmin v0.0.0-20220218165748-59f39799265f // indirect
 	github.com/gorilla/websocket v1.5.1 // indirect
 	github.com/josephspurrier/goversioninfo v1.4.0 // indirect
-	github.com/klauspost/compress v1.17.4 // indirect
+	github.com/klauspost/compress v1.17.5 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/mattn/go-localereader v0.0.1 // indirect
 	github.com/muesli/ansi v0.0.0-20230316100256-276c6243b2f6 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/muesli/reflow v0.3.0 // indirect
 	github.com/muesli/termenv v0.15.2 // indirect
-	github.com/ncruces/zenity v0.10.10 // indirect
+	github.com/ncruces/zenity v0.10.11 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/randall77/makefat v0.0.0-20210315173500-7ddd0e42c844 // indirect
-	github.com/rivo/uniseg v0.4.4 // indirect
+	github.com/rivo/uniseg v0.4.6 // indirect
 	golang.org/x/image v0.15.0 // indirect
 	golang.org/x/mod v0.14.0 // indirect
 	golang.org/x/net v0.20.0 // indirect

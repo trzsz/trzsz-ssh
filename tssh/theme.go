@@ -302,7 +302,7 @@ func getPromptTheme() *promptTheme {
 	case "table":
 		return getTableTheme()
 	default:
-		userConfig.promptThemeLayout = "table"
-		return getTableTheme()
+		userConfig.promptThemeLayout = "tiny"
+		return getTinyTheme()
 	}
 }
