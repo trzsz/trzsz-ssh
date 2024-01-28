@@ -67,6 +67,7 @@ type sshHost struct {
 }
 
 type tsshConfig struct {
+	language            string
 	configPath          string
 	sysConfigPath       string
 	exConfigPath        string
@@ -126,6 +127,8 @@ func parseTsshConfig() {
 			continue
 		}
 		switch {
+		case name == "language" && userConfig.language == "":
+			userConfig.language = value
 		case name == "configpath" && userConfig.configPath == "":
 			userConfig.configPath = resolveHomeDir(value)
 		case name == "exconfigpath" && userConfig.exConfigPath == "":
@@ -173,6 +176,9 @@ func parseTsshConfig() {
 }
 
 func showTsshConfig() {
+	if userConfig.language != "" {
+		debug("Language = %s", userConfig.language)
+	}
 	if userConfig.configPath != "" {
 		debug("ConfigPath = %s", userConfig.configPath)
 	}

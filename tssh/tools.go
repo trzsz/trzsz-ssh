@@ -119,8 +119,7 @@ func toolsErrorExit(format string, a ...any) {
 
 func printToolsHelp(title string) {
 	fmt.Print(lipgloss.NewStyle().Bold(true).Foreground(greenColor).Render(title) + "\r\n")
-	fmt.Print(lipgloss.NewStyle().Faint(true).Render(
-		"-- 可以直接按回车键接受括号内提供的默认选项，使用 Ctrl+C 可以立即退出") + "\r\n\r\n")
+	fmt.Print(lipgloss.NewStyle().Faint(true).Render(getText("tools/help")) + "\r\n\r\n")
 }
 
 type inputValidator struct {
@@ -186,7 +185,9 @@ func (m *textInputModel) View() string {
 		builder.WriteString(lipgloss.NewStyle().Foreground(magentaColor).Render(m.defaultValue))
 		builder.WriteByte(')')
 	}
-	builder.WriteString(m.textInput.View())
+	if !m.quit {
+		builder.WriteString(m.textInput.View())
+	}
 	builder.WriteString("\r\n")
 	if m.err != nil {
 		builder.WriteString(lipgloss.NewStyle().Foreground(redColor).Render(m.err.Error()))
@@ -326,7 +327,7 @@ func (m *passwordModel) View() string {
 	for i := 0; i < len(m.passwordInput); i++ {
 		builder.WriteByte('*')
 	}
-	if m.cursorVisible {
+	if !m.quit && m.cursorVisible {
 		builder.WriteRune('█')
 	} else {
 		builder.WriteRune(' ')
@@ -352,6 +353,83 @@ func promptPassword(promptLabel, helpMessage string, validator *inputValidator) 
 			os.Exit(0)
 		}
 		return model.passwordInput
+	}
+	toolsErrorExit("input error: %v", err)
+	return ""
+}
+
+type listModel struct {
+	promptLabel string
+	helpMessage string
+	cursor      int
+	items       []string
+	done        bool
+	quit        bool
+}
+
+func (m *listModel) Init() tea.Cmd {
+	return nil
+}
+
+func (m *listModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch keypress := msg.String(); keypress {
+		case "q", "ctrl+c":
+			m.quit = true
+			return m, tea.Quit
+		case "j", "tab", "down":
+			m.cursor++
+			if m.cursor >= len(m.items) {
+				m.cursor = 0
+			}
+		case "k", "shift+tab", "up":
+			m.cursor--
+			if m.cursor < 0 {
+				m.cursor = len(m.items) - 1
+			}
+		case "enter":
+			m.done = true
+			return m, tea.Quit
+		}
+	}
+	return m, nil
+}
+
+func (m *listModel) View() string {
+	if m.done {
+		return ""
+	}
+	var builder strings.Builder
+	builder.WriteString(lipgloss.NewStyle().Foreground(cyanColor).Render(m.promptLabel+":") + "\r\n")
+	if m.helpMessage != "" {
+		builder.WriteString(lipgloss.NewStyle().Faint(true).Render(m.helpMessage) + "\r\n")
+	}
+	for i, item := range m.items {
+		if i == m.cursor {
+			builder.WriteString(lipgloss.NewStyle().Foreground(magentaColor).
+				Render(fmt.Sprintf("> %s", item)) + "\r\n")
+		} else {
+			builder.WriteString(lipgloss.NewStyle().Render(fmt.Sprintf("  %s", item)) + "\r\n")
+		}
+	}
+	builder.WriteString(lipgloss.NewStyle().Faint(true).
+		Render("Use ↓ ↑ j k or tab to navigate, Enter to choose.") + "\r\n")
+	return builder.String()
+}
+
+func promptList(promptLabel, helpMessage string, listItems []string) string {
+	m, err := tea.NewProgram(&listModel{
+		promptLabel: promptLabel,
+		helpMessage: helpMessage,
+		items:       listItems,
+	}).Run()
+
+	if model, ok := m.(*listModel); err == nil && ok {
+		if model.quit {
+			os.Exit(0)
+		}
+		return model.items[model.cursor]
 	}
 	toolsErrorExit("input error: %v", err)
 	return ""

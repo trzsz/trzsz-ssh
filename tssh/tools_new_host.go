@@ -47,8 +47,7 @@ type newHostTool struct {
 }
 
 func (n *newHostTool) promptConfigPath() {
-	n.configPath = promptTextInput("ConfigPath", userConfig.configPath,
-		"-- SSH 配置文件路径，一般直接按回车键使用括号内的默认值即可。",
+	n.configPath = promptTextInput("ConfigPath", userConfig.configPath, getText("newhost/config"),
 		&inputValidator{func(path string) error {
 			if path == "" {
 				return fmt.Errorf("empty ssh config path")
@@ -80,8 +79,7 @@ func (n *newHostTool) promptConfigPath() {
 }
 
 func (n *newHostTool) promptHostAlias() {
-	n.hostAlias = promptTextInput("HostAlias", "",
-		"-- 随便给服务器起个别名，如设置为 xxx 则可以使用 tssh xxx 快速登录此服务器。",
+	n.hostAlias = promptTextInput("HostAlias", "", getText("newhost/alias"),
 		&inputValidator{func(alias string) error {
 			if alias == "" {
 				return fmt.Errorf("empty host alias")
@@ -106,8 +104,7 @@ func (n *newHostTool) promptHostAlias() {
 }
 
 func (n *newHostTool) promptHostName() {
-	n.hostName = promptTextInput("HostName/IP", "",
-		"-- 请输入服务器 IP。如果是使用域名登录的，也可以输入服务器域名。",
+	n.hostName = promptTextInput("HostName/IP", "", getText("newhost/host"),
 		&inputValidator{func(name string) error {
 			if name == "" {
 				return fmt.Errorf("empty host name")
@@ -120,8 +117,7 @@ func (n *newHostTool) promptHostName() {
 }
 
 func (n *newHostTool) promptHostPort() {
-	port, _ := strconv.ParseUint(promptTextInput("HostPort", "22",
-		"-- 请输入服务器端口，默认是22。",
+	port, _ := strconv.ParseUint(promptTextInput("HostPort", "22", getText("newhost/port"),
 		&inputValidator{func(port string) error {
 			if port == "" {
 				return fmt.Errorf("empty host port")
@@ -140,8 +136,7 @@ func (n *newHostTool) promptHostPort() {
 }
 
 func (n *newHostTool) promptUserName() {
-	n.userName = promptTextInput("UserName", "",
-		"-- 请输入登录用户名。",
+	n.userName = promptTextInput("UserName", "", getText("newhost/user"),
 		&inputValidator{func(name string) error {
 			if name == "" {
 				return fmt.Errorf("empty user name")
@@ -151,7 +146,7 @@ func (n *newHostTool) promptUserName() {
 }
 
 func (n *newHostTool) promptPassword() {
-	n.password = promptPassword("Password", "-- 使用公私钥登录，或者无需记住密码，请直接按回车跳过。",
+	n.password = promptPassword("Password", getText("newhost/passwd"),
 		&inputValidator{func(name string) error {
 			return nil
 		}})
@@ -185,13 +180,15 @@ Host %s
 
 func (n *newHostTool) loginImmediately() bool {
 	return promptBoolInput("New host added successfully. Would you like to log in now?",
-		"-- 新服务器配置已成功写入，输入 Y 或 Yes（ 不区分大小写 ）可以立即登录。", false)
+		getText("newhost/login"), false)
 }
 
 func execNewHost(args *sshArgs) (int, bool) {
 	n := &newHostTool{}
 
-	printToolsHelp("================== Add New Host ( 新增服务器配置 ) ==================")
+	chooseLanguage()
+
+	printToolsHelp(getText("newhost/title"))
 
 	n.promptConfigPath()
 

@@ -119,7 +119,7 @@ func getRemoteServerOS(client *ssh.Client) (string, error) {
 	case "linux":
 		return "linux", nil
 	default:
-		return "", fmt.Errorf("os [%s] does not support yet", name)
+		return "", fmt.Errorf("os [%s] is not support yet", name)
 	}
 }
 
@@ -146,7 +146,7 @@ func getRemoteServerArch(client *ssh.Client) (string, error) {
 	case "i386", "i486", "i586", "i686":
 		return "i386", nil
 	default:
-		return "", fmt.Errorf("arch [%s] does not support yet", arch)
+		return "", fmt.Errorf("arch [%s] is not support yet", arch)
 	}
 }
 
