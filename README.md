@@ -13,6 +13,7 @@ trzsz-ssh ( tssh ) works exactly like the openssh client. The following common f
 
 |    Features    |                                                  Support Options                                                   |
 | :------------: | :----------------------------------------------------------------------------------------------------------------: |
+|     Cipher     |                                                   `-c` `Ciphers`                                                   |
 |   Pseudo TTY   |                                               `-t` `-T` `RequestTTY`                                               |
 |   SSH Proxy    |                                        `-J` `-W` `ProxyJump` `ProxyCommand`                                        |
 |  Multiplexing  |                                   `ControlMaster` `ControlPath` `ControlPersist`                                   |
@@ -163,7 +164,7 @@ trzsz-ssh ( tssh ) offers additional useful features:
 
   </details>
 
-- Download from the [Releases](https://github.com/trzsz/trzsz-ssh/releases)
+- Download from the [GitHub Releases](https://github.com/trzsz/trzsz-ssh/releases), unzip and add to `PATH` environment.
 
 ## Contributing
 

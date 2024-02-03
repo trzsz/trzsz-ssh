@@ -66,6 +66,8 @@ func TestSshArgs(t *testing.T) {
 	assertArgsEqual("-i id_rsa", sshArgs{Identity: multiStr{values: []string{"id_rsa"}}})
 	assertArgsEqual("-i ./id_rsa -i /tmp/id_ed25519",
 		sshArgs{Identity: multiStr{[]string{"./id_rsa", "/tmp/id_ed25519"}}})
+	assertArgsEqual("-c+aes128-cbc", sshArgs{CipherSpec: "+aes128-cbc"})
+	assertArgsEqual("-c ^aes128-cbc,3des-cbc", sshArgs{CipherSpec: "^aes128-cbc,3des-cbc"})
 	assertArgsEqual("-Fcfg", sshArgs{ConfigFile: "cfg"})
 	assertArgsEqual("-F /path/to/cfg", sshArgs{ConfigFile: "/path/to/cfg"})
 	assertArgsEqual("-Jjump", sshArgs{ProxyJump: "jump"})

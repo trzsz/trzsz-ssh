@@ -1026,6 +1026,10 @@ func sshConnect(args *sshArgs, client *ssh.Client, proxy string) (*ssh.Client, *
 		},
 	}
 
+	if err := setupCiphersConfig(args, config); err != nil {
+		return nil, param, false, err
+	}
+
 	proxyConnect := func(client *ssh.Client, proxy string) (*ssh.Client, *sshParam, bool, error) {
 		debug("login to [%s], addr: %s", args.Destination, param.addr)
 		conn, err := dialWithTimeout(client, "tcp", param.addr, 10*time.Second)

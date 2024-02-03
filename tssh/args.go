@@ -61,6 +61,7 @@ type sshArgs struct {
 	Port           int         `arg:"-p,--" placeholder:"port" help:"port to connect to on the remote host"`
 	LoginName      string      `arg:"-l,--" placeholder:"login_name" help:"the user to log in as on the remote machine"`
 	Identity       multiStr    `arg:"-i,--" placeholder:"identity_file" help:"identity (private key) for public key auth"`
+	CipherSpec     string      `arg:"-c,--" placeholder:"cipher_spec" help:"cipher specification for encrypting the session"`
 	ConfigFile     string      `arg:"-F,--" placeholder:"configfile" help:"an alternative per-user configuration file"`
 	ProxyJump      string      `arg:"-J,--" placeholder:"destination" help:"jump hosts separated by comma characters"`
 	Option         sshOption   `arg:"-o,--" placeholder:"key=value" help:"options in the format used in ~/.ssh/config\ne.g., tssh -o ProxyCommand=\"ssh proxy nc %h %p\""`
