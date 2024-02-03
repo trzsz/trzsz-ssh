@@ -428,6 +428,11 @@ trzsz-ssh ( tssh ) is an ssh client designed as a drop-in replacement for the op
       #!! ExpectSendText2 \|1\|\|\r  # Configures the second automated input, sleep 100ms, send 1, sleep 200ms, send \r.
   ```
 
+- Some servers may not support sending password continuously. Then you need to configure `ExpectPassSleep`, which is `no` by default, and can be configured as `each` or `enter`:
+
+  - Configuring `ExpectPassSleep each` will sleep for a short period of time for each character send, the default is 100 milliseconds, and you can configure `ExpectSleepMS` to adjust it.
+  - Configuring `ExpectPassSleep enter` will only sleep for a short period of time before `\r` send, the default is 100 milliseconds, and you can configure `ExpectSleepMS` to adjust it.
+
 - If you don’t know how to configure `ExpectPattern2`, you can first configure `ExpectCount` to `2`, then use `tssh --debug` to log in, you will see the output captured by `expect`, and you can directly copy the last part of the output to configure `ExpectPattern2`. Replacing `2` with any other number will also work.
 
 ## Remember Password

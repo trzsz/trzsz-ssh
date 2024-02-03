@@ -428,6 +428,11 @@ trzsz-ssh ( tssh ) 设计为 ssh 客户端的直接替代品，提供与 openssh
       #!! ExpectSendText2 \|1\|\|\r  # 先 sleep 100ms，然后发送 1，再 sleep 200ms，最后发送 \r 回车
   ```
 
+- 有些服务器连密码也不支持连着发送，则需要配置 `ExpectPassSleep`，默认为 `no`，可配置为 `each` 或 `enter`：
+
+  - 配置 `ExpectPassSleep each` 则每输入一个字符就 sleep 一小段时间，默认 100 毫秒，可配置 `ExpectSleepMS` 进行调整。
+  - 配置 `ExpectPassSleep enter` 则只是在发送 `\r` 回车之前 sleep 一小段时间，默认 100 毫秒，可配置 `ExpectSleepMS` 进行调整。
+
 - 如果不知道 `ExpectPattern2` 如何配置，可以先将 `ExpectCount` 配置为 `2`，然后使用 `tssh --debug` 登录，就会看到 `expect` 捕获到的输出，可以直接复制输出的最后部分来配置 `ExpectPattern2`。把 `2` 换成其他任意的数字也适用。
 
 ## 记住密码

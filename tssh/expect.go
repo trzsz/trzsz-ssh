@@ -122,6 +122,18 @@ func (s *expectSender) decodeText(text string) [][]string {
 	return texts
 }
 
+func (s *expectSender) getExpectPsssSleep() (bool, bool) {
+	passSleep := getExConfig(s.expect.alias, fmt.Sprintf("%sExpectPassSleep", s.expect.pre))
+	switch strings.ToLower(passSleep) {
+	case "each":
+		return true, false
+	case "enter":
+		return false, true
+	default:
+		return false, false
+	}
+}
+
 func (s *expectSender) getExpectSleepTime() time.Duration {
 	expectSleepMS := getExConfig(s.expect.alias, fmt.Sprintf("%sExpectSleepMS", s.expect.pre))
 	if expectSleepMS == "" {
@@ -140,15 +152,34 @@ func (s *expectSender) sendInput(writer io.Writer, id string) bool {
 		warning("expect %s send nothing", id)
 		return true
 	}
+	var sleepTime time.Duration
 	if s.passwd {
-		debug("expect %s send: %s\\r", id, strings.Repeat("*", len(s.input)))
-		if err := writeAll(writer, []byte(s.input+"\r")); err != nil {
+		eachSleep, enterSleep := s.getExpectPsssSleep()
+		if eachSleep || enterSleep {
+			sleepTime = s.getExpectSleepTime()
+		}
+		for _, input := range []byte(s.input) {
+			debug("expect %s send: %s", id, "*")
+			if err := writeAll(writer, []byte{input}); err != nil {
+				warning("expect %s send input failed: %v", id, err)
+				return false
+			}
+			if eachSleep {
+				debug("expect %s sleep: %v", id, sleepTime)
+				time.Sleep(sleepTime)
+			}
+		}
+		if enterSleep {
+			debug("expect %s sleep: %v", id, sleepTime)
+			time.Sleep(sleepTime)
+		}
+		debug("expect %s send: \\r", id)
+		if err := writeAll(writer, []byte("\r")); err != nil {
 			warning("expect %s send input failed: %v", id, err)
 			return false
 		}
 		return true
 	}
-	var sleepTime time.Duration
 	for i, text := range s.decodeText(s.input) {
 		if i > 0 {
 			if i == 1 {
