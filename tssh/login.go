@@ -954,7 +954,7 @@ type connWithTimeout struct {
 func (c *connWithTimeout) Read(b []byte) (n int, err error) {
 	if !c.firstRead {
 		n, err = c.Conn.Read(b)
-		if err != nil {
+		if err == nil {
 			now := time.Now()
 			lastServerAliveTime.Store(&now)
 		}
