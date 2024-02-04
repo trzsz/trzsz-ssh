@@ -943,6 +943,8 @@ func dialWithTimeout(client *ssh.Client, network, addr string, timeout time.Dura
 	return
 }
 
+var lastServerAliveTime atomic.Pointer[time.Time]
+
 type connWithTimeout struct {
 	net.Conn
 	timeout   time.Duration
@@ -951,7 +953,12 @@ type connWithTimeout struct {
 
 func (c *connWithTimeout) Read(b []byte) (n int, err error) {
 	if !c.firstRead {
-		return c.Conn.Read(b)
+		n, err = c.Conn.Read(b)
+		if err != nil {
+			now := time.Now()
+			lastServerAliveTime.Store(&now)
+		}
+		return
 	}
 	done := make(chan struct{}, 1)
 	go func() {
@@ -1109,10 +1116,15 @@ func keepAlive(client *ssh.Client, args *sshArgs) {
 	}
 
 	go func() {
-		t := time.NewTicker(time.Duration(serverAliveInterval) * time.Second)
+		intervalTime := time.Duration(serverAliveInterval) * time.Second
+		t := time.NewTicker(intervalTime)
 		defer t.Stop()
 		n := 0
 		for range t.C {
+			if lastTime := lastServerAliveTime.Load(); lastTime != nil && time.Since(*lastTime) < intervalTime {
+				n = 0
+				continue
+			}
 			if _, _, err := client.SendRequest("keepalive@trzsz-ssh", true, nil); err != nil {
 				n++
 				if n >= serverAliveCountMax {
