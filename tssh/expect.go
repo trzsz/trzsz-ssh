@@ -387,6 +387,15 @@ func (e *sshExpect) getExpectSender(idx int) *expectSender {
 		return newTextSender(e, text)
 	}
 
+	if encTotp := getExConfig(e.alias, fmt.Sprintf("%sExpectSendEncTotp%d", e.pre, idx)); encTotp != "" {
+		secret, err := decodeSecret(encTotp)
+		if err != nil {
+			warning("decode %sExpectSendEncTotp%d [%s] failed: %v", e.pre, idx, encTotp, err)
+			return nil
+		}
+		return newPassSender(e, getTotpCode(secret))
+	}
+
 	if encOtp := getExConfig(e.alias, fmt.Sprintf("%sExpectSendEncOtp%d", e.pre, idx)); encOtp != "" {
 		command, err := decodeSecret(encOtp)
 		if err != nil {
@@ -394,6 +403,10 @@ func (e *sshExpect) getExpectSender(idx int) *expectSender {
 			return nil
 		}
 		return newPassSender(e, getOtpCommandOutput(command))
+	}
+
+	if secret := getExConfig(e.alias, fmt.Sprintf("%sExpectSendTotp%d", e.pre, idx)); secret != "" {
+		return newPassSender(e, getTotpCode(secret))
 	}
 
 	if command := getExConfig(e.alias, fmt.Sprintf("%sExpectSendOtp%d", e.pre, idx)); command != "" {

@@ -404,6 +404,18 @@ trzsz-ssh ( tssh ) 设计为 ssh 客户端的直接替代品，提供与 openssh
       #!! ExpectCaseSendPass1 token d7... # 在 ExpectPattern1 匹配之前，若遇到 token 则解码 d7... 并发送
   ```
 
+- 在匹配到指定输出时，自动生成 `totp` 2FA 双因子验证码，然后自动输入，用法如下：
+
+  ```
+  Host totp
+      #!! ExpectCount 2  # 配置自动交互的次数，默认是 0 即无自动交互
+      #!! ExpectPattern1 token:  # 配置第一个自动交互的匹配表达式
+      #!! ExpectSendTotp1 xxxxx  # 配置 totp 的 secret（明文），一般可通过扫二维码获得
+      #!! ExpectPattern2 token:  # 配置第二个自动交互的匹配表达式
+      # 下面是运行 tssh --enc-secret 输入 totp 的 secret 得到的密文串
+      #!! ExpectSendEncTotp2 821fe830270201c36cd1a869876a24453014ac2f1d2d3b056f3601ce9cc9a87023
+  ```
+
 - 在匹配到指定输出时，执行指定的命令获取动态密码，然后自动输入，用法如下：
 
   ```
@@ -521,6 +533,17 @@ trzsz-ssh ( tssh ) 设计为 ssh 客户端的直接替代品，提供与 openssh
       636f64653a20 my_code  # 其中 `636f64653a20` 是问题 `code: ` 的 hex 编码, `my_code` 是明文答案
   ```
 
+- 对于 `totp` 2FA 双因子验证码，则可以如下配置（同样支持按序号或 hex 编码进行配置）：
+
+  ```
+  Host totp
+      TotpSecret1 xxxxx  # 按序号配置 totp 的 secret（明文），一般可通过扫二维码获得
+      totp636f64653a20 xxxxx  # 按 `code: ` 的 hex 编码 `636f64653a20` 配置 totp 的 secret（明文）
+      # 下面是运行 tssh --enc-secret 输入命令 xxxxx 得到的密文串，加上 `enc` 前缀进行配置
+      encTotpSecret2 8ba828bd54ff694bc8c4619f802b5bed73232e60a680bbac05ba5626269a81a00b
+      enctotp636f64653a20 8ba828bd54ff694bc8c4619f802b5bed73232e60a680bbac05ba5626269a81a00b
+  ```
+
 - 对于可以通过命令行获取到的动态密码，则可以如下配置（同样支持按序号或 hex 编码进行配置）：
 
   ```
@@ -535,8 +558,14 @@ trzsz-ssh ( tssh ) 设计为 ssh 客户端的直接替代品，提供与 openssh
 - 如果启用了 `ControlMaster` 多路复用，或者是在 `Warp` 终端，请参考前面 `自动交互` 加 `Ctrl` 前缀来实现。
 
   ```
+  Host ctrl_totp
+      #!! CtrlExpectCount 1  # 配置自动交互的次数
+      #!! CtrlExpectPattern1 code:  # 配置密码提示语的匹配表达式（这里以 2FA 验证码举例）
+      #!! CtrlExpectSendTotp1 xxxxx  # 配置 totp 的 secret（明文），一般可通过扫二维码获得
+      #!! CtrlExpectSendEncTotp1 622ada31cf...  # 或者配置 tssh --enc-secret 得到的密文串
+
   Host ctrl_otp
-      #!! CtrlExpectCount 1  # 配置自动交互的次数，一般只要输入一次密码
+      #!! CtrlExpectCount 1  # 配置自动交互的次数
       #!! CtrlExpectPattern1 token:  # 配置密码提示语的匹配表达式（这里以动态密码举例）
       #!! CtrlExpectSendOtp1 oathtool --totp -b xxxxx  # 配置获取动态密码的命令（明文）
       #!! CtrlExpectSendEncOtp1 77b4ce85d0...  # 或者配置 tssh --enc-secret 得到的密文串

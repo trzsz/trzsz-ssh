@@ -26,7 +26,6 @@ package tssh
 
 import (
 	"bufio"
-	"bytes"
 	"crypto/x509"
 	"encoding/hex"
 	"fmt"
@@ -564,37 +563,17 @@ func getPasswordAuthMethod(args *sshArgs, host, user string) ssh.AuthMethod {
 	}), 3)
 }
 
-func getOtpCommandOutput(command string) string {
-	argv, err := splitCommandLine(command)
-	if err != nil || len(argv) == 0 {
-		warning("split otp command failed: %v", err)
-		return ""
-	}
-	if enableDebugLogging {
-		for i, arg := range argv {
-			debug("otp command argv[%d] = %s", i, arg)
-		}
-	}
-	cmd := exec.Command(argv[0], argv[1:]...)
-	var outBuf, errBuf bytes.Buffer
-	cmd.Stdout = &outBuf
-	cmd.Stderr = &errBuf
-	if err := cmd.Run(); err != nil {
-		if errBuf.Len() > 0 {
-			warning("exec otp command failed: %v, %s", err, strings.TrimSpace(errBuf.String()))
-		} else {
-			warning("exec otp command failed: %v", err)
-		}
-		return ""
-	}
-	return strings.TrimSpace(outBuf.String())
-}
-
 func readQuestionAnswerConfig(dest string, idx int, question string) string {
 	qhex := hex.EncodeToString([]byte(question))
 	debug("the hex code for question '%s' is %s", question, qhex)
 	if answer := getSecretConfig(dest, qhex); answer != "" {
 		return answer
+	}
+
+	if secret := getSecretConfig(dest, "totp"+qhex); secret != "" {
+		if answer := getTotpCode(secret); answer != "" {
+			return answer
+		}
 	}
 
 	if command := getSecretConfig(dest, "otp"+qhex); command != "" {
@@ -607,6 +586,14 @@ func readQuestionAnswerConfig(dest string, idx int, question string) string {
 	debug("the configuration key for question '%s' is %s", question, qkey)
 	if answer := getSecretConfig(dest, qkey); answer != "" {
 		return answer
+	}
+
+	qsecret := fmt.Sprintf("TotpSecret%d", idx)
+	debug("the totp secret key for question '%s' is %s", question, qsecret)
+	if secret := getSecretConfig(dest, qsecret); secret != "" {
+		if answer := getTotpCode(secret); answer != "" {
+			return answer
+		}
 	}
 
 	qcmd := fmt.Sprintf("OtpCommand%d", idx)
