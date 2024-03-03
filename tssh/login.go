@@ -249,7 +249,13 @@ func writeKnownHost(path, host string, remote net.Addr, key ssh.PublicKey) error
 	if err := ensureNewline(file); err != nil {
 		return err
 	}
-	return knownhosts.WriteKnownHost(file, host, remote, key)
+
+	hostNormalized := knownhosts.Normalize(host)
+	if strings.ContainsAny(hostNormalized, "\t ") {
+		return fmt.Errorf("host '%s' contains spaces", hostNormalized)
+	}
+	line := knownhosts.Line([]string{hostNormalized}, key) + "\n"
+	return writeAll(file, []byte(line))
 }
 
 func addHostKey(path, host string, remote net.Addr, key ssh.PublicKey, ask bool) error {
