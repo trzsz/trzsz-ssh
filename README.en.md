@@ -609,6 +609,23 @@ trzsz-ssh ( tssh ) is an ssh client designed as a drop-in replacement for the op
   SetTerminalTitle = Yes
   ```
 
+## Comments of Config
+
+- The comments in the `tssh` configuration are basically the same as `openssh`, with some additional extended support, see the following table for details:
+
+| Comments              |   openssh    |     tssh      |
+| :-------------------- | :----------: | :-----------: |
+| Starting with `#`     | Is a comment | Is a comment  |
+| Starting with `#!!`   | Is a comment | Not a comment |
+| `Key Value # Comment` |  It depends  | Is a comment  |
+| `Key=Value # Comment` |  It depends  | Not a comment |
+
+- Configuration starting with `#` are always considered by `openssh` to be a comment; `tssh` considers configuration starting with `#!!` not to be a comment, and other configurations starting with `#` are comments.
+
+- `Key Value # Comment` configuration (without `=` sign), `openssh` considers the content after `#` to be a comment in some cases, and considers it not to be a comment in some other cases; `tssh` always considers the content after `#` to be a comment.
+
+- `Key=Value # Comment` configuration (with `=` sign), `openssh` considers the content after `#` to be a comment in some cases, and considers it not to be a comment in some other cases; `tssh` always considers the content after `#` not to be a comment.
+
 ## Other Features
 
 - Use `-f` to run in the background, you can add `--reconnect`, it will automatically reconnect when the background process exits.

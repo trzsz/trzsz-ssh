@@ -40,6 +40,7 @@ trzsz-ssh ( tssh ) offers additional useful features:
 | [Automated Interaction](README.en.md#automated-interaction) | [自动交互](README.cn.md#%E8%87%AA%E5%8A%A8%E4%BA%A4%E4%BA%92) |
 |     [Remember Password](README.en.md#remember-password)     | [记住密码](README.cn.md#%E8%AE%B0%E4%BD%8F%E5%AF%86%E7%A0%81) |
 |  [Custom Configuration](README.en.md#custom-configuration)  | [个性配置](README.cn.md#%E4%B8%AA%E6%80%A7%E9%85%8D%E7%BD%AE) |
+|    [Comments of Config](README.en.md#comments-of-config)    | [配置注释](README.cn.md#%E9%85%8D%E7%BD%AE%E6%B3%A8%E9%87%8A) |
 |        [Other Features](README.en.md#other-features)        | [其他功能](README.cn.md#%E5%85%B6%E4%BB%96%E5%8A%9F%E8%83%BD) |
 
 ## Installation
