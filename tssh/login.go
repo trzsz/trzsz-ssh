@@ -555,11 +555,11 @@ func getPasswordAuthMethod(args *sshArgs, host, user string) ssh.AuthMethod {
 		if idx == 1 {
 			if password := getSecretConfig(args.Destination, "Password"); password != "" {
 				rememberPassword = true
-				debug("trying the password configuration for %s", args.Destination)
+				debug("trying the password configuration for '%s'", args.Destination)
 				return password, nil
 			}
 		} else if idx == 2 && rememberPassword {
-			debug("the password configuration for %s is incorrect", args.Destination)
+			warning("the password configuration for '%s' is incorrect", args.Destination)
 		}
 		secret, err := readSecret(fmt.Sprintf("%s@%s's password: ", user, host))
 		if err != nil {
@@ -620,18 +620,26 @@ func getKeyboardInteractiveAuthMethod(args *sshArgs, host, user string) ssh.Auth
 	}
 
 	idx := 0
-	questionSet := make(map[string]struct{})
+	questionSeen := make(map[string]struct{})
+	questionTried := make(map[string]struct{})
+	questionWarned := make(map[string]struct{})
 	return ssh.RetryableAuthMethod(ssh.KeyboardInteractive(
 		func(name, instruction string, questions []string, echos []bool) ([]string, error) {
 			var answers []string
 			for _, question := range questions {
 				idx++
-				if _, ok := questionSet[question]; !ok {
-					questionSet[question] = struct{}{}
+				if _, seen := questionSeen[question]; !seen {
+					questionSeen[question] = struct{}{}
 					answer := readQuestionAnswerConfig(args.Destination, idx, question)
 					if answer != "" {
+						questionTried[question] = struct{}{}
 						answers = append(answers, answer)
 						continue
+					}
+				} else if _, tried := questionTried[question]; tried {
+					if _, warned := questionWarned[question]; !warned {
+						questionWarned[question] = struct{}{}
+						warning("the question answer configuration of '%s' for '%s' is incorrect", question, args.Destination)
 					}
 				}
 				secret, err := readSecret(fmt.Sprintf("(%s@%s) %s", user, host, strings.ReplaceAll(question, "\n", "\r\n")))
