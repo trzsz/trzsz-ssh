@@ -8,7 +8,7 @@ require (
 	github.com/armon/go-socks5 v0.0.0-20160902184237-e75332964ef5
 	github.com/charmbracelet/bubbles v0.18.0
 	github.com/charmbracelet/bubbletea v0.25.0
-	github.com/charmbracelet/lipgloss v0.9.1
+	github.com/charmbracelet/lipgloss v0.10.0
 	github.com/chzyer/readline v1.5.1
 	github.com/creack/pty v1.1.21
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
@@ -16,16 +16,16 @@ require (
 	github.com/mattn/go-runewidth v0.0.15
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/pquerna/otp v1.4.0
-	github.com/skeema/knownhosts v1.2.1
+	github.com/skeema/knownhosts v1.2.2
 	github.com/stretchr/testify v1.8.4
 	github.com/trzsz/go-arg v1.5.3
 	github.com/trzsz/iterm2 v0.1.2
 	github.com/trzsz/promptui v0.10.7
 	github.com/trzsz/ssh_config v1.3.5
 	github.com/trzsz/trzsz-go v1.1.8-0.20240303135018-b95b67671472
-	golang.org/x/crypto v0.20.0
-	golang.org/x/sys v0.17.0
-	golang.org/x/term v0.17.0
+	golang.org/x/crypto v0.21.0
+	golang.org/x/sys v0.18.0
+	golang.org/x/term v0.18.0
 )
 
 require (
@@ -53,11 +53,11 @@ require (
 	github.com/randall77/makefat v0.0.0-20210315173500-7ddd0e42c844 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	golang.org/x/image v0.15.0 // indirect
-	golang.org/x/mod v0.15.0 // indirect
-	golang.org/x/net v0.21.0 // indirect
+	golang.org/x/mod v0.16.0 // indirect
+	golang.org/x/net v0.22.0 // indirect
 	golang.org/x/sync v0.6.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
-	golang.org/x/tools v0.18.0 // indirect
-	google.golang.org/protobuf v1.32.0 // indirect
+	golang.org/x/tools v0.19.0 // indirect
+	google.golang.org/protobuf v1.33.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
