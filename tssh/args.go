@@ -55,6 +55,8 @@ type sshArgs struct {
 	NoForwardAgent bool        `arg:"-a,--" help:"disable forwarding the ssh agent connection"`
 	DisableTTY     bool        `arg:"-T,--" help:"disable pseudo-terminal allocation"`
 	ForceTTY       bool        `arg:"-t,--" help:"force pseudo-terminal allocation"`
+	IPv4Only       bool        `arg:"-4,--" help:"forces ssh to use IPv4 addresses only"`
+	IPv6Only       bool        `arg:"-6,--" help:"forces ssh to use IPv6 addresses only"`
 	Gateway        bool        `arg:"-g,--" help:"forwarding allows remote hosts to connect"`
 	Background     bool        `arg:"-f,--" help:"run as a background process, implies -n"`
 	NoCommand      bool        `arg:"-N,--" help:"do not execute a remote command"`

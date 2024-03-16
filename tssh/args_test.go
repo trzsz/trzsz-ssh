@@ -54,6 +54,8 @@ func TestSshArgs(t *testing.T) {
 	assertArgsEqual("-a", sshArgs{NoForwardAgent: true})
 	assertArgsEqual("-T", sshArgs{DisableTTY: true})
 	assertArgsEqual("-t", sshArgs{ForceTTY: true})
+	assertArgsEqual("-4", sshArgs{IPv4Only: true})
+	assertArgsEqual("-6", sshArgs{IPv6Only: true})
 	assertArgsEqual("-g", sshArgs{Gateway: true})
 	assertArgsEqual("-f", sshArgs{Background: true})
 	assertArgsEqual("-N", sshArgs{NoCommand: true})

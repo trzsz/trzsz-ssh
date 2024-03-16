@@ -996,6 +996,26 @@ func setupLogLevel(args *sshArgs) func() {
 	return reset
 }
 
+func getNetworkAddressFamily(args *sshArgs) string {
+	if args.IPv4Only {
+		if args.IPv6Only {
+			return "tcp"
+		}
+		return "tcp4"
+	}
+	if args.IPv6Only {
+		return "tcp6"
+	}
+	switch strings.ToLower(getOptionConfig(args, "AddressFamily")) {
+	case "inet":
+		return "tcp4"
+	case "inet6":
+		return "tcp6"
+	default:
+		return "tcp"
+	}
+}
+
 func sshConnect(args *sshArgs, client *ssh.Client, proxy string) (*ssh.Client, *sshParam, bool, error) {
 	param, err := getSshParam(args)
 	if err != nil {
@@ -1030,9 +1050,11 @@ func sshConnect(args *sshArgs, client *ssh.Client, proxy string) (*ssh.Client, *
 		return nil, param, false, err
 	}
 
+	network := getNetworkAddressFamily(args)
+
 	proxyConnect := func(client *ssh.Client, proxy string) (*ssh.Client, *sshParam, bool, error) {
 		debug("login to [%s], addr: %s", args.Destination, param.addr)
-		conn, err := dialWithTimeout(client, "tcp", param.addr, 10*time.Second)
+		conn, err := dialWithTimeout(client, network, param.addr, 10*time.Second)
 		if err != nil {
 			return nil, param, false, fmt.Errorf("proxy [%s] dial tcp [%s] failed: %v", proxy, param.addr, err)
 		}
@@ -1067,7 +1089,7 @@ func sshConnect(args *sshArgs, client *ssh.Client, proxy string) (*ssh.Client, *
 	// no proxy
 	if len(param.proxy) == 0 {
 		debug("login to [%s], addr: %s", args.Destination, param.addr)
-		conn, err := net.DialTimeout("tcp", param.addr, config.Timeout)
+		conn, err := net.DialTimeout(network, param.addr, config.Timeout)
 		if err != nil {
 			return nil, param, false, fmt.Errorf("dial tcp [%s] failed: %v", param.addr, err)
 		}
