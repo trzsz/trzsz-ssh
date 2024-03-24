@@ -12,6 +12,20 @@ builds:
       - linux
       - windows
       - darwin
+    goarch:
+      - "386"
+      - amd64
+      - arm
+      - arm64
+      - loong64
+    goarm:
+      - "6"
+      - "7"
+    ignore:
+      - goos: windows
+        goarch: arm
+      - goos: darwin
+        goarch: arm
 archives:
   - id: tssh
     name_template: >-
@@ -22,6 +36,7 @@ archives:
       {{- if eq .Arch "amd64" }}x86_64
       {{- else if eq .Arch "386" }}i386
       {{- else if eq .Arch "arm64" }}aarch64
+      {{- else if eq .Arch "arm" }}armv{{ .Arm }}
       {{- else }}{{ .Arch }}{{ end }}
     wrap_in_directory: true
     format_overrides:
@@ -41,6 +56,7 @@ nfpms:
       {{- if eq .Arch "amd64" }}x86_64
       {{- else if eq .Arch "386" }}i386
       {{- else if eq .Arch "arm64" }}aarch64
+      {{- else if eq .Arch "arm" }}armv{{ .Arm }}
       {{- else }}{{ .Arch }}{{ end }}
     homepage: https://trzsz.github.io/
     maintainer: Lonny Wong <lonnywong@qq.com>
