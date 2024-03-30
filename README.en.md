@@ -156,7 +156,7 @@ trzsz-ssh ( tssh ) is an ssh client designed as a drop-in replacement for the op
 
 - If the destination is part of the aliases in `~/.ssh/config`, and can't completely match an alias, the login prompt will also be opened.
 
-- The aliases with `*` or `?` wildcard will not be displayed in the login prompt. To hide the alias, you can add a `*` prefix or suffix.
+- If `#!! HideHost yes` is configured, or the alias contains `*` or `?` wildcard characters, it will not be displayed in the login prompt.
 
 - `tssh` supports shortcuts, supports search, and supports multi-selection when used in `tmux`, `iTerm2`, and `Windows Terminal`, etc.
 
@@ -613,12 +613,12 @@ trzsz-ssh ( tssh ) is an ssh client designed as a drop-in replacement for the op
 
 - The comments in the `tssh` configuration are basically the same as `openssh`, with some additional extended support, see the following table for details:
 
-| Comments              |   openssh    |     tssh      |
-| :-------------------- | :----------: | :-----------: |
-| Starting with `#`     | Is a comment | Is a comment  |
-| Starting with `#!!`   | Is a comment | Not a comment |
-| `Key Value # Comment` |  It depends  | Is a comment  |
-| `Key=Value # Comment` |  It depends  | Not a comment |
+  | Comments              |   openssh    |     tssh      |
+  | :-------------------- | :----------: | :-----------: |
+  | Starting with `#`     | Is a comment | Is a comment  |
+  | Starting with `#!!`   | Is a comment | Not a comment |
+  | `Key Value # Comment` |  It depends  | Is a comment  |
+  | `Key=Value # Comment` |  It depends  | Not a comment |
 
 - Configuration starting with `#` are always considered by `openssh` to be a comment; `tssh` considers configuration starting with `#!!` not to be a comment, and other configurations starting with `#` are comments.
 
