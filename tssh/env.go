@@ -127,12 +127,12 @@ func getSetEnvs(args *sshArgs) ([]*sshEnv, error) {
 	return envs, nil
 }
 
-func sendAndSetEnv(args *sshArgs, session *ssh.Session) error {
-	envs, err := getSendEnvs(args)
+func sendAndSetEnv(args *sshArgs, session *ssh.Session) (string, error) {
+	sendEnvs, err := getSendEnvs(args)
 	if err != nil {
-		return err
+		return "", err
 	}
-	for _, env := range envs {
+	for _, env := range sendEnvs {
 		if err := session.Setenv(env.name, env.value); err != nil {
 			debug("send env failed: %s = \"%s\"", env.name, env.value)
 		} else {
@@ -140,11 +140,15 @@ func sendAndSetEnv(args *sshArgs, session *ssh.Session) error {
 		}
 	}
 
-	envs, err = getSetEnvs(args)
+	setEnvs, err := getSetEnvs(args)
 	if err != nil {
-		return err
+		return "", err
 	}
-	for _, env := range envs {
+	var term string
+	for _, env := range setEnvs {
+		if env.name == "TERM" {
+			term = env.value
+		}
 		if err := session.Setenv(env.name, env.value); err != nil {
 			debug("set env failed: %s = \"%s\"", env.name, env.value)
 		} else {
@@ -152,5 +156,5 @@ func sendAndSetEnv(args *sshArgs, session *ssh.Session) error {
 		}
 	}
 
-	return nil
+	return term, nil
 }

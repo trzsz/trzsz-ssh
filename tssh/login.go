@@ -1241,7 +1241,9 @@ func sshLogin(args *sshArgs) (ss *sshSession, err error) {
 	}
 
 	// send and set env
-	if err = sendAndSetEnv(args, ss.session); err != nil {
+	var term string
+	term, err = sendAndSetEnv(args, ss.session)
+	if err != nil {
 		return
 	}
 
@@ -1278,9 +1280,11 @@ func sshLogin(args *sshArgs) (ss *sshSession, err error) {
 		err = fmt.Errorf("get terminal size failed: %v", err)
 		return
 	}
-	term := os.Getenv("TERM")
 	if term == "" {
-		term = "xterm-256color"
+		term = os.Getenv("TERM")
+		if term == "" {
+			term = "xterm-256color"
+		}
 	}
 	if err = ss.session.RequestPty(term, height, width, ssh.TerminalModes{}); err != nil {
 		err = fmt.Errorf("request pty failed: %v", err)
