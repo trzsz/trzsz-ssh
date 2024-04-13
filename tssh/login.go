@@ -553,7 +553,11 @@ func getPasswordAuthMethod(args *sshArgs, host, user string) ssh.AuthMethod {
 	return ssh.RetryableAuthMethod(ssh.PasswordCallback(func() (string, error) {
 		idx++
 		if idx == 1 {
-			if password := getSecretConfig(args.Destination, "Password"); password != "" {
+			password := args.Option.get("Password")
+			if password == "" {
+				password = getSecretConfig(args.Destination, "Password")
+			}
+			if password != "" {
 				rememberPassword = true
 				debug("trying the password configuration for '%s'", args.Destination)
 				return password, nil
