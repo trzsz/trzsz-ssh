@@ -46,7 +46,7 @@ func getAgentAddr(args *sshArgs, param *sshParam) (string, error) {
 		if strings.ToLower(addr) == "none" {
 			return "", nil
 		}
-		expandedAddr, err := expandTokens(addr, args, param, "%CdhikLlnpru")
+		expandedAddr, err := expandTokens(addr, args, param, "%CdhijkLlnpru")
 		if err != nil {
 			return "", fmt.Errorf("expand IdentityAgent [%s] failed: %v", addr, err)
 		}

@@ -44,9 +44,10 @@ func TestExpandTokens(t *testing.T) {
 		Destination: "dest",
 	}
 	param := &sshParam{
-		host: "127.0.0.1",
-		port: "1337",
-		user: "penny",
+		host:  "127.0.0.1",
+		port:  "1337",
+		user:  "penny",
+		proxy: []string{"jump"},
 	}
 	assertProxyCommand := func(original, expanded, errMsg string) {
 		t.Helper()
@@ -92,6 +93,46 @@ func TestExpandTokens(t *testing.T) {
 	assertControlPath("%j", "%j", "token [%j] in [%j] is not supported")
 	assertControlPath("p_%h_%d", "p_127.0.0.1_%d", "token [%d] in [p_%h_%d] is not supported yet")
 	assertControlPath("h%", "h%", "[h%] ends with % is invalid")
+}
+
+func TestProxyJumpToken(t *testing.T) {
+	assert := assert.New(t)
+	require := require.New(t)
+	originalGetHostname := getHostname
+	defer func() {
+		getHostname = originalGetHostname
+	}()
+	getHostname = func() string { return "myhostname.mydomain.com" }
+
+	args := &sshArgs{
+		Destination: "dest",
+	}
+	param := &sshParam{
+		host: "127.0.0.1",
+		port: "1337",
+		user: "penny",
+	}
+
+	assertProxyJumpToken := func(original, expanded string) {
+		t.Helper()
+		result, err := expandTokens(original, args, param, "%CdhijkLlnpru")
+		require.Nil(err)
+		assert.Equal(expanded, result)
+	}
+
+	assertProxyJumpToken("%j", "")
+	assertProxyJumpToken("_%j_", "__")
+	assertProxyJumpToken("%C", "07f25c03a322b120bcaa54d2dd0a618f2673cb1c")
+
+	param.proxy = []string{"jump"}
+	assertProxyJumpToken("%j", "jump")
+	assertProxyJumpToken("_%j_", "_jump_")
+	assertProxyJumpToken("%C", "5fa1bcd29f7fd4f17b669ffb83deb4243d52b1fa")
+
+	param.proxy = []string{"jump", "server"}
+	assertProxyJumpToken("%j", "server")
+	assertProxyJumpToken("_%j_", "_server_")
+	assertProxyJumpToken("/%C/", "/dc78bc912643b984e78d7d80f9912dbc794d2455/")
 }
 
 func TestInvalidHost(t *testing.T) {

@@ -406,7 +406,7 @@ func sshForward(client *ssh.Client, args *sshArgs, param *sshParam) error {
 		localForward(client, f, args)
 	}
 	for _, s := range getAllOptionConfig(args, "LocalForward") {
-		es, err := expandTokens(s, args, param, "%CdhikLlnpru")
+		es, err := expandTokens(s, args, param, "%CdhijkLlnpru")
 		if err != nil {
 			warning("expand LocalForward [%s] failed: %v", s, err)
 			continue
@@ -424,7 +424,7 @@ func sshForward(client *ssh.Client, args *sshArgs, param *sshParam) error {
 		remoteForward(client, f, args)
 	}
 	for _, s := range getAllOptionConfig(args, "RemoteForward") {
-		es, err := expandTokens(s, args, param, "%CdhikLlnpru")
+		es, err := expandTokens(s, args, param, "%CdhijkLlnpru")
 		if err != nil {
 			warning("expand RemoteForward [%s] failed: %v", s, err)
 			continue

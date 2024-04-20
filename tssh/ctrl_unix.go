@@ -37,6 +37,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -226,24 +227,29 @@ func getRealPath(path string) string {
 	return realPath
 }
 
-func getOpenSSH() (string, error) {
+func getOpenSSH() (string, int, error) {
 	sshPath := "/usr/bin/ssh"
 	tsshPath, err := os.Executable()
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	if getRealPath(tsshPath) == getRealPath(sshPath) {
-		return "", fmt.Errorf("%s is the current program", sshPath)
+		return "", 0, fmt.Errorf("%s is the current program", sshPath)
 	}
-	return sshPath, nil
+	out, err := exec.Command(sshPath, "-V").CombinedOutput()
+	if err != nil {
+		return "", 0, err
+	}
+	re := regexp.MustCompile(`OpenSSH_(\d+)\.(\d+)`)
+	matches := re.FindStringSubmatch(string(out))
+	majorVersion := -1
+	if len(matches) >= 3 {
+		majorVersion, _ = strconv.Atoi(matches[1])
+	}
+	return sshPath, majorVersion, nil
 }
 
-func startControlMaster(args *sshArgs) error {
-	sshPath, err := getOpenSSH()
-	if err != nil {
-		return fmt.Errorf("can't find openssh program: %v", err)
-	}
-
+func startControlMaster(args *sshArgs, sshPath string) error {
 	cmdArgs := []string{"-T", "-oRemoteCommand=none", "-oConnectTimeout=10"}
 
 	if args.Debug {
@@ -320,7 +326,21 @@ func connectViaControl(args *sshArgs, param *sshParam) *ssh.Client {
 		return nil
 	}
 
-	socket, err := expandTokens(ctrlPath, args, param, "%CdhikLlnpru")
+	sshPath, sshVersion, err := getOpenSSH()
+	if err != nil {
+		warning("can't find openssh program: %v", err)
+		return nil
+	}
+	if sshVersion < 0 {
+		warning("can't get openssh version of %s", sshPath)
+		return nil
+	}
+
+	tokens := "%CdhijkLlnpru"
+	if sshVersion < 9 {
+		tokens = "%CdhikLlnpru"
+	}
+	socket, err := expandTokens(ctrlPath, args, param, tokens)
 	if err != nil {
 		warning("expand ControlPath [%s] failed: %v", socket, err)
 		return nil
@@ -335,7 +355,7 @@ func connectViaControl(args *sshArgs, param *sshParam) *ssh.Client {
 		}
 		fallthrough
 	case "auto", "autoask":
-		if err := startControlMaster(args); err != nil {
+		if err := startControlMaster(args, sshPath); err != nil {
 			warning("start control master failed: %v", err)
 		}
 	}

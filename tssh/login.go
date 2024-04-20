@@ -326,7 +326,7 @@ func getHostKeyCallback(args *sshArgs, param *sshParam) (ssh.HostKeyCallback, kn
 		for _, path := range strings.Fields(knownHostsFiles) {
 			var resolvedPath string
 			if user {
-				expandedPath, err := expandTokens(path, args, param, "%CdhikLlnpru")
+				expandedPath, err := expandTokens(path, args, param, "%CdhijkLlnpru")
 				if err != nil {
 					return fmt.Errorf("expand UserKnownHostsFile [%s] failed: %v", path, err)
 				}
@@ -709,7 +709,7 @@ func getPublicKeysAuthMethod(args *sshArgs, param *sshParam) ssh.AuthMethod {
 
 	identities := args.Identity.values
 	for _, identity := range getAllOptionConfig(args, "IdentityFile") {
-		expandedIdentity, err := expandTokens(identity, args, param, "%CdhikLlnpru")
+		expandedIdentity, err := expandTokens(identity, args, param, "%CdhijkLlnpru")
 		if err != nil {
 			warning("expand IdentityFile [%s] failed: %v", identity, err)
 			continue
@@ -847,7 +847,7 @@ func execLocalCommand(args *sshArgs, param *sshParam) {
 	if localCmd == "" {
 		return
 	}
-	expandedCmd, err := expandTokens(localCmd, args, param, "%CdfHhIiKkLlnprTtu")
+	expandedCmd, err := expandTokens(localCmd, args, param, "%CdfHhIijKkLlnprTtu")
 	if err != nil {
 		warning("expand LocalCommand [%s] failed: %v", localCmd, err)
 		return
@@ -891,7 +891,7 @@ func parseRemoteCommand(args *sshArgs, param *sshParam) (string, error) {
 	if command == "" {
 		command = getConfig(args.Destination, "RemoteCommand")
 	}
-	expandedCmd, err := expandTokens(command, args, param, "%CdhikLlnpru")
+	expandedCmd, err := expandTokens(command, args, param, "%CdhijkLlnpru")
 	if err != nil {
 		return "", fmt.Errorf("expand RemoteCommand [%s] failed: %v", command, err)
 	}

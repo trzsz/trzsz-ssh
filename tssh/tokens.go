@@ -120,8 +120,15 @@ func expandTokens(str string, args *sshArgs, param *sshParam, tokens string) (st
 				hostname = hostname[:idx]
 			}
 			buf.WriteString(hostname)
+		case 'j':
+			if len(param.proxy) > 0 {
+				buf.WriteString(param.proxy[len(param.proxy)-1])
+			}
 		case 'C':
 			hashStr := fmt.Sprintf("%s%s%s%s", getHostname(), param.host, param.port, param.user)
+			if len(param.proxy) > 0 && strings.ContainsRune(tokens, 'j') {
+				hashStr += param.proxy[len(param.proxy)-1]
+			}
 			buf.WriteString(fmt.Sprintf("%x", sha1.Sum([]byte(hashStr))))
 		default:
 			return "", fmt.Errorf("token [%%%c] in [%s] is not supported yet", c, str)
