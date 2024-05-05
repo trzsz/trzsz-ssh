@@ -227,26 +227,28 @@ func getRealPath(path string) string {
 	return realPath
 }
 
-func getOpenSSH() (string, int, error) {
+func getOpenSSH() (string, int, int, error) {
 	sshPath := "/usr/bin/ssh"
 	tsshPath, err := os.Executable()
 	if err != nil {
-		return "", 0, err
+		return "", 0, 0, err
 	}
 	if getRealPath(tsshPath) == getRealPath(sshPath) {
-		return "", 0, fmt.Errorf("%s is the current program", sshPath)
+		return "", 0, 0, fmt.Errorf("%s is the current program", sshPath)
 	}
 	out, err := exec.Command(sshPath, "-V").CombinedOutput()
 	if err != nil {
-		return "", 0, err
+		return "", 0, 0, err
 	}
 	re := regexp.MustCompile(`OpenSSH_(\d+)\.(\d+)`)
 	matches := re.FindStringSubmatch(string(out))
 	majorVersion := -1
-	if len(matches) >= 3 {
+	minorVersion := -1
+	if len(matches) > 2 {
 		majorVersion, _ = strconv.Atoi(matches[1])
+		minorVersion, _ = strconv.Atoi(matches[2])
 	}
-	return sshPath, majorVersion, nil
+	return sshPath, majorVersion, minorVersion, nil
 }
 
 func startControlMaster(args *sshArgs, sshPath string) error {
@@ -326,18 +328,18 @@ func connectViaControl(args *sshArgs, param *sshParam) *ssh.Client {
 		return nil
 	}
 
-	sshPath, sshVersion, err := getOpenSSH()
+	sshPath, majorVersion, minorVersion, err := getOpenSSH()
 	if err != nil {
 		warning("can't find openssh program: %v", err)
 		return nil
 	}
-	if sshVersion < 0 {
+	if majorVersion < 0 || minorVersion < 0 {
 		warning("can't get openssh version of %s", sshPath)
 		return nil
 	}
 
 	tokens := "%CdhijkLlnpru"
-	if sshVersion < 9 {
+	if majorVersion < 9 || (majorVersion == 9 && minorVersion < 6) {
 		tokens = "%CdhikLlnpru"
 	}
 	socket, err := expandTokens(ctrlPath, args, param, tokens)
