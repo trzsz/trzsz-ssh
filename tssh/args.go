@@ -71,6 +71,9 @@ type sshArgs struct {
 	DynamicForward bindArgs    `arg:"-D,--" placeholder:"[bind_addr:]port" help:"dynamic port forwarding ( socks5 proxy )"`
 	LocalForward   forwardArgs `arg:"-L,--" placeholder:"[bind_addr:]port:host:hostport" help:"local port forwarding"`
 	RemoteForward  forwardArgs `arg:"-R,--" placeholder:"[bind_addr:]port:host:hostport" help:"remote port forwarding"`
+	X11Untrusted   bool        `arg:"-X,--" help:"enables X11 forwarding"`
+	NoX11Forward   bool        `arg:"-x,--" help:"disables X11 forwarding"`
+	X11Trusted     bool        `arg:"-Y,--" help:"enables trusted X11 forwarding"`
 	Reconnect      bool        `arg:"--reconnect" help:"reconnect when background(-f) process exits"`
 	DragFile       bool        `arg:"--dragfile" help:"enable drag files and directories to upload"`
 	TraceLog       bool        `arg:"--tracelog" help:"enable trzsz detect trace logs for debugging"`

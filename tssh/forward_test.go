@@ -209,3 +209,23 @@ func TestParseForwardArg(t *testing.T) {
 	assertArgError("127.0.0.1:8000:[::1]]:9000", "invalid forward specification: 127.0.0.1:8000:[::1]]:9000")
 	assertArgError("127.0.0.1:8000:[:\t:1]:9000", "invalid forward specification: 127.0.0.1:8000:[:\t:1]:9000")
 }
+
+func TestConvertSshTime(t *testing.T) {
+	assert := assert.New(t)
+	assertTimeEqual := func(time string, expected int) {
+		t.Helper()
+		seconds, err := convertSshTime(time)
+		assert.Nil(err)
+		assert.Equal(expected, seconds)
+	}
+	assertTimeEqual("0", 0)
+	assertTimeEqual("0s", 0)
+	assertTimeEqual("0W", 0)
+	assertTimeEqual("1", 1)
+	assertTimeEqual("1S", 1)
+	assertTimeEqual("90m", 5400)
+	assertTimeEqual("1h30m", 5400)
+	assertTimeEqual("2d", 172800)
+	assertTimeEqual("1w", 604800)
+	assertTimeEqual("1W2d3h4m5", 788645)
+}

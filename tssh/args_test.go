@@ -61,6 +61,10 @@ func TestSshArgs(t *testing.T) {
 	assertArgsEqual("-N", sshArgs{NoCommand: true})
 	assertArgsEqual("-gfN -T", sshArgs{Gateway: true, Background: true, NoCommand: true, DisableTTY: true})
 
+	assertArgsEqual("-X", sshArgs{X11Untrusted: true})
+	assertArgsEqual("-x", sshArgs{NoX11Forward: true})
+	assertArgsEqual("-Y", sshArgs{X11Trusted: true})
+
 	assertArgsEqual("-p1022", sshArgs{Port: 1022})
 	assertArgsEqual("-p 2049", sshArgs{Port: 2049})
 	assertArgsEqual("-luser", sshArgs{LoginName: "user"})

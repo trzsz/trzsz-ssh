@@ -1268,9 +1268,12 @@ func sshLogin(args *sshArgs) (ss *sshSession, err error) {
 		return
 	}
 
-	// ssh agent forward
 	if !control {
+		// ssh agent forward
 		sshAgentForward(args, param, ss.client, ss.session)
+
+		// x11 forward
+		sshX11Forward(args, ss.client, ss.session)
 	}
 
 	// not terminal or not tty

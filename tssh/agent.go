@@ -1,5 +1,3 @@
-package tssh
-
 /*
 MIT License
 
@@ -24,10 +22,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
+package tssh
+
 import (
 	"fmt"
-	"io"
-	"net"
 	"os"
 	"strings"
 	"sync"
@@ -119,25 +117,9 @@ func forwardToRemote(client *ssh.Client, addr string) error {
 func forwardAgentRequest(channel ssh.Channel, addr string) {
 	conn, err := dialAgent(addr)
 	if err != nil {
+		debug("ssh agent dial [%s] failed: %v", addr, err)
 		return
 	}
 
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		_, _ = io.Copy(conn, channel)
-		if unixConn, ok := conn.(*net.UnixConn); ok {
-			_ = unixConn.CloseWrite()
-		}
-		wg.Done()
-	}()
-	go func() {
-		_, _ = io.Copy(channel, conn)
-		_ = channel.CloseWrite()
-		wg.Done()
-	}()
-
-	wg.Wait()
-	conn.Close()
-	channel.Close()
+	forwardChannel(channel, conn)
 }

@@ -439,3 +439,168 @@ func sshForward(client *ssh.Client, args *sshArgs, param *sshParam) error {
 
 	return nil
 }
+
+type x11Request struct {
+	SingleConnection bool
+	AuthProtocol     string
+	AuthCookie       string
+	ScreenNumber     uint32
+}
+
+func sshX11Forward(args *sshArgs, client *ssh.Client, session *ssh.Session) {
+	if args.NoX11Forward || !args.X11Untrusted && !args.X11Trusted && strings.ToLower(getOptionConfig(args, "ForwardX11")) != "yes" {
+		return
+	}
+
+	display := os.Getenv("DISPLAY")
+	if display == "" {
+		warning("X11 forwarding is not working since environment variable DISPLAY is not set")
+		return
+	}
+	hostname, displayNumber := resolveDisplayEnv(display)
+
+	trusted := false
+	if !args.X11Untrusted && (args.X11Trusted || strings.ToLower(getOptionConfig(args, "ForwardX11Trusted")) == "yes") {
+		trusted = true
+	}
+
+	timeout := 1200
+	if !trusted {
+		forwardX11Timeout := getOptionConfig(args, "ForwardX11Timeout")
+		if forwardX11Timeout != "" && strings.ToLower(forwardX11Timeout) != "none" {
+			seconds, err := convertSshTime(forwardX11Timeout)
+			if err != nil {
+				warning("invalid ForwardX11Timeout '%s': %v", forwardX11Timeout, err)
+			} else {
+				timeout = seconds
+			}
+		}
+	}
+
+	cookie, proto, err := getXauthAndProto(display, trusted, timeout)
+	if err != nil {
+		warning("X11 forwarding get xauth failed: %v", err)
+		return
+	}
+
+	payload := x11Request{
+		SingleConnection: false,
+		AuthProtocol:     proto,
+		AuthCookie:       cookie,
+		ScreenNumber:     0,
+	}
+	ok, err := session.SendRequest("x11-req", true, ssh.Marshal(payload))
+	if err != nil {
+		warning("X11 forwarding request failed: %v", err)
+		return
+	}
+	if !ok {
+		warning("X11 forwarding request denied")
+		return
+	}
+
+	channels := client.HandleChannelOpen("x11")
+	if channels == nil {
+		warning("already have handler for x11")
+		return
+	}
+	go func() {
+		for ch := range channels {
+			channel, reqs, err := ch.Accept()
+			if err != nil {
+				continue
+			}
+			go ssh.DiscardRequests(reqs)
+			go func() {
+				serveX11(display, hostname, displayNumber, channel)
+				channel.Close()
+			}()
+		}
+	}()
+}
+
+func resolveDisplayEnv(display string) (string, int) {
+	colon := strings.LastIndex(display, ":")
+	if colon < 0 {
+		return "", 0
+	}
+	hostname := display[:colon]
+	display = display[colon+1:]
+	dot := strings.Index(display, ".")
+	if dot < 0 {
+		dot = len(display)
+	}
+	displayNumber, err := strconv.Atoi(display[:dot])
+	if err != nil {
+		return "", 0
+	}
+	return hostname, displayNumber
+}
+
+func convertSshTime(time string) (int, error) {
+	total := 0
+	seconds := 0
+	for _, ch := range time {
+		switch {
+		case ch >= '0' && ch <= '9':
+			seconds = seconds*10 + int(ch-'0')
+		case ch == 's' || ch == 'S':
+			total += seconds
+			seconds = 0
+		case ch == 'm' || ch == 'M':
+			total += seconds * 60
+			seconds = 0
+		case ch == 'h' || ch == 'H':
+			total += seconds * 60 * 60
+			seconds = 0
+		case ch == 'd' || ch == 'D':
+			total += seconds * 60 * 60 * 24
+			seconds = 0
+		case ch == 'w' || ch == 'W':
+			total += seconds * 60 * 60 * 24 * 7
+			seconds = 0
+		default:
+			return 0, fmt.Errorf("invalid char '%c'", ch)
+		}
+	}
+	return total + seconds, nil
+}
+
+func serveX11(display, hostname string, displayNumber int, channel ssh.Channel) {
+	var err error
+	var conn net.Conn
+	if hostname != "" && !strings.HasPrefix(hostname, "/") {
+		conn, err = net.DialTimeout("tcp", joinHostPort(hostname, strconv.Itoa(6000+displayNumber)), time.Second)
+	} else if strings.HasPrefix(display, "/") {
+		conn, err = net.DialTimeout("unix", display, time.Second)
+	} else {
+		conn, err = net.DialTimeout("unix", fmt.Sprintf("/tmp/.X11-unix/X%d", displayNumber), time.Second)
+	}
+	if err != nil {
+		debug("X11 forwarding dial [%s] failed: %v", display, err)
+		return
+	}
+
+	forwardChannel(channel, conn)
+}
+
+func forwardChannel(channel ssh.Channel, conn net.Conn) {
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		_, _ = io.Copy(conn, channel)
+		if unixConn, ok := conn.(*net.UnixConn); ok {
+			_ = unixConn.CloseWrite()
+		}
+		wg.Done()
+	}()
+	go func() {
+		_, _ = io.Copy(channel, conn)
+		_ = channel.CloseWrite()
+		wg.Done()
+	}()
+
+	wg.Wait()
+	conn.Close()
+	channel.Close()
+}
