@@ -1,6 +1,7 @@
 module github.com/trzsz/trzsz-ssh
 
-go 1.20
+go 1.21.4
+
 
 require (
 	github.com/Microsoft/go-winio v0.6.2
@@ -30,6 +31,7 @@ require (
 
 require (
 	github.com/UserExistsError/conpty v0.1.3 // indirect
+	github.com/abakum/pageant v0.0.0-20240419114114-01633e0d85e4 // indirect
 	github.com/akavel/rsrc v0.10.2 // indirect
 	github.com/alexflint/go-scalar v1.2.0 // indirect
 	github.com/andybrewer/mack v0.0.0-20220307193339-22e922cc18af // indirect
