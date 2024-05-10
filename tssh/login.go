@@ -1225,13 +1225,6 @@ func sshLogin(args *sshArgs) (ss *sshSession, err error) {
 		return
 	}
 
-	// ssh forward
-	if !control {
-		if err = sshForward(ss.client, args, param); err != nil {
-			return
-		}
-	}
-
 	// no command
 	if args.NoCommand {
 		return
@@ -1269,11 +1262,17 @@ func sshLogin(args *sshArgs) (ss *sshSession, err error) {
 	}
 
 	if !control {
-		// ssh agent forward
-		sshAgentForward(args, param, ss.client, ss.session)
+		// Let's postpone forwarding - maybe we won't have to do it.
+		afterLoginFuncs = append(afterLoginFuncs, func() {
+			// ssh forward
+			sshForward(ss.client, args, param)
 
-		// x11 forward
-		sshX11Forward(args, ss.client, ss.session)
+			// ssh agent forward
+			sshAgentForward(args, param, ss.client, ss.session)
+
+			// x11 forward
+			sshX11Forward(args, ss.client, ss.session)
+		})
 	}
 
 	// not terminal or not tty
