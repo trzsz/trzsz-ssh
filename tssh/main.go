@@ -235,6 +235,11 @@ func sshStart(args *sshArgs) error {
 	// execute remote tools if necessary
 	execRemoteTools(args, ss.client)
 
+	// Ssh agent forwarding must start before session.Shell or session.Command.
+	if agentForwarding != nil {
+		agentForwarding()
+	}
+
 	// run command or start shell
 	if ss.cmd != "" {
 		if err := ss.session.Start(ss.cmd); err != nil {
