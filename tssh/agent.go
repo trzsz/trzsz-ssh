@@ -30,13 +30,13 @@ import (
 	"strings"
 	"sync"
 
-	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 )
 
 var (
-	agentOnce   sync.Once
-	agentClient agent.ExtendedAgent
+	agentOnce       sync.Once
+	agentClient     agent.ExtendedAgent
+	agentForwarding func()
 )
 
 func getAgentAddr(args *sshArgs, param *sshParam) (string, error) {
@@ -80,46 +80,17 @@ func getAgentClient(args *sshArgs, param *sshParam) agent.ExtendedAgent {
 		agentClient = agent.NewClient(conn)
 		debug("new ssh agent client [%s] success", addr)
 
-		afterLoginFuncs = append(afterLoginFuncs, func() {
-			conn.Close()
-			agentClient = nil
-		})
+		if args.ForwardAgent {
+			onExitFuncs = append(onExitFuncs, func() {
+				conn.Close()
+				agentClient = nil
+			})
+		} else {
+			afterLoginFuncs = append(afterLoginFuncs, func() {
+				conn.Close()
+				agentClient = nil
+			})
+		}
 	})
 	return agentClient
-}
-
-const channelType = "auth-agent@openssh.com"
-
-func forwardToRemote(client *ssh.Client, addr string) error {
-	channels := client.HandleChannelOpen(channelType)
-	if channels == nil {
-		return fmt.Errorf("agent: already have handler for %s", channelType)
-	}
-	conn, err := dialAgent(addr)
-	if err != nil {
-		return err
-	}
-	conn.Close()
-
-	go func() {
-		for ch := range channels {
-			channel, reqs, err := ch.Accept()
-			if err != nil {
-				continue
-			}
-			go ssh.DiscardRequests(reqs)
-			go forwardAgentRequest(channel, addr)
-		}
-	}()
-	return nil
-}
-
-func forwardAgentRequest(channel ssh.Channel, addr string) {
-	conn, err := dialAgent(addr)
-	if err != nil {
-		debug("ssh agent dial [%s] failed: %v", addr, err)
-		return
-	}
-
-	forwardChannel(channel, conn)
 }
