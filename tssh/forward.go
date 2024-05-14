@@ -382,10 +382,10 @@ func remoteForward(client *ssh.Client, f *forwardCfg, args *sshArgs) {
 	}
 }
 
-func sshForward(client *ssh.Client, args *sshArgs, param *sshParam) error {
+func sshForward(client *ssh.Client, args *sshArgs, param *sshParam) {
 	// clear all forwardings
 	if strings.ToLower(getOptionConfig(args, "ClearAllForwardings")) == "yes" {
-		return nil
+		return
 	}
 
 	// dynamic forward
@@ -436,8 +436,6 @@ func sshForward(client *ssh.Client, args *sshArgs, param *sshParam) error {
 		}
 		remoteForward(client, f, args)
 	}
-
-	return nil
 }
 
 type x11Request struct {
