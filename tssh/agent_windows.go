@@ -29,11 +29,18 @@ import (
 	"time"
 
 	"github.com/Microsoft/go-winio"
+	"github.com/abakum/pageant"
 )
 
 const defaultAgentAddr = `\\.\pipe\openssh-ssh-agent`
 
 func dialAgent(addr string) (net.Conn, error) {
+
 	timeout := time.Second
-	return winio.DialPipe(addr, &timeout)
+	conn, err := winio.DialPipe(addr, &timeout)
+
+	if err != nil { // Plan B.
+		conn, err = pageant.NewConn()
+	}
+	return conn, err
 }
