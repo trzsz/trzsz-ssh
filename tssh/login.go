@@ -240,7 +240,7 @@ func ensureNewline(file *os.File) error {
 	return nil
 }
 
-func writeKnownHost(path, host string, remote net.Addr, key ssh.PublicKey) error {
+func writeKnownHost(path, host string, _ net.Addr, key ssh.PublicKey) error {
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0600)
 	if err != nil {
 		return err
@@ -1178,10 +1178,12 @@ func sshAgentForward(args *sshArgs, param *sshParam, client *ssh.Client, session
 		warning("forward agent but the socket address is not set")
 		return
 	}
-	if err := forwardToRemote(client, addr); err != nil {
+
+	if err := agent.ForwardToAgent(client, getAgentClient(args, param)); err != nil {
 		warning("forward to agent [%s] failed: %v", addr, err)
 		return
 	}
+
 	if err := agent.RequestAgentForwarding(session); err != nil {
 		warning("request agent forwarding failed: %v", err)
 		return
@@ -1225,13 +1227,6 @@ func sshLogin(args *sshArgs) (ss *sshSession, err error) {
 		return
 	}
 
-	// ssh forward
-	if !control {
-		if err = sshForward(ss.client, args, param); err != nil {
-			return
-		}
-	}
-
 	// no command
 	if args.NoCommand {
 		return
@@ -1269,11 +1264,20 @@ func sshLogin(args *sshArgs) (ss *sshSession, err error) {
 	}
 
 	if !control {
-		// ssh agent forward
-		sshAgentForward(args, param, ss.client, ss.session)
+		// Let's postpone forwarding - maybe we won't have to do it.
+		afterLoginFuncs = append(afterLoginFuncs, func() {
+			// ssh forward
+			sshForward(ss.client, args, param)
 
-		// x11 forward
-		sshX11Forward(args, ss.client, ss.session)
+			// x11 forward
+			sshX11Forward(args, ss.client, ss.session)
+		})
+
+		// Ssh agent forwarding must start before session.Shell or session.Command.
+		agentForwarding = func() {
+			sshAgentForward(args, param, ss.client, ss.session)
+		}
+
 	}
 
 	// not terminal or not tty
