@@ -40,6 +40,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/google/shlex"
 	"github.com/mitchellh/go-homedir"
 	"github.com/trzsz/ssh_config"
 )
@@ -313,13 +314,19 @@ func getConfig(alias, key string) string {
 	userConfig.doLoadConfig()
 
 	if userConfig.config != nil {
-		if value, _ := userConfig.config.Get(alias, key); value != "" {
+		value, err := userConfig.config.Get(alias, key)
+		if err != nil {
+			warning("get user config [%s] for [%s] failed: %v", key, alias, err)
+		} else if value != "" {
 			return value
 		}
 	}
 
 	if userConfig.sysConfig != nil {
-		if value, _ := userConfig.sysConfig.Get(alias, key); value != "" {
+		value, err := userConfig.sysConfig.Get(alias, key)
+		if err != nil {
+			warning("get sys config [%s] for [%s] failed: %v", key, alias, err)
+		} else if value != "" {
 			return value
 		}
 	}
@@ -327,17 +334,56 @@ func getConfig(alias, key string) string {
 	return ssh_config.Default(key)
 }
 
+func getConfigSplits(alias, key string) []string {
+	userConfig.doLoadConfig()
+
+	if userConfig.config != nil {
+		values, err := userConfig.config.GetSplits(alias, key)
+		if err != nil {
+			warning("get user config splits [%s] for [%s] failed: %v", key, alias, err)
+		} else if len(values) > 0 {
+			return values
+		}
+	}
+
+	if userConfig.sysConfig != nil {
+		values, err := userConfig.sysConfig.GetSplits(alias, key)
+		if err != nil {
+			warning("get sys config splits [%s] for [%s] failed: %v", key, alias, err)
+		} else if len(values) > 0 {
+			return values
+		}
+	}
+
+	if value := ssh_config.Default(key); value != "" {
+		values, err := shlex.Split(value)
+		if err != nil {
+			warning("split default [%s] value [%s] failed: %v", key, value, err)
+		} else if len(values) > 0 {
+			return values
+		}
+	}
+
+	return nil
+}
+
 func getAllConfig(alias, key string) []string {
 	userConfig.doLoadConfig()
 
 	var values []string
 	if userConfig.config != nil {
-		if vals, _ := userConfig.config.GetAll(alias, key); len(vals) > 0 {
+		vals, err := userConfig.config.GetAll(alias, key)
+		if err != nil {
+			warning("get all user config [%s] for [%s] failed: %v", key, alias, err)
+		} else if len(vals) > 0 {
 			values = append(values, vals...)
 		}
 	}
 	if userConfig.sysConfig != nil {
-		if vals, _ := userConfig.sysConfig.GetAll(alias, key); len(vals) > 0 {
+		vals, err := userConfig.sysConfig.GetAll(alias, key)
+		if err != nil {
+			warning("get all sys config [%s] for [%s] failed: %v", key, alias, err)
+		} else if len(vals) > 0 {
 			values = append(values, vals...)
 		}
 	}
@@ -345,8 +391,43 @@ func getAllConfig(alias, key string) []string {
 		return values
 	}
 
-	if d := ssh_config.Default(key); d != "" {
-		values = append(values, d)
+	if value := ssh_config.Default(key); value != "" {
+		values = append(values, value)
+	}
+	return values
+}
+
+func getAllConfigSplits(alias, key string) []string {
+	userConfig.doLoadConfig()
+
+	var values []string
+	if userConfig.config != nil {
+		vals, err := userConfig.config.GetAllSplits(alias, key)
+		if err != nil {
+			warning("get all user config splits [%s] for [%s] failed: %v", key, alias, err)
+		} else if len(vals) > 0 {
+			values = append(values, vals...)
+		}
+	}
+	if userConfig.sysConfig != nil {
+		vals, err := userConfig.sysConfig.GetAllSplits(alias, key)
+		if err != nil {
+			warning("get all sys config splits [%s] for [%s] failed: %v", key, alias, err)
+		} else if len(vals) > 0 {
+			values = append(values, vals...)
+		}
+	}
+	if len(values) > 0 {
+		return values
+	}
+
+	if value := ssh_config.Default(key); value != "" {
+		vals, err := shlex.Split(value)
+		if err != nil {
+			warning("split default [%s] value [%s] failed: %v", key, value, err)
+		} else if len(vals) > 0 {
+			values = append(values, vals...)
+		}
 	}
 	return values
 }
@@ -355,8 +436,10 @@ func getExConfig(alias, key string) string {
 	userConfig.doLoadExConfig()
 
 	if userConfig.exConfig != nil {
-		value, _ := userConfig.exConfig.Get(alias, key)
-		if value != "" {
+		value, err := userConfig.exConfig.Get(alias, key)
+		if err != nil {
+			warning("get extended config [%s] for [%s] failed: %v", key, alias, err)
+		} else if value != "" {
 			debug("get extended config [%s] for [%s] success", key, alias)
 			return value
 		}
@@ -376,7 +459,10 @@ func getAllExConfig(alias, key string) []string {
 
 	var values []string
 	if userConfig.exConfig != nil {
-		if vals, _ := userConfig.exConfig.GetAll(alias, key); len(vals) > 0 {
+		vals, err := userConfig.exConfig.GetAll(alias, key)
+		if err != nil {
+			warning("get all extended config [%s] for [%s] failed: %v", key, alias, err)
+		} else if len(vals) > 0 {
 			values = append(values, vals...)
 		}
 	}
@@ -477,8 +563,36 @@ func getOptionConfig(args *sshArgs, option string) string {
 	return getConfig(args.Destination, option)
 }
 
+func getOptionConfigSplits(args *sshArgs, option string) []string {
+	if value := args.Option.get(option); value != "" {
+		values, err := shlex.Split(value)
+		if err != nil {
+			warning("split option [%s] value [%s] failed: %v", option, value, err)
+		}
+		return values
+	}
+	return getConfigSplits(args.Destination, option)
+}
+
 func getAllOptionConfig(args *sshArgs, option string) []string {
 	return append(args.Option.getAll(option), getAllConfig(args.Destination, option)...)
+}
+
+func getAllOptionConfigSplits(args *sshArgs, option string) []string {
+	var all []string
+	for _, value := range args.Option.getAll(option) {
+		values, err := shlex.Split(value)
+		if err != nil {
+			warning("split option [%s] value [%s] failed: %v", option, value, err)
+		} else if len(values) > 0 {
+			all = append(all, values...)
+		}
+	}
+	values := getAllConfigSplits(args.Destination, option)
+	if len(values) > 0 {
+		all = append(all, values...)
+	}
+	return all
 }
 
 func getExOptionConfig(args *sshArgs, option string) string {

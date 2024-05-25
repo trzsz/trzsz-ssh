@@ -318,12 +318,16 @@ func getHostKeyCallback(args *sshArgs, param *sshParam) (ssh.HostKeyCallback, kn
 	primaryPath := ""
 	var files []string
 	addKnownHostsFiles := func(key string, user bool) error {
-		knownHostsFiles := getOptionConfig(args, key)
-		if knownHostsFiles == "" || user && strings.ToLower(knownHostsFiles) == "none" {
-			debug("%s is empty or none", key)
+		knownHostsFiles := getOptionConfigSplits(args, key)
+		if len(knownHostsFiles) == 0 {
+			debug("%s is empty", key)
 			return nil
 		}
-		for _, path := range strings.Fields(knownHostsFiles) {
+		if len(knownHostsFiles) == 1 && strings.ToLower(knownHostsFiles[0]) == "none" {
+			debug("%s is none", key)
+			return nil
+		}
+		for _, path := range knownHostsFiles {
 			var resolvedPath string
 			if user {
 				expandedPath, err := expandTokens(path, args, param, "%CdhijkLlnpru")

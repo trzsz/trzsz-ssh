@@ -30,7 +30,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/google/shlex"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -41,11 +40,9 @@ type sshEnv struct {
 
 func getSendEnvs(args *sshArgs) ([]*sshEnv, error) {
 	envSet := make(map[string]struct{})
-	for _, envCfg := range getAllOptionConfig(args, "SendEnv") {
-		for _, env := range strings.Fields(envCfg) {
-			if len(env) > 0 {
-				envSet[env] = struct{}{}
-			}
+	for _, env := range getAllOptionConfigSplits(args, "SendEnv") {
+		if len(env) > 0 {
+			envSet[env] = struct{}{}
 		}
 	}
 	if len(envSet) == 0 {
@@ -103,23 +100,19 @@ func getSendEnvs(args *sshArgs) ([]*sshEnv, error) {
 }
 
 func getSetEnvs(args *sshArgs) ([]*sshEnv, error) {
-	envCfg := getOptionConfig(args, "SetEnv")
-	if envCfg == "" {
+	setEnvs := getOptionConfigSplits(args, "SetEnv")
+	if len(setEnvs) == 0 {
 		return nil, nil
 	}
-	tokens, err := shlex.Split(envCfg)
-	if err != nil {
-		return nil, fmt.Errorf("invalid SetEnv: %s", envCfg)
-	}
 	var envs []*sshEnv
-	for _, token := range tokens {
+	for _, token := range setEnvs {
 		pos := strings.IndexRune(token, '=')
 		if pos < 0 {
-			return nil, fmt.Errorf("invalid SetEnv: %s", envCfg)
+			return nil, fmt.Errorf("invalid SetEnv: %s", token)
 		}
 		name := strings.TrimSpace(token[:pos])
 		if name == "" {
-			return nil, fmt.Errorf("invalid SetEnv: %s", envCfg)
+			return nil, fmt.Errorf("invalid SetEnv: %s", token)
 		}
 		value := strings.TrimSpace(token[pos+1:])
 		envs = append(envs, &sshEnv{name, value})
