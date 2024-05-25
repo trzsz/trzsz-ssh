@@ -7,8 +7,8 @@ require (
 	github.com/alessio/shellescape v1.4.2
 	github.com/armon/go-socks5 v0.0.0-20160902184237-e75332964ef5
 	github.com/charmbracelet/bubbles v0.18.0
-	github.com/charmbracelet/bubbletea v0.26.1
-	github.com/charmbracelet/lipgloss v0.10.0
+	github.com/charmbracelet/bubbletea v0.26.3
+	github.com/charmbracelet/lipgloss v0.11.0
 	github.com/chzyer/readline v1.5.1
 	github.com/creack/pty v1.1.21
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
@@ -22,10 +22,10 @@ require (
 	github.com/trzsz/iterm2 v0.1.2
 	github.com/trzsz/promptui v0.10.7
 	github.com/trzsz/ssh_config v1.3.5
-	github.com/trzsz/trzsz-go v1.1.8-0.20240303135018-b95b67671472
-	golang.org/x/crypto v0.22.0
+	github.com/trzsz/trzsz-go v1.1.8-0.20240525015006-6424386a6738
+	golang.org/x/crypto v0.23.0
 	golang.org/x/sys v0.20.0
-	golang.org/x/term v0.19.0
+	golang.org/x/term v0.20.0
 )
 
 require (
@@ -36,6 +36,10 @@ require (
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/boombuler/barcode v1.0.1 // indirect
+	github.com/charmbracelet/x/ansi v0.1.1 // indirect
+	github.com/charmbracelet/x/input v0.1.1 // indirect
+	github.com/charmbracelet/x/term v0.1.1 // indirect
+	github.com/charmbracelet/x/windows v0.1.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dchest/jsmin v0.0.0-20220218165748-59f39799265f // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
@@ -46,16 +50,16 @@ require (
 	github.com/mattn/go-localereader v0.0.1 // indirect
 	github.com/muesli/ansi v0.0.0-20230316100256-276c6243b2f6 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
-	github.com/muesli/reflow v0.3.0 // indirect
 	github.com/muesli/termenv v0.15.2 // indirect
 	github.com/ncruces/zenity v0.10.12 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/randall77/makefat v0.0.0-20210315173500-7ddd0e42c844 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
-	golang.org/x/image v0.15.0 // indirect
-	golang.org/x/net v0.24.0 // indirect
+	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
+	golang.org/x/image v0.16.0 // indirect
+	golang.org/x/net v0.25.0 // indirect
 	golang.org/x/sync v0.7.0 // indirect
 	golang.org/x/text v0.15.0 // indirect
-	google.golang.org/protobuf v1.34.0 // indirect
+	google.golang.org/protobuf v1.34.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

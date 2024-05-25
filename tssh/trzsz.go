@@ -76,7 +76,16 @@ func wrapStdIO(serverIn io.WriteCloser, serverOut io.Reader, serverErr io.Reader
 					_, _ = writer.Write([]byte{0x1A}) // ctrl + z
 					continue
 				}
-				break
+				if !input {
+					continue // ignore output EOF
+				}
+				// delay and close
+				for {
+					time.Sleep(time.Second)
+					if lastTime := lastServerAliveTime.Load(); lastTime != nil && time.Since(*lastTime) >= time.Second {
+						return
+					}
+				}
 			}
 			if err != nil {
 				warning("wrap stdio read failed: %v", err)
