@@ -29,11 +29,27 @@ import (
 	"time"
 
 	"github.com/Microsoft/go-winio"
+	"github.com/trzsz/pageant"
 )
 
-const defaultAgentAddr = `\\.\pipe\openssh-ssh-agent`
+const kSshAgentAddr = `\\.\pipe\openssh-ssh-agent`
+
+const kPageantFakeAddr = "using_pageant_as_ssh_agent"
+
+func getDefaultAgentAddr() (string, error) {
+	if isFileExist(kSshAgentAddr) {
+		return kSshAgentAddr, nil
+	}
+	if pageant.PageantAvailable() {
+		return kPageantFakeAddr, nil
+	}
+	return "", nil
+}
 
 func dialAgent(addr string) (net.Conn, error) {
+	if addr == kPageantFakeAddr {
+		return pageant.NewPageantConn()
+	}
 	timeout := time.Second
 	return winio.DialPipe(addr, &timeout)
 }

@@ -31,7 +31,9 @@ import (
 	"time"
 )
 
-const defaultAgentAddr = ""
+func getDefaultAgentAddr() (string, error) {
+	return "", nil
+}
 
 func dialAgent(addr string) (net.Conn, error) {
 	return net.DialTimeout("unix", addr, time.Second)

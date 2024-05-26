@@ -53,10 +53,7 @@ func getAgentAddr(args *sshArgs, param *sshParam) (string, error) {
 	if addr := os.Getenv("SSH_AUTH_SOCK"); addr != "" {
 		return resolveHomeDir(addr), nil
 	}
-	if addr := defaultAgentAddr; addr != "" && isFileExist(addr) {
-		return addr, nil
-	}
-	return "", nil
+	return getDefaultAgentAddr()
 }
 
 func getAgentClient(args *sshArgs, param *sshParam) agent.ExtendedAgent {
