@@ -1004,8 +1004,6 @@ func setupLogLevel(args *sshArgs) func() {
 		enableDebugLogging = true
 		envbleWarningLogging = true
 	case "info", "verbose":
-		fallthrough
-	default:
 		enableDebugLogging = false
 		envbleWarningLogging = true
 	}
