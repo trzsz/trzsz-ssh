@@ -37,7 +37,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/armon/go-socks5"
+	"github.com/trzsz/go-socks5"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -203,9 +203,9 @@ func listenOnLocal(args *sshArgs, addr *string, port string) (listeners []net.Li
 	listen := func(network, address string) {
 		listener, err := net.Listen(network, address)
 		if err != nil {
-			debug("forward listen on local '%s' failed: %v", address, err)
+			debug("forward listen on local %s '%s' failed: %v", network, address, err)
 		} else {
-			debug("forward listen on local '%s' success", address)
+			debug("forward listen on local %s '%s' success", network, address)
 			listeners = append(listeners, listener)
 		}
 	}
@@ -223,13 +223,13 @@ func listenOnLocal(args *sshArgs, addr *string, port string) (listeners []net.Li
 	return
 }
 
-func listenOnRemote(args *sshArgs, client *ssh.Client, addr *string, port string) (listeners []net.Listener) {
+func listenOnRemote(args *sshArgs, client sshClient, addr *string, port string) (listeners []net.Listener) {
 	listen := func(network, address string) {
 		listener, err := client.Listen(network, address)
 		if err != nil {
-			debug("forward listen on remote '%s' failed: %v", address, err)
+			debug("forward listen on remote %s '%s' failed: %v", network, address, err)
 		} else {
-			debug("forward listen on remote '%s' success", address)
+			debug("forward listen on remote %s '%s' success", network, address)
 			listeners = append(listeners, listener)
 		}
 	}
@@ -247,8 +247,8 @@ func listenOnRemote(args *sshArgs, client *ssh.Client, addr *string, port string
 	return
 }
 
-func stdioForward(client *ssh.Client, addr string) (*sync.WaitGroup, error) {
-	conn, err := dialWithTimeout(client, "tcp", addr, 10*time.Second)
+func stdioForward(client sshClient, addr string) (*sync.WaitGroup, error) {
+	conn, err := client.DialTimeout("tcp", addr, 10*time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("stdio forward failed: %v", err)
 	}
@@ -279,11 +279,11 @@ func (d sshResolver) Resolve(ctx context.Context, name string) (context.Context,
 	return ctx, []byte{}, nil
 }
 
-func dynamicForward(client *ssh.Client, b *bindCfg, args *sshArgs) {
+func dynamicForward(client sshClient, b *bindCfg, args *sshArgs) {
 	server, err := socks5.New(&socks5.Config{
 		Resolver: &sshResolver{},
 		Dial: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			return dialWithTimeout(client, network, addr, 10*time.Second)
+			return client.DialTimeout(network, addr, 10*time.Second)
 		},
 		Logger: log.New(io.Discard, "", log.LstdFlags),
 	})
@@ -330,7 +330,7 @@ func netForward(local, remote net.Conn) {
 	<-done
 }
 
-func localForward(client *ssh.Client, f *forwardCfg, args *sshArgs) {
+func localForward(client sshClient, f *forwardCfg, args *sshArgs) {
 	remoteAddr := joinHostPort(f.destHost, strconv.Itoa(f.destPort))
 	for _, listener := range listenOnLocal(args, f.bindAddr, strconv.Itoa(f.bindPort)) {
 		go func(listener net.Listener) {
@@ -344,7 +344,7 @@ func localForward(client *ssh.Client, f *forwardCfg, args *sshArgs) {
 					debug("local forward accept failed: %v", err)
 					continue
 				}
-				remote, err := dialWithTimeout(client, "tcp", remoteAddr, 10*time.Second)
+				remote, err := client.DialTimeout("tcp", remoteAddr, 10*time.Second)
 				if err != nil {
 					debug("local forward dial [%s] failed: %v", remoteAddr, err)
 					local.Close()
@@ -356,7 +356,7 @@ func localForward(client *ssh.Client, f *forwardCfg, args *sshArgs) {
 	}
 }
 
-func remoteForward(client *ssh.Client, f *forwardCfg, args *sshArgs) {
+func remoteForward(client sshClient, f *forwardCfg, args *sshArgs) {
 	localAddr := joinHostPort(f.destHost, strconv.Itoa(f.destPort))
 	for _, listener := range listenOnRemote(args, client, f.bindAddr, strconv.Itoa(f.bindPort)) {
 		go func(listener net.Listener) {
@@ -382,7 +382,7 @@ func remoteForward(client *ssh.Client, f *forwardCfg, args *sshArgs) {
 	}
 }
 
-func sshForward(client *ssh.Client, args *sshArgs, param *sshParam) error {
+func sshForward(client sshClient, args *sshArgs, param *sshParam) error {
 	// clear all forwardings
 	if strings.ToLower(getOptionConfig(args, "ClearAllForwardings")) == "yes" {
 		return nil
@@ -447,7 +447,7 @@ type x11Request struct {
 	ScreenNumber     uint32
 }
 
-func sshX11Forward(args *sshArgs, client *ssh.Client, session *ssh.Session) {
+func sshX11Forward(args *sshArgs, client sshClient, session sshSession) {
 	if args.NoX11Forward || !args.X11Untrusted && !args.X11Trusted && strings.ToLower(getOptionConfig(args, "ForwardX11")) != "yes" {
 		return
 	}

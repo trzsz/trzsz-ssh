@@ -44,7 +44,6 @@ import (
 	"github.com/alessio/shellescape"
 	"github.com/skeema/knownhosts"
 	"golang.org/x/crypto/ssh"
-	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/term"
 )
 
@@ -72,28 +71,6 @@ type sshParam struct {
 	addr    string
 	proxy   []string
 	command string
-}
-
-type sshSession struct {
-	client    *ssh.Client
-	session   *ssh.Session
-	serverIn  io.WriteCloser
-	serverOut io.Reader
-	serverErr io.Reader
-	cmd       string
-	tty       bool
-}
-
-func (s *sshSession) Close() {
-	if s.serverIn != nil {
-		s.serverIn.Close()
-	}
-	if s.session != nil {
-		s.session.Close()
-	}
-	if s.client != nil {
-		s.client.Close()
-	}
 }
 
 func joinHostPort(host, port string) string {
@@ -937,21 +914,6 @@ func parseCmdAndTTY(args *sshArgs, param *sshParam) (cmd string, tty bool, err e
 	return
 }
 
-func dialWithTimeout(client *ssh.Client, network, addr string, timeout time.Duration) (conn net.Conn, err error) {
-	done := make(chan struct{}, 1)
-	go func() {
-		defer close(done)
-		conn, err = client.Dial(network, addr)
-		done <- struct{}{}
-	}()
-	select {
-	case <-time.After(timeout):
-		err = fmt.Errorf("dial [%s] timeout", addr)
-	case <-done:
-	}
-	return
-}
-
 var lastServerAliveTime atomic.Pointer[time.Time]
 
 type connWithTimeout struct {
@@ -1030,7 +992,7 @@ func getNetworkAddressFamily(args *sshArgs) string {
 	}
 }
 
-func sshConnect(args *sshArgs, client *ssh.Client, proxy string) (*ssh.Client, *sshParam, bool, error) {
+func sshConnect(args *sshArgs, client sshClient, proxy string) (sshClient, *sshParam, bool, error) {
 	param, err := getSshParam(args)
 	if err != nil {
 		return nil, nil, false, err
@@ -1066,9 +1028,9 @@ func sshConnect(args *sshArgs, client *ssh.Client, proxy string) (*ssh.Client, *
 
 	network := getNetworkAddressFamily(args)
 
-	proxyConnect := func(client *ssh.Client, proxy string) (*ssh.Client, *sshParam, bool, error) {
+	proxyConnect := func(client sshClient, proxy string) (sshClient, *sshParam, bool, error) {
 		debug("login to [%s], addr: %s", args.Destination, param.addr)
-		conn, err := dialWithTimeout(client, network, param.addr, 10*time.Second)
+		conn, err := client.DialTimeout(network, param.addr, 10*time.Second)
 		if err != nil {
 			return nil, param, false, fmt.Errorf("proxy [%s] dial tcp [%s] failed: %v", proxy, param.addr, err)
 		}
@@ -1077,7 +1039,7 @@ func sshConnect(args *sshArgs, client *ssh.Client, proxy string) (*ssh.Client, *
 			return nil, param, false, fmt.Errorf("proxy [%s] new conn [%s] failed: %v", proxy, param.addr, err)
 		}
 		debug("login to [%s] success", args.Destination)
-		return ssh.NewClient(ncc, chans, reqs), param, false, nil
+		return sshNewClient(ncc, chans, reqs), param, false, nil
 	}
 
 	// has parent client
@@ -1097,7 +1059,7 @@ func sshConnect(args *sshArgs, client *ssh.Client, proxy string) (*ssh.Client, *
 			return nil, param, false, fmt.Errorf("proxy command [%s] new conn [%s] failed: %v", cmd, param.addr, err)
 		}
 		debug("login to [%s] success", args.Destination)
-		return ssh.NewClient(ncc, chans, reqs), param, false, nil
+		return sshNewClient(ncc, chans, reqs), param, false, nil
 	}
 
 	// no proxy
@@ -1112,11 +1074,11 @@ func sshConnect(args *sshArgs, client *ssh.Client, proxy string) (*ssh.Client, *
 			return nil, param, false, fmt.Errorf("new conn [%s] failed: %v", param.addr, err)
 		}
 		debug("login to [%s] success", args.Destination)
-		return ssh.NewClient(ncc, chans, reqs), param, false, nil
+		return sshNewClient(ncc, chans, reqs), param, false, nil
 	}
 
 	// has proxies
-	var proxyClient *ssh.Client
+	var proxyClient sshClient
 	for _, proxy = range param.proxy {
 		proxyClient, _, _, err = sshConnect(&sshArgs{Destination: proxy}, proxyClient, proxy)
 		if err != nil {
@@ -1126,7 +1088,7 @@ func sshConnect(args *sshArgs, client *ssh.Client, proxy string) (*ssh.Client, *
 	return proxyConnect(proxyClient, proxy)
 }
 
-func keepAlive(client *ssh.Client, args *sshArgs) {
+func keepAlive(client sshClient, args *sshArgs) {
 	getOptionValue := func(option string) int {
 		value, err := strconv.Atoi(getOptionConfig(args, option))
 		if err != nil {
@@ -1167,7 +1129,7 @@ func keepAlive(client *ssh.Client, args *sshArgs) {
 	}()
 }
 
-func sshAgentForward(args *sshArgs, param *sshParam, client *ssh.Client, session *ssh.Session) {
+func sshAgentForward(args *sshArgs, param *sshParam, client sshClient, session sshSession) {
 	if args.NoForwardAgent || !args.ForwardAgent && strings.ToLower(getOptionConfig(args, "ForwardAgent")) != "yes" {
 		return
 	}
@@ -1184,16 +1146,15 @@ func sshAgentForward(args *sshArgs, param *sshParam, client *ssh.Client, session
 		warning("forward to agent [%s] failed: %v", addr, err)
 		return
 	}
-	if err := agent.RequestAgentForwarding(session); err != nil {
+	if err := requestAgentForwarding(session); err != nil {
 		warning("request agent forwarding failed: %v", err)
 		return
 	}
 	debug("request ssh agent forwarding success")
 }
 
-func sshLogin(args *sshArgs) (ss *sshSession, err error) {
-	ss = &sshSession{}
-	var param *sshParam
+func sshTcpLogin(args *sshArgs) (ss *sshClientSession, param *sshParam, udpMode bool, err error) {
+	ss = &sshClientSession{}
 	defer func() {
 		if err != nil {
 			ss.Close()
@@ -1211,6 +1172,9 @@ func sshLogin(args *sshArgs) (ss *sshSession, err error) {
 		return
 	}
 
+	// udp mode ?
+	udpMode = args.UdpMode || strings.ToLower(getOptionConfig(args, "UdpMode")) == "yes"
+
 	// parse cmd and tty
 	ss.cmd, ss.tty, err = parseCmdAndTTY(args, param)
 	if err != nil {
@@ -1218,24 +1182,26 @@ func sshLogin(args *sshArgs) (ss *sshSession, err error) {
 	}
 
 	// keep alive
-	if !control {
+	if !control && !udpMode {
 		keepAlive(ss.client, args)
 	}
 
-	// stdio forward
-	if args.StdioForward != "" {
+	// stdio forward runs as a proxy without port forwarding.
+	// but udp mode requires a new session to start tsshd.
+	if args.StdioForward != "" && !udpMode {
 		return
 	}
 
-	// ssh forward
-	if !control {
+	// ssh port forwarding
+	if !control && !udpMode {
 		if err = sshForward(ss.client, args, param); err != nil {
 			return
 		}
 	}
 
-	// no command
-	if args.NoCommand {
+	// session is useless without executing remote command.
+	// but udp mode requires a new session to start tsshd.
+	if args.NoCommand && !udpMode {
 		return
 	}
 
@@ -1243,13 +1209,6 @@ func sshLogin(args *sshArgs) (ss *sshSession, err error) {
 	ss.session, err = ss.client.NewSession()
 	if err != nil {
 		err = fmt.Errorf("ssh new session failed: %v", err)
-		return
-	}
-
-	// send and set env
-	var term string
-	term, err = sendAndSetEnv(args, ss.session)
-	if err != nil {
 		return
 	}
 
@@ -1270,7 +1229,7 @@ func sshLogin(args *sshArgs) (ss *sshSession, err error) {
 		return
 	}
 
-	if !control {
+	if !control && !udpMode {
 		// ssh agent forward
 		sshAgentForward(args, param, ss.client, ss.session)
 
@@ -1278,16 +1237,53 @@ func sshLogin(args *sshArgs) (ss *sshSession, err error) {
 		sshX11Forward(args, ss.client, ss.session)
 	}
 
+	return
+}
+
+func sshLogin(args *sshArgs) (*sshClientSession, error) {
+	ss, param, udpMode, err := sshTcpLogin(args)
+	if err != nil {
+		return nil, err
+	}
+
+	if udpMode {
+		ss, err = sshUdpLogin(args, param, ss)
+		if err != nil {
+			return nil, err
+		}
+
+		// ssh port forwarding if not running as a proxy ( aka: not stdio forward ).
+		if args.StdioForward == "" {
+			if err := sshForward(ss.client, args, param); err != nil {
+				ss.Close()
+				return nil, err
+			}
+		}
+	}
+
+	// if running as a proxy ( aka: stdio forward ), or if not executing remote command,
+	// then there is no need to initialize the session, so we return early here.
+	if args.StdioForward != "" || args.NoCommand {
+		return ss, nil
+	}
+
+	// send and set env
+	term, err := sendAndSetEnv(args, ss.session)
+	if err != nil {
+		ss.Close()
+		return nil, err
+	}
+
 	// not terminal or not tty
 	if !isTerminal || !ss.tty {
-		return
+		return ss, nil
 	}
 
 	// request pty session
 	width, height, err := getTerminalSize()
 	if err != nil {
-		err = fmt.Errorf("get terminal size failed: %v", err)
-		return
+		ss.Close()
+		return nil, fmt.Errorf("get terminal size failed: %v", err)
 	}
 	if term == "" {
 		term = os.Getenv("TERM")
@@ -1296,9 +1292,9 @@ func sshLogin(args *sshArgs) (ss *sshSession, err error) {
 		}
 	}
 	if err = ss.session.RequestPty(term, height, width, ssh.TerminalModes{}); err != nil {
-		err = fmt.Errorf("request pty failed: %v", err)
-		return
+		ss.Close()
+		return nil, fmt.Errorf("request pty failed: %v", err)
 	}
 
-	return
+	return ss, nil
 }

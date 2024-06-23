@@ -29,8 +29,6 @@ import (
 	"os"
 	"regexp"
 	"strings"
-
-	"golang.org/x/crypto/ssh"
 )
 
 type sshEnv struct {
@@ -120,7 +118,7 @@ func getSetEnvs(args *sshArgs) ([]*sshEnv, error) {
 	return envs, nil
 }
 
-func sendAndSetEnv(args *sshArgs, session *ssh.Session) (string, error) {
+func sendAndSetEnv(args *sshArgs, session sshSession) (string, error) {
 	sendEnvs, err := getSendEnvs(args)
 	if err != nil {
 		return "", err

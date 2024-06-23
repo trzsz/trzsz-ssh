@@ -27,7 +27,7 @@ ${BIN_DIR}/${TSSH}: $(wildcard ./cmd/tssh/*.go ./tssh/*.go) go.mod go.sum
 	go build -o ${BIN_DIR}/ ./cmd/tssh
 
 clean:
-	-rm -f ${BIN_DIR}/tssh{,.exe}
+	-rm -f ${BIN_DIR}/tssh ${BIN_DIR}/tssh.exe
 
 test:
 	${GO_TEST} -v -count=1 ./tssh

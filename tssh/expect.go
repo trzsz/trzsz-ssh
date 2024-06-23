@@ -310,6 +310,9 @@ func (e *sshExpect) captureOutput(reader io.Reader, ch chan<- []byte) ([]byte, e
 }
 
 func (e *sshExpect) wrapOutput(reader io.Reader, writer io.Writer, ch chan []byte) {
+	if reader == nil {
+		return
+	}
 	buf, err := e.captureOutput(reader, ch)
 	if err != nil {
 		return
@@ -474,7 +477,7 @@ func getExpectTimeout(args *sshArgs, prefix string) int {
 	return int(count)
 }
 
-func execExpectInteractions(args *sshArgs, ss *sshSession) {
+func execExpectInteractions(args *sshArgs, ss *sshClientSession) {
 	expectCount := getExpectCount(args, "")
 	if expectCount <= 0 {
 		return

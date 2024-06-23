@@ -26,11 +26,9 @@ package tssh
 
 import (
 	"strings"
-
-	"golang.org/x/crypto/ssh"
 )
 
-func connectViaControl(args *sshArgs, param *sshParam) *ssh.Client {
+func connectViaControl(args *sshArgs, param *sshParam) sshClient {
 	ctrlMaster := getOptionConfig(args, "ControlMaster")
 	ctrlPath := getOptionConfig(args, "ControlPath")
 

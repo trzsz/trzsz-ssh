@@ -45,7 +45,6 @@ import (
 	"time"
 
 	"github.com/creack/pty"
-	"golang.org/x/crypto/ssh"
 )
 
 type controlMaster struct {
@@ -319,7 +318,7 @@ func startControlMaster(args *sshArgs, sshPath string) error {
 	return nil
 }
 
-func connectViaControl(args *sshArgs, param *sshParam) *ssh.Client {
+func connectViaControl(args *sshArgs, param *sshParam) sshClient {
 	ctrlMaster := getOptionConfig(args, "ControlMaster")
 	ctrlPath := getOptionConfig(args, "ControlPath")
 
@@ -377,5 +376,5 @@ func connectViaControl(args *sshArgs, param *sshParam) *ssh.Client {
 	}
 
 	debug("login to [%s] success", args.Destination)
-	return ssh.NewClient(ncc, chans, reqs)
+	return sshNewClient(ncc, chans, reqs)
 }

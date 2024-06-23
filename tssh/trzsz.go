@@ -82,13 +82,12 @@ func wrapStdIO(serverIn io.WriteCloser, serverOut io.Reader, serverErr io.Reader
 				// delay and close
 				for {
 					time.Sleep(time.Second)
-					if lastTime := lastServerAliveTime.Load(); lastTime != nil && time.Since(*lastTime) >= time.Second {
+					if lastTime := lastServerAliveTime.Load(); lastTime != nil && time.Since(*lastTime) > 2*time.Second {
 						return
 					}
 				}
 			}
 			if err != nil {
-				warning("wrap stdio read failed: %v", err)
 				return
 			}
 		}
@@ -104,7 +103,7 @@ func wrapStdIO(serverIn io.WriteCloser, serverOut io.Reader, serverErr io.Reader
 	}
 }
 
-func enableTrzsz(args *sshArgs, ss *sshSession) error {
+func enableTrzsz(args *sshArgs, ss *sshClientSession) error {
 	// not terminal or not tty
 	if !isTerminal || !ss.tty {
 		wrapStdIO(ss.serverIn, ss.serverOut, ss.serverErr, ss.tty)
@@ -137,7 +136,7 @@ func enableTrzsz(args *sshArgs, ss *sshSession) error {
 		onTerminalResize(func(width, height int) { _ = ss.session.WindowChange(height, width) })
 		// setup tunnel connect
 		trzszRelay.SetTunnelConnector(func(port int) net.Conn {
-			conn, _ := dialWithTimeout(ss.client, "tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second)
+			conn, _ := ss.client.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second)
 			return conn
 		})
 		return nil
@@ -176,7 +175,7 @@ func enableTrzsz(args *sshArgs, ss *sshSession) error {
 
 	// setup tunnel connect
 	trzszFilter.SetTunnelConnector(func(port int) net.Conn {
-		conn, _ := dialWithTimeout(ss.client, "tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second)
+		conn, _ := ss.client.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second)
 		return conn
 	})
 

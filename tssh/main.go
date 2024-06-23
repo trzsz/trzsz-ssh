@@ -74,12 +74,9 @@ func background(args *sshArgs, dest string) (bool, error) {
 
 	sleepTime := time.Duration(0)
 	for {
-		cmd := exec.Cmd{
-			Path:   os.Args[0],
-			Args:   newArgs,
-			Env:    env,
-			Stderr: os.Stderr,
-		}
+		cmd := exec.Command(newArgs[0], newArgs[1:]...)
+		cmd.Env = env
+		cmd.Stderr = os.Stderr
 
 		if err := cmd.Start(); err != nil {
 			return true, fmt.Errorf("run in background failed: %v", err)
@@ -217,7 +214,7 @@ func sshStart(args *sshArgs) error {
 		return nil
 	}
 
-	// no command
+	// not executing remote command
 	if args.NoCommand {
 		cleanupAfterLogin()
 		_ = ss.client.Wait()

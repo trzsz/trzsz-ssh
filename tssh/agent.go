@@ -87,7 +87,7 @@ func getAgentClient(args *sshArgs, param *sshParam) agent.ExtendedAgent {
 
 const channelType = "auth-agent@openssh.com"
 
-func forwardToRemote(client *ssh.Client, addr string) error {
+func forwardToRemote(client sshClient, addr string) error {
 	channels := client.HandleChannelOpen(channelType)
 	if channels == nil {
 		return fmt.Errorf("agent: already have handler for %s", channelType)
@@ -119,4 +119,15 @@ func forwardAgentRequest(channel ssh.Channel, addr string) {
 	}
 
 	forwardChannel(channel, conn)
+}
+
+func requestAgentForwarding(session sshSession) error {
+	ok, err := session.SendRequest("auth-agent-req@openssh.com", true, nil)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("forwarding request denied")
+	}
+	return nil
 }

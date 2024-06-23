@@ -35,7 +35,6 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"golang.org/x/crypto/ssh"
 )
 
 const (
@@ -464,7 +463,7 @@ func execLocalTools(args *sshArgs) (int, bool) {
 }
 
 // execRemoteTools execute remote tools if necessary
-func execRemoteTools(args *sshArgs, client *ssh.Client) {
+func execRemoteTools(args *sshArgs, client sshClient) {
 	switch {
 	case args.InstallTrzsz:
 		execInstallTrzsz(args, client)

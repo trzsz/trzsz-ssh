@@ -88,6 +88,9 @@ func TestSshArgs(t *testing.T) {
 	assertArgsEqual("--debug", sshArgs{Debug: true})
 	assertArgsEqual("--zmodem", sshArgs{Zmodem: true})
 
+	assertArgsEqual("--udp", sshArgs{UdpMode: true})
+	assertArgsEqual("--tsshd-path /usr/bin/tsshd", sshArgs{TsshdPath: "/usr/bin/tsshd"})
+
 	assertArgsEqual("--new-host", sshArgs{NewHost: true})
 	assertArgsEqual("--enc-secret", sshArgs{EncSecret: true})
 	assertArgsEqual("--install-trzsz", sshArgs{InstallTrzsz: true})
