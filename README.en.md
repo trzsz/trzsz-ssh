@@ -119,7 +119,7 @@ trzsz-ssh ( tssh ) is an ssh client designed as a drop-in replacement for the op
 
   </details>
 
-- Install with Go ( Requires go 1.20 or later )
+- Install with Go ( Requires go 1.21 or later )
 
   <details><summary><code>go install github.com/trzsz/trzsz-ssh/cmd/tssh@latest</code></summary>
 
@@ -131,7 +131,7 @@ trzsz-ssh ( tssh ) is an ssh client designed as a drop-in replacement for the op
 
   </details>
 
-- Build from source ( Requires go 1.20 or later )
+- Build from source ( Requires go 1.21 or later )
 
   <details><summary><code>sudo make install</code></summary>
 
@@ -680,6 +680,13 @@ trzsz-ssh ( tssh ) is an ssh client designed as a drop-in replacement for the op
 - The `tssh` will first login to the server normally as an ssh client, and then run a new `tsshd` process on the server.
 
 - The `tsshd` process listens on a random udp port between 61000 and 62000, and sends its port number and a secret key back to the `tssh` process over the ssh channel. The ssh connection is then shut down, and the `tssh` process communicates with the `tsshd` process over udp.
+
+- The `tsshd` supports `QUIC` protocol and `KCP` protocol (the default is `QUIC`), which can be specified on the command line (such as `-oUdpMode=KCP`), or configured as follows:
+
+  ```
+  Host xxx
+      #!! UdpMode KCP
+  ```
 
 ## Trouble shooting
 

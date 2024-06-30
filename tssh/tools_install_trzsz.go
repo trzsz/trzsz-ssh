@@ -83,9 +83,17 @@ func checkTrzszVersion(client sshClient, cmd, name, version string) bool {
 	return strings.TrimSpace(string(output)) == fmt.Sprintf("%s (trzsz) go %s", name, version)
 }
 
-func checkInstalledVersion(client sshClient, path, name, version string) bool {
+func pathJoin(path, name string) string {
 	// local may be Windows, remote may be Linux, so filepath.Join is not suitable here.
-	return checkTrzszVersion(client, fmt.Sprintf("%s/%s -v", path, name), name, version)
+	if strings.HasSuffix(path, "/") {
+		return path + name
+	}
+	return fmt.Sprintf("%s/%s", path, name)
+}
+
+func checkInstalledVersion(client sshClient, path, name, version string) bool {
+	cmd := fmt.Sprintf("%s -v", pathJoin(path, name))
+	return checkTrzszVersion(client, cmd, name, version)
 }
 
 func checkTrzszExecutable(client sshClient, name, version string) bool {
@@ -415,8 +423,9 @@ func execInstallTrzsz(args *sshArgs, client sshClient) {
 		home, err := getRemoteUserHome(client)
 		if err != nil {
 			toolsWarn("InstallTrzsz", "get remote user home path failed: %v", err)
+		} else {
+			installPath = pathJoin(home, installPath[2:])
 		}
-		installPath = filepath.Join(home, installPath[2:])
 	}
 
 	trzInstalled := checkInstalledVersion(client, installPath, "trz", version)

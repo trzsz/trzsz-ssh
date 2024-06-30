@@ -1153,7 +1153,7 @@ func sshAgentForward(args *sshArgs, param *sshParam, client sshClient, session s
 	debug("request ssh agent forwarding success")
 }
 
-func sshTcpLogin(args *sshArgs) (ss *sshClientSession, param *sshParam, udpMode bool, err error) {
+func sshTcpLogin(args *sshArgs) (ss *sshClientSession, param *sshParam, udpMode int, err error) {
 	ss = &sshClientSession{}
 	defer func() {
 		if err != nil {
@@ -1173,7 +1173,7 @@ func sshTcpLogin(args *sshArgs) (ss *sshClientSession, param *sshParam, udpMode 
 	}
 
 	// udp mode ?
-	udpMode = args.UdpMode || strings.ToLower(getOptionConfig(args, "UdpMode")) == "yes"
+	udpMode = getUdpMode(args)
 
 	// parse cmd and tty
 	ss.cmd, ss.tty, err = parseCmdAndTTY(args, param)
@@ -1182,18 +1182,18 @@ func sshTcpLogin(args *sshArgs) (ss *sshClientSession, param *sshParam, udpMode 
 	}
 
 	// keep alive
-	if !control && !udpMode {
+	if !control && udpMode == kUdpModeNo {
 		keepAlive(ss.client, args)
 	}
 
 	// stdio forward runs as a proxy without port forwarding.
 	// but udp mode requires a new session to start tsshd.
-	if args.StdioForward != "" && !udpMode {
+	if args.StdioForward != "" && udpMode == kUdpModeNo {
 		return
 	}
 
 	// ssh port forwarding
-	if !control && !udpMode {
+	if !control && udpMode == kUdpModeNo {
 		if err = sshForward(ss.client, args, param); err != nil {
 			return
 		}
@@ -1201,7 +1201,7 @@ func sshTcpLogin(args *sshArgs) (ss *sshClientSession, param *sshParam, udpMode 
 
 	// session is useless without executing remote command.
 	// but udp mode requires a new session to start tsshd.
-	if args.NoCommand && !udpMode {
+	if args.NoCommand && udpMode == kUdpModeNo {
 		return
 	}
 
@@ -1229,7 +1229,7 @@ func sshTcpLogin(args *sshArgs) (ss *sshClientSession, param *sshParam, udpMode 
 		return
 	}
 
-	if !control && !udpMode {
+	if !control && udpMode == kUdpModeNo {
 		// ssh agent forward
 		sshAgentForward(args, param, ss.client, ss.session)
 
@@ -1246,8 +1246,8 @@ func sshLogin(args *sshArgs) (*sshClientSession, error) {
 		return nil, err
 	}
 
-	if udpMode {
-		ss, err = sshUdpLogin(args, param, ss)
+	if udpMode != kUdpModeNo {
+		ss, err = sshUdpLogin(args, param, ss, udpMode)
 		if err != nil {
 			return nil, err
 		}

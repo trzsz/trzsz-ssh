@@ -26,13 +26,10 @@ package tssh
 
 import (
 	"bytes"
-	"crypto/sha1"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -41,24 +38,60 @@ import (
 
 	"github.com/google/shlex"
 	"github.com/trzsz/tsshd/tsshd"
-	"github.com/xtaci/kcp-go/v5"
-	"golang.org/x/crypto/pbkdf2"
 	"golang.org/x/crypto/ssh"
+)
+
+const (
+	kUdpModeNo   = 1
+	kUdpModeKcp  = 2
+	kUdpModeQuic = 3
 )
 
 const kDefaultUdpAliveTimeout = 100 * time.Second
 
 type sshUdpClient struct {
-	key           []byte
-	addr          string
+	client        tsshd.Client
 	wg            sync.WaitGroup
 	busMutex      sync.Mutex
-	busSession    *kcp.UDPSession
+	busStream     net.Conn
 	sessionMutex  sync.Mutex
 	sessionID     atomic.Uint64
 	sessionMap    map[uint64]*sshUdpSession
 	lastAliveTime atomic.Pointer[time.Time]
 	closed        atomic.Bool
+}
+
+func (c *sshUdpClient) newStream(cmd string) (stream net.Conn, err error) {
+	done := make(chan struct{}, 1)
+	go func() {
+		defer func() {
+			if err != nil && stream != nil {
+				stream.Close()
+			}
+			done <- struct{}{}
+			close(done)
+		}()
+		stream, err = c.client.NewStream()
+		if err != nil {
+			err = fmt.Errorf("new stream [%s] failed: %v", cmd, err)
+			return
+		}
+		if err = tsshd.SendCommand(stream, cmd); err != nil {
+			err = fmt.Errorf("send command [%s] failed: %v", cmd, err)
+			return
+		}
+		if err = tsshd.RecvError(stream); err != nil {
+			err = fmt.Errorf("new stream [%s] error: %v", cmd, err)
+			return
+		}
+	}()
+
+	select {
+	case <-time.After(20 * time.Second):
+		err = fmt.Errorf("new stream [%s] timeout", cmd)
+	case <-done:
+	}
+	return
 }
 
 func (c *sshUdpClient) Wait() error {
@@ -67,22 +100,37 @@ func (c *sshUdpClient) Wait() error {
 }
 
 func (c *sshUdpClient) Close() error {
-	c.busMutex.Lock()
-	defer c.busMutex.Unlock()
-	if err := tsshd.SendCommand(c.busSession, "close"); err != nil {
-		warning("send close command failed: %v", err)
+	if c.closed.Load() {
+		return nil
 	}
 	c.closed.Store(true)
-	return c.busSession.Close()
+
+	done := make(chan struct{}, 1)
+	go func() {
+		defer close(done)
+		c.busMutex.Lock()
+		defer c.busMutex.Unlock()
+		if err := tsshd.SendCommand(c.busStream, "close"); err != nil {
+			warning("send close command failed: %v", err)
+		}
+		c.busStream.Close()
+		done <- struct{}{}
+	}()
+
+	select {
+	case <-time.After(1 * time.Second):
+	case <-done:
+	}
+	return c.client.Close()
 }
 
 func (c *sshUdpClient) NewSession() (sshSession, error) {
-	kcpSession, err := newKcpSession(c.addr, c.key, "session")
+	stream, err := c.newStream("session")
 	if err != nil {
 		return nil, err
 	}
 	c.wg.Add(1)
-	udpSession := &sshUdpSession{client: c, session: kcpSession, envs: make(map[string]string)}
+	udpSession := &sshUdpSession{client: c, stream: stream, envs: make(map[string]string)}
 	udpSession.wg.Add(1)
 	c.sessionMutex.Lock()
 	defer c.sessionMutex.Unlock()
@@ -92,7 +140,7 @@ func (c *sshUdpClient) NewSession() (sshSession, error) {
 }
 
 func (c *sshUdpClient) DialTimeout(network, addr string, timeout time.Duration) (net.Conn, error) {
-	session, err := newKcpSession(c.addr, c.key, "dial")
+	stream, err := c.newStream("dial")
 	if err != nil {
 		return nil, err
 	}
@@ -101,20 +149,20 @@ func (c *sshUdpClient) DialTimeout(network, addr string, timeout time.Duration) 
 		Addr:    addr,
 		Timeout: timeout,
 	}
-	if err := tsshd.SendMessage(session, &msg); err != nil {
-		session.Close()
+	if err := tsshd.SendMessage(stream, &msg); err != nil {
+		stream.Close()
 		return nil, fmt.Errorf("send dial message failed: %v", err)
 	}
-	if err := tsshd.RecvError(session); err != nil {
-		session.Close()
+	if err := tsshd.RecvError(stream); err != nil {
+		stream.Close()
 		return nil, err
 	}
 	c.wg.Add(1)
-	return &sshUdpConn{session, c}, nil
+	return &sshUdpConn{stream, c}, nil
 }
 
 func (c *sshUdpClient) Listen(network, addr string) (net.Listener, error) {
-	session, err := newKcpSession(c.addr, c.key, "listen")
+	stream, err := c.newStream("listen")
 	if err != nil {
 		return nil, err
 	}
@@ -122,16 +170,16 @@ func (c *sshUdpClient) Listen(network, addr string) (net.Listener, error) {
 		Network: network,
 		Addr:    addr,
 	}
-	if err := tsshd.SendMessage(session, &msg); err != nil {
-		session.Close()
+	if err := tsshd.SendMessage(stream, &msg); err != nil {
+		stream.Close()
 		return nil, fmt.Errorf("send listen message failed: %v", err)
 	}
-	if err := tsshd.RecvError(session); err != nil {
-		session.Close()
+	if err := tsshd.RecvError(stream); err != nil {
+		stream.Close()
 		return nil, err
 	}
 	c.wg.Add(1)
-	return &sshUdpListener{client: c, session: session}, nil
+	return &sshUdpListener{client: c, stream: stream}, nil
 }
 
 func (c *sshUdpClient) HandleChannelOpen(channelType string) <-chan ssh.NewChannel {
@@ -145,28 +193,41 @@ func (c *sshUdpClient) SendRequest(name string, wantReply bool, payload []byte) 
 func (c *sshUdpClient) sendBusCommand(command string) error {
 	c.busMutex.Lock()
 	defer c.busMutex.Unlock()
-	return tsshd.SendCommand(c.busSession, command)
+	return tsshd.SendCommand(c.busStream, command)
 }
 
 func (c *sshUdpClient) sendBusMessage(command string, msg any) error {
 	c.busMutex.Lock()
 	defer c.busMutex.Unlock()
-	if err := tsshd.SendCommand(c.busSession, command); err != nil {
+	if err := tsshd.SendCommand(c.busStream, command); err != nil {
 		return err
 	}
-	return tsshd.SendMessage(c.busSession, msg)
+	return tsshd.SendMessage(c.busStream, msg)
 }
 
 func (c *sshUdpClient) udpKeepAlive(timeout time.Duration) {
-	for {
-		if err := c.sendBusCommand("alive"); err != nil {
-			warning("udp keep alive failed: %v", err)
+	sleepTime := timeout / 10
+	if sleepTime > 10*time.Second {
+		sleepTime = 10 * time.Second
+	}
+	go func() {
+		for {
+			if err := c.sendBusCommand("alive"); err != nil {
+				warning("udp keep alive failed: %v", err)
+			}
+			time.Sleep(sleepTime)
+			if c.closed.Load() {
+				return
+			}
 		}
+	}()
+	for {
 		if t := c.lastAliveTime.Load(); t != nil && time.Since(*t) > timeout {
 			warning("udp keep alive timeout")
-			os.Exit(125)
+			c.exit(125)
+			return
 		}
-		time.Sleep(timeout / 10)
+		time.Sleep(sleepTime)
 		if c.closed.Load() {
 			return
 		}
@@ -175,7 +236,7 @@ func (c *sshUdpClient) udpKeepAlive(timeout time.Duration) {
 
 func (c *sshUdpClient) handleBusEvent() {
 	for {
-		command, err := tsshd.RecvCommand(c.busSession)
+		command, err := tsshd.RecvCommand(c.busStream)
 		if c.closed.Load() {
 			return
 		}
@@ -199,7 +260,7 @@ func (c *sshUdpClient) handleBusEvent() {
 
 func (c *sshUdpClient) handleExitEvent() {
 	var exitMsg tsshd.ExitMessage
-	if err := tsshd.RecvMessage(c.busSession, &exitMsg); err != nil {
+	if err := tsshd.RecvMessage(c.busStream, &exitMsg); err != nil {
 		warning("recv exit message failed: %v", err)
 		return
 	}
@@ -212,15 +273,7 @@ func (c *sshUdpClient) handleExitEvent() {
 		warning("invalid or exited session id: %d", exitMsg.ID)
 		return
 	}
-	udpSession.code = exitMsg.ExitCode
-	udpSession.wg.Done()
-	// the kcp server does not send io.EOF, we trigger it ourselves.
-	if udpSession.stdout != nil {
-		udpSession.stdout.Close()
-	}
-	if udpSession.stderr != nil {
-		udpSession.stderr.Close()
-	}
+	udpSession.exit(exitMsg.ExitCode)
 
 	delete(c.sessionMap, exitMsg.ID)
 	c.wg.Done()
@@ -228,18 +281,28 @@ func (c *sshUdpClient) handleExitEvent() {
 
 func (c *sshUdpClient) handleErrorEvent() {
 	var errMsg tsshd.ErrorMessage
-	if err := tsshd.RecvMessage(c.busSession, &errMsg); err != nil {
+	if err := tsshd.RecvMessage(c.busStream, &errMsg); err != nil {
 		warning("recv error message failed: %v", err)
 		return
 	}
 	warning("udp error: %s", errMsg.Msg)
 }
 
+func (c *sshUdpClient) exit(code int) {
+	c.sessionMutex.Lock()
+	defer c.sessionMutex.Unlock()
+	for _, udpSession := range c.sessionMap {
+		udpSession.exit(code)
+		c.wg.Done()
+	}
+	c.sessionMap = make(map[uint64]*sshUdpSession)
+}
+
 type sshUdpSession struct {
 	id      uint64
 	wg      sync.WaitGroup
 	client  *sshUdpClient
-	session *kcp.UDPSession
+	stream  net.Conn
 	pty     bool
 	height  int
 	width   int
@@ -247,7 +310,7 @@ type sshUdpSession struct {
 	started bool
 	stdin   io.Reader
 	stdout  io.WriteCloser
-	stderr  *kcp.UDPSession
+	stderr  net.Conn
 	code    int
 }
 
@@ -266,7 +329,7 @@ func (s *sshUdpSession) Close() error {
 	if s.stderr != nil {
 		_ = s.stderr.Close()
 	}
-	return s.session.Close()
+	return s.stream.Close()
 }
 
 func (s *sshUdpSession) Shell() error {
@@ -312,24 +375,35 @@ func (s *sshUdpSession) startSession(msg *tsshd.StartMessage) error {
 		return fmt.Errorf("session already started")
 	}
 	s.started = true
-	if err := tsshd.SendMessage(s.session, msg); err != nil {
+	if err := tsshd.SendMessage(s.stream, msg); err != nil {
 		return fmt.Errorf("send session message failed: %v", err)
 	}
-	if err := tsshd.RecvError(s.session); err != nil {
+	if err := tsshd.RecvError(s.stream); err != nil {
 		return err
 	}
 	if s.stdin != nil {
 		go func() {
-			_, _ = io.Copy(s.session, s.stdin)
+			_, _ = io.Copy(s.stream, s.stdin)
 		}()
 	}
 	if s.stdout != nil {
 		go func() {
 			defer s.stdout.Close()
-			_, _ = io.Copy(s.stdout, s.session)
+			_, _ = io.Copy(s.stdout, s.stream)
 		}()
 	}
 	return nil
+}
+
+func (s *sshUdpSession) exit(code int) {
+	s.code = code
+	s.wg.Done()
+	if s.stdout != nil {
+		s.stdout.Close()
+	}
+	if s.stderr != nil {
+		s.stderr.Close()
+	}
 }
 
 func (s *sshUdpSession) WindowChange(height, width int) error {
@@ -367,19 +441,19 @@ func (s *sshUdpSession) StderrPipe() (io.Reader, error) {
 	if s.stderr != nil {
 		return nil, fmt.Errorf("stderr already set")
 	}
-	session, err := newKcpSession(s.client.addr, s.client.key, "stderr")
+	stream, err := s.client.newStream("stderr")
 	if err != nil {
 		return nil, err
 	}
-	if err := tsshd.SendMessage(session, tsshd.StderrMessage{ID: s.id}); err != nil {
-		session.Close()
+	if err := tsshd.SendMessage(stream, tsshd.StderrMessage{ID: s.id}); err != nil {
+		stream.Close()
 		return nil, fmt.Errorf("send stderr message failed: %v", err)
 	}
-	if err := tsshd.RecvError(session); err != nil {
-		session.Close()
+	if err := tsshd.RecvError(stream); err != nil {
+		stream.Close()
 		return nil, err
 	}
-	s.stderr = session
+	s.stderr = stream
 	return s.stderr, nil
 }
 
@@ -429,34 +503,34 @@ func (s *sshUdpSession) SendRequest(name string, wantReply bool, payload []byte)
 }
 
 type sshUdpListener struct {
-	client  *sshUdpClient
-	session *kcp.UDPSession
+	client *sshUdpClient
+	stream net.Conn
 }
 
 func (l *sshUdpListener) Accept() (net.Conn, error) {
 	var msg tsshd.AcceptMessage
-	if err := tsshd.RecvMessage(l.session, &msg); err != nil {
+	if err := tsshd.RecvMessage(l.stream, &msg); err != nil {
 		return nil, fmt.Errorf("recv accept message failed: %v", err)
 	}
-	session, err := newKcpSession(l.client.addr, l.client.key, "accept")
+	stream, err := l.client.newStream("accept")
 	if err != nil {
 		return nil, err
 	}
-	if err := tsshd.SendMessage(session, &msg); err != nil {
-		session.Close()
+	if err := tsshd.SendMessage(stream, &msg); err != nil {
+		stream.Close()
 		return nil, fmt.Errorf("send accept message failed: %v", err)
 	}
-	if err := tsshd.RecvError(session); err != nil {
-		session.Close()
+	if err := tsshd.RecvError(stream); err != nil {
+		stream.Close()
 		return nil, err
 	}
 	l.client.wg.Add(1)
-	return &sshUdpConn{session, l.client}, nil
+	return &sshUdpConn{stream, l.client}, nil
 }
 
 func (l *sshUdpListener) Close() error {
 	l.client.wg.Done()
-	return l.session.Close()
+	return l.stream.Close()
 }
 
 func (l *sshUdpListener) Addr() net.Addr {
@@ -464,55 +538,49 @@ func (l *sshUdpListener) Addr() net.Addr {
 }
 
 type sshUdpConn struct {
-	*kcp.UDPSession
+	net.Conn
 	client *sshUdpClient
 }
 
 func (c *sshUdpConn) Close() error {
 	c.client.wg.Done()
-	return c.UDPSession.Close()
+	return c.Conn.Close()
 }
 
-func sshUdpLogin(args *sshArgs, param *sshParam, ss *sshClientSession) (*sshClientSession, error) {
+func sshUdpLogin(args *sshArgs, param *sshParam, ss *sshClientSession, udpMode int) (*sshClientSession, error) {
 	defer ss.Close()
 
-	svrInfo, err := startTsshdServer(args, ss)
+	serverInfo, err := startTsshdServer(args, ss, udpMode)
 	if err != nil {
 		return nil, err
 	}
-	pass, err := hex.DecodeString(svrInfo.Pass)
+	client, err := tsshd.NewClient(param.host, serverInfo)
 	if err != nil {
-		return nil, fmt.Errorf("decode pass [%s] failed: %v", svrInfo.Pass, err)
+		return nil, err
 	}
-	salt, err := hex.DecodeString(svrInfo.Salt)
-	if err != nil {
-		return nil, fmt.Errorf("decode salt [%s] failed: %v", svrInfo.Pass, err)
-	}
-	key := pbkdf2.Key(pass, salt, 4096, 32, sha1.New)
-	addr := joinHostPort(param.host, strconv.Itoa(svrInfo.Port))
 
-	busSession, err := newKcpSession(addr, key, "bus")
+	udpClient := sshUdpClient{
+		client:     client,
+		sessionMap: make(map[uint64]*sshUdpSession),
+	}
+
+	busStream, err := udpClient.newStream("bus")
 	if err != nil {
 		return nil, err
 	}
 
 	udpAliveTimeout := getUdpAliveTimeout(args)
-	if err := tsshd.SendMessage(busSession, tsshd.BusMessage{Timeout: udpAliveTimeout}); err != nil {
-		busSession.Close()
+	if err := tsshd.SendMessage(busStream, tsshd.BusMessage{Timeout: udpAliveTimeout}); err != nil {
+		busStream.Close()
 		return nil, fmt.Errorf("send bus message failed: %v", err)
 	}
-	if err := tsshd.RecvError(busSession); err != nil {
-		busSession.Close()
+	if err := tsshd.RecvError(busStream); err != nil {
+		busStream.Close()
 		return nil, err
 	}
 
+	udpClient.busStream = busStream
 	debug("udp login [%s] success", args.Destination)
-	udpClient := sshUdpClient{
-		key:        key,
-		addr:       addr,
-		busSession: busSession,
-		sessionMap: make(map[uint64]*sshUdpSession),
-	}
 
 	// keep alive
 	if udpAliveTimeout > 0 {
@@ -540,7 +608,7 @@ func sshUdpLogin(args *sshArgs, param *sshParam, ss *sshClientSession) (*sshClie
 
 	udpSession, err := udpClient.NewSession()
 	if err != nil {
-		busSession.Close()
+		busStream.Close()
 		return nil, fmt.Errorf("new session failed: %v", err)
 	}
 
@@ -557,11 +625,11 @@ func sshUdpLogin(args *sshArgs, param *sshParam, ss *sshClientSession) (*sshClie
 	}, nil
 }
 
-func startTsshdServer(args *sshArgs, ss *sshClientSession) (*tsshd.ServerInfo, error) {
-	cmd := getTsshdCommand(args)
+func startTsshdServer(args *sshArgs, ss *sshClientSession, udpMode int) (*tsshd.ServerInfo, error) {
+	cmd := getTsshdCommand(args, udpMode)
 	debug("tsshd command: %s", cmd)
 
-	if err := ss.session.RequestPty("xterm-256color", 20, 80, ssh.TerminalModes{}); err != nil {
+	if err := ss.session.RequestPty("xterm-256color", 200, 800, ssh.TerminalModes{}); err != nil {
 		return nil, fmt.Errorf("request pty for tsshd failed: %v", err)
 	}
 
@@ -601,15 +669,15 @@ func startTsshdServer(args *sshArgs, ss *sshClientSession) (*tsshd.ServerInfo, e
 		return nil, fmt.Errorf("run tsshd failed: %s", output)
 	}
 
-	var svrInfo tsshd.ServerInfo
-	if err := json.Unmarshal([]byte(output), &svrInfo); err != nil {
+	var info tsshd.ServerInfo
+	if err := json.Unmarshal([]byte(output), &info); err != nil {
 		return nil, fmt.Errorf("json unmarshal [%s] failed: %v", output, err)
 	}
 
-	return &svrInfo, nil
+	return &info, nil
 }
 
-func getTsshdCommand(args *sshArgs) string {
+func getTsshdCommand(args *sshArgs, udpMode int) string {
 	var buf strings.Builder
 	if args.TsshdPath != "" {
 		buf.WriteString(args.TsshdPath)
@@ -618,6 +686,11 @@ func getTsshdCommand(args *sshArgs) string {
 	} else {
 		buf.WriteString("tsshd")
 	}
+
+	if udpMode == kUdpModeKcp {
+		buf.WriteString(" --kcp")
+	}
+
 	return buf.String()
 }
 
@@ -625,44 +698,6 @@ func readFromStream(stream io.Reader) string {
 	var buf bytes.Buffer
 	_, _ = buf.ReadFrom(stream)
 	return strings.TrimSpace(buf.String())
-}
-
-func newKcpSession(addr string, key []byte, cmd string) (session *kcp.UDPSession, err error) {
-	block, err := kcp.NewAESBlockCrypt(key)
-	if err != nil {
-		return nil, fmt.Errorf("new aes block crypt failed: %v", err)
-	}
-
-	done := make(chan struct{}, 1)
-	go func() {
-		defer func() {
-			if err != nil && session != nil {
-				session.Close()
-			}
-			done <- struct{}{}
-			close(done)
-		}()
-		session, err = kcp.DialWithOptions(addr, block, 10, 3)
-		if err != nil {
-			err = fmt.Errorf("kcp dial [%s] [%s] failed: %v", addr, cmd, err)
-			return
-		}
-		if err = tsshd.SendCommand(session, cmd); err != nil {
-			err = fmt.Errorf("kcp send command [%s] [%s] failed: %v", addr, cmd, err)
-			return
-		}
-		if err = tsshd.RecvError(session); err != nil {
-			err = fmt.Errorf("kcp new session [%s] [%s] failed: %v", addr, cmd, err)
-			return
-		}
-	}()
-
-	select {
-	case <-time.After(10 * time.Second):
-		err = fmt.Errorf("kcp new session [%s] [%s] timeout", addr, cmd)
-	case <-done:
-	}
-	return
 }
 
 func getUdpAliveTimeout(args *sshArgs) time.Duration {
@@ -676,4 +711,39 @@ func getUdpAliveTimeout(args *sshArgs) time.Duration {
 		return kDefaultUdpAliveTimeout
 	}
 	return time.Duration(timeoutSeconds) * time.Second
+}
+
+func getUdpMode(args *sshArgs) int {
+	if udpMode := args.Option.get("UdpMode"); udpMode != "" {
+		switch strings.ToLower(udpMode) {
+		case "no":
+			if args.Udp {
+				warning("disable UDP since -oUdpMode=No")
+			}
+			return kUdpModeNo
+		case "kcp":
+			return kUdpModeKcp
+		case "yes", "quic":
+			return kUdpModeQuic
+		default:
+			warning("unknown UdpMode %s", udpMode)
+		}
+	}
+
+	udpMode := getExConfig(args.Destination, "UdpMode")
+	switch strings.ToLower(udpMode) {
+	case "", "no":
+		break
+	case "kcp":
+		return kUdpModeKcp
+	case "yes", "quic":
+		return kUdpModeQuic
+	default:
+		warning("unknown UdpMode %s", udpMode)
+	}
+
+	if args.Udp {
+		return kUdpModeQuic
+	}
+	return kUdpModeNo
 }

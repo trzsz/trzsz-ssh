@@ -3,7 +3,7 @@ Section: utils
 Priority: optional
 Maintainer: Lonny Wong <lonnywong@qq.com>
 Build-Depends: debhelper (>=9),
-               golang-1.20-go
+               golang-1.21-go
 Standards-Version: 3.9.6
 Homepage: https://trzsz.github.io/ssh
 Vcs-Browser: https://github.com/trzsz/trzsz-ssh
