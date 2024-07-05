@@ -10,22 +10,19 @@ jobs:
       - name: Checkout trzsz-ssh
         uses: actions/checkout@v4
       - name: Set up Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
           go-version: "1.21"
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v5
+        uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
-          version: latest
+          version: "~> v1"
           args: release --clean --skip=publish
       - name: Upload Release Assets
-        uses: trzsz/upload-release-assets@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v2
         with:
-          release_id: ${{ github.event.release.id }}
-          assets_path: |
+          files: |
             dist/*.tar.gz
             dist/*.zip
             dist/*.rpm
@@ -37,3 +34,37 @@ jobs:
           for filename in dist/tssh*.rpm; do
             curl -F package=@"$filename" https://{$FURY_TOKEN}@push.fury.io/trzsz/
           done
+  release-win7-go1_20:
+    name: Build win7 release with go1.20
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout trzsz-ssh
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.20"
+      - name: Checkout tsshd
+        run: |
+          git clone --depth 1 https://github.com/trzsz/tsshd.git
+          cd tsshd
+          sed -i 's/go 1\.21/go 1.20/g' go.mod
+          go get github.com/xtaci/kcp-go/v5@v5.6.1 github.com/quic-go/quic-go@v0.40.1
+          go mod tidy
+          cd ..
+      - name: Build trzsz-ssh
+        run: |
+          sed -i 's/go 1\.21/go 1.20/g' go.mod
+          go mod edit -replace=github.com/trzsz/tsshd=./tsshd
+          go get github.com/xtaci/kcp-go/v5@v5.6.1 github.com/quic-go/quic-go@v0.40.1
+          go mod tidy
+          version=${GITHUB_REF/refs\/tags\/v/}
+          GOOS=windows GOARCH=386 go build -tags win7 -ldflags "-s -w" -o tssh_${version}_win7_i386/ ./cmd/tssh/
+          zip -r tssh_${version}_win7_i386.zip tssh_${version}_win7_i386
+          GOOS=windows GOARCH=amd64 go build -tags win7 -ldflags "-s -w" -o tssh_${version}_win7_x86_64/ ./cmd/tssh/
+          zip -r tssh_${version}_win7_x86_64.zip tssh_${version}_win7_x86_64
+          sha256sum ./*.zip
+      - name: Upload Release Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ./*.zip
