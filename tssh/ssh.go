@@ -33,6 +33,13 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+const (
+	kX11ChannelType   = "x11"
+	kX11RequestName   = "x11-req"
+	kAgentChannelType = "auth-agent@openssh.com"
+	kAgentRequestName = "auth-agent-req@openssh.com"
+)
+
 type sshClient interface {
 	Wait() error
 	Close() error

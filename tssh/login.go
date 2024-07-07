@@ -1232,7 +1232,6 @@ func sshTcpLogin(args *sshArgs) (ss *sshClientSession, param *sshParam, udpMode 
 	if !control && udpMode == kUdpModeNo {
 		// ssh agent forward
 		sshAgentForward(args, param, ss.client, ss.session)
-
 		// x11 forward
 		sshX11Forward(args, ss.client, ss.session)
 	}
@@ -1258,6 +1257,15 @@ func sshLogin(args *sshArgs) (*sshClientSession, error) {
 				ss.Close()
 				return nil, err
 			}
+		}
+
+		// ssh agent forward and x11 forward
+		// if not running as a proxy ( aka: not stdio forward ) and executing remote command
+		if args.StdioForward == "" && !args.NoCommand {
+			// ssh agent forward
+			sshAgentForward(args, param, ss.client, ss.session)
+			// x11 forward
+			sshX11Forward(args, ss.client, ss.session)
 		}
 	}
 

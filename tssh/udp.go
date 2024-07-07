@@ -57,6 +57,8 @@ type sshUdpClient struct {
 	sessionMutex  sync.Mutex
 	sessionID     atomic.Uint64
 	sessionMap    map[uint64]*sshUdpSession
+	channelMutex  sync.Mutex
+	channelMap    map[string]chan ssh.NewChannel
 	lastAliveTime atomic.Pointer[time.Time]
 	closed        atomic.Bool
 }
@@ -114,6 +116,7 @@ func (c *sshUdpClient) Close() error {
 			warning("send close command failed: %v", err)
 		}
 		c.busStream.Close()
+		time.Sleep(500 * time.Millisecond) // give udp some time
 		done <- struct{}{}
 	}()
 
@@ -158,7 +161,7 @@ func (c *sshUdpClient) DialTimeout(network, addr string, timeout time.Duration) 
 		return nil, err
 	}
 	c.wg.Add(1)
-	return &sshUdpConn{stream, c}, nil
+	return &sshUdpConn{Conn: stream, client: c}, nil
 }
 
 func (c *sshUdpClient) Listen(network, addr string) (net.Listener, error) {
@@ -183,7 +186,20 @@ func (c *sshUdpClient) Listen(network, addr string) (net.Listener, error) {
 }
 
 func (c *sshUdpClient) HandleChannelOpen(channelType string) <-chan ssh.NewChannel {
-	return nil
+	c.channelMutex.Lock()
+	defer c.channelMutex.Unlock()
+	if _, ok := c.channelMap[channelType]; ok {
+		return nil
+	}
+	switch channelType {
+	case kAgentChannelType, kX11ChannelType:
+		ch := make(chan ssh.NewChannel)
+		c.channelMap[channelType] = ch
+		return ch
+	default:
+		warning("channel type [%s] is not supported yet", channelType)
+		return nil
+	}
 }
 
 func (c *sshUdpClient) SendRequest(name string, wantReply bool, payload []byte) (bool, []byte, error) {
@@ -249,6 +265,8 @@ func (c *sshUdpClient) handleBusEvent() {
 			c.handleExitEvent()
 		case "error":
 			c.handleErrorEvent()
+		case "channel":
+			c.handleChannelEvent()
 		case "alive":
 			now := time.Now()
 			c.lastAliveTime.Store(&now)
@@ -288,6 +306,26 @@ func (c *sshUdpClient) handleErrorEvent() {
 	warning("udp error: %s", errMsg.Msg)
 }
 
+func (c *sshUdpClient) handleChannelEvent() {
+	var channelMsg tsshd.ChannelMessage
+	if err := tsshd.RecvMessage(c.busStream, &channelMsg); err != nil {
+		warning("recv channel message failed: %v", err)
+		return
+	}
+	c.channelMutex.Lock()
+	defer c.channelMutex.Unlock()
+	if ch, ok := c.channelMap[channelMsg.ChannelType]; ok {
+		go func() {
+			ch <- &sshUdpNewChannel{
+				client:      c,
+				channelType: channelMsg.ChannelType,
+				id:          channelMsg.ID}
+		}()
+	} else {
+		warning("channel [%s] has no handler", channelMsg.ChannelType)
+	}
+}
+
 func (c *sshUdpClient) exit(code int) {
 	c.sessionMutex.Lock()
 	defer c.sessionMutex.Unlock()
@@ -308,10 +346,13 @@ type sshUdpSession struct {
 	width   int
 	envs    map[string]string
 	started bool
+	closed  bool
 	stdin   io.Reader
 	stdout  io.WriteCloser
 	stderr  net.Conn
 	code    int
+	x11     *x11Request
+	agent   *agentRequest
 }
 
 func (s *sshUdpSession) Wait() error {
@@ -323,6 +364,10 @@ func (s *sshUdpSession) Wait() error {
 }
 
 func (s *sshUdpSession) Close() error {
+	if s.closed {
+		return nil
+	}
+	s.closed = true
 	if s.stdout != nil {
 		_ = s.stdout.Close()
 	}
@@ -375,6 +420,20 @@ func (s *sshUdpSession) startSession(msg *tsshd.StartMessage) error {
 		return fmt.Errorf("session already started")
 	}
 	s.started = true
+	if s.x11 != nil {
+		msg.X11 = &tsshd.X11Request{
+			ChannelType:      kX11ChannelType,
+			SingleConnection: s.x11.SingleConnection,
+			AuthProtocol:     s.x11.AuthProtocol,
+			AuthCookie:       s.x11.AuthCookie,
+			ScreenNumber:     s.x11.ScreenNumber,
+		}
+	}
+	if s.agent != nil {
+		msg.Agent = &tsshd.AgentRequest{
+			ChannelType: kAgentChannelType,
+		}
+	}
 	if err := tsshd.SendMessage(s.stream, msg); err != nil {
 		return fmt.Errorf("send session message failed: %v", err)
 	}
@@ -499,12 +558,32 @@ func (s *sshUdpSession) RequestPty(term string, height, width int, termmodes ssh
 }
 
 func (s *sshUdpSession) SendRequest(name string, wantReply bool, payload []byte) (bool, error) {
-	return false, fmt.Errorf("ssh udp session SendRequest is not supported yet")
+	switch name {
+	case kX11RequestName:
+		s.x11 = &x11Request{}
+		if payload != nil {
+			if err := ssh.Unmarshal(payload, s.x11); err != nil {
+				return false, fmt.Errorf("unmarshal x11 request failed: %v", err)
+			}
+		}
+		return true, nil
+	case kAgentRequestName:
+		s.agent = &agentRequest{}
+		if payload != nil {
+			if err := ssh.Unmarshal(payload, s.agent); err != nil {
+				return false, fmt.Errorf("unmarshal agent request failed: %v", err)
+			}
+		}
+		return true, nil
+	default:
+		return false, fmt.Errorf("ssh udp session SendRequest [%s] is not supported yet", name)
+	}
 }
 
 type sshUdpListener struct {
 	client *sshUdpClient
 	stream net.Conn
+	closed bool
 }
 
 func (l *sshUdpListener) Accept() (net.Conn, error) {
@@ -525,10 +604,14 @@ func (l *sshUdpListener) Accept() (net.Conn, error) {
 		return nil, err
 	}
 	l.client.wg.Add(1)
-	return &sshUdpConn{stream, l.client}, nil
+	return &sshUdpConn{Conn: stream, client: l.client}, nil
 }
 
 func (l *sshUdpListener) Close() error {
+	if l.closed {
+		return nil
+	}
+	l.closed = true
 	l.client.wg.Done()
 	return l.stream.Close()
 }
@@ -540,11 +623,85 @@ func (l *sshUdpListener) Addr() net.Addr {
 type sshUdpConn struct {
 	net.Conn
 	client *sshUdpClient
+	closed bool
 }
 
 func (c *sshUdpConn) Close() error {
+	if c.closed {
+		return nil
+	}
+	c.closed = true
 	c.client.wg.Done()
 	return c.Conn.Close()
+}
+
+type sshUdpNewChannel struct {
+	client      *sshUdpClient
+	channelType string
+	id          uint64
+}
+
+func (c *sshUdpNewChannel) Accept() (ssh.Channel, <-chan *ssh.Request, error) {
+	stream, err := c.client.newStream("accept")
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := tsshd.SendMessage(stream, &tsshd.AcceptMessage{ID: c.id}); err != nil {
+		stream.Close()
+		return nil, nil, fmt.Errorf("send accept message failed: %v", err)
+	}
+	if err := tsshd.RecvError(stream); err != nil {
+		stream.Close()
+		return nil, nil, err
+	}
+	c.client.wg.Add(1)
+	return &sshUdpChannel{Conn: stream, client: c.client}, nil, nil
+}
+
+func (c *sshUdpNewChannel) Reject(reason ssh.RejectionReason, message string) error {
+	return fmt.Errorf("ssh udp new channel Reject is not supported yet")
+}
+
+func (c *sshUdpNewChannel) ChannelType() string {
+	return c.channelType
+}
+
+func (c *sshUdpNewChannel) ExtraData() []byte {
+	return nil
+}
+
+type sshUdpChannel struct {
+	net.Conn
+	client *sshUdpClient
+	closed bool
+}
+
+func (c *sshUdpChannel) Close() error {
+	if c.closed {
+		return nil
+	}
+	c.closed = true
+	c.client.wg.Done()
+	return c.Conn.Close()
+}
+
+func (c *sshUdpChannel) CloseWrite() error {
+	if cw, ok := c.Conn.(closeWriter); ok {
+		return cw.CloseWrite()
+	} else {
+		// close the entire stream since there is no half-close
+		time.Sleep(200 * time.Millisecond)
+		return c.Close()
+	}
+}
+
+func (c *sshUdpChannel) SendRequest(name string, wantReply bool, payload []byte) (bool, error) {
+	return false, fmt.Errorf("ssh udp channel SendRequest is not supported yet")
+}
+
+func (c *sshUdpChannel) Stderr() io.ReadWriter {
+	warning("ssh udp channel Stderr is not supported yet")
+	return nil
 }
 
 func sshUdpLogin(args *sshArgs, param *sshParam, ss *sshClientSession, udpMode int) (*sshClientSession, error) {
@@ -562,6 +719,7 @@ func sshUdpLogin(args *sshArgs, param *sshParam, ss *sshClientSession, udpMode i
 	udpClient := sshUdpClient{
 		client:     client,
 		sessionMap: make(map[uint64]*sshUdpSession),
+		channelMap: make(map[string]chan ssh.NewChannel),
 	}
 
 	busStream, err := udpClient.newStream("bus")

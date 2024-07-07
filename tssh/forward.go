@@ -55,6 +55,10 @@ type forwardCfg struct {
 	destPort int
 }
 
+type closeWriter interface {
+	CloseWrite() error
+}
+
 var spaceRegexp = regexp.MustCompile(`\s+`)
 var portOnlyRegexp = regexp.MustCompile(`^\d+$`)
 var ipv6AndPortRegexp = regexp.MustCompile(`^\[([:\da-fA-F]+)\]:(\d+)$`)
@@ -489,7 +493,7 @@ func sshX11Forward(args *sshArgs, client sshClient, session sshSession) {
 		AuthCookie:       cookie,
 		ScreenNumber:     0,
 	}
-	ok, err := session.SendRequest("x11-req", true, ssh.Marshal(payload))
+	ok, err := session.SendRequest(kX11RequestName, true, ssh.Marshal(payload))
 	if err != nil {
 		warning("X11 forwarding request failed: %v", err)
 		return
@@ -499,9 +503,9 @@ func sshX11Forward(args *sshArgs, client sshClient, session sshSession) {
 		return
 	}
 
-	channels := client.HandleChannelOpen("x11")
+	channels := client.HandleChannelOpen(kX11ChannelType)
 	if channels == nil {
-		warning("already have handler for x11")
+		warning("already have handler for %s", kX11ChannelType)
 		return
 	}
 	go func() {
@@ -589,8 +593,12 @@ func forwardChannel(channel ssh.Channel, conn net.Conn) {
 	wg.Add(2)
 	go func() {
 		_, _ = io.Copy(conn, channel)
-		if unixConn, ok := conn.(*net.UnixConn); ok {
-			_ = unixConn.CloseWrite()
+		if cw, ok := conn.(closeWriter); ok {
+			_ = cw.CloseWrite()
+		} else {
+			// close the entire stream since there is no half-close
+			time.Sleep(200 * time.Millisecond)
+			_ = conn.Close()
 		}
 		wg.Done()
 	}()

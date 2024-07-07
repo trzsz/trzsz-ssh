@@ -50,7 +50,8 @@ func getXauthAndProto(display string, trusted bool, timeout int) (string, string
 	if !trusted {
 		file, err := os.CreateTemp("", "xauthfile_*")
 		if err != nil {
-			return "", "", fmt.Errorf("create xauth file failed: %v", err)
+			debug("create xauth file failed: %v", err)
+			return genFakeXauth(trusted)
 		}
 		path := file.Name()
 		defer os.Remove(path)
@@ -60,7 +61,8 @@ func getXauthAndProto(display string, trusted bool, timeout int) (string, string
 		}
 		debug("xauth generate command: %v", genArgs)
 		if _, err := execXauthCommand(genArgs); err != nil {
-			return "", "", fmt.Errorf("xauth generate failed: %v", err)
+			debug("xauth generate failed: %v", err)
+			return genFakeXauth(trusted)
 		}
 		listArgs = []string{"-f", path, "list", display}
 	} else {
@@ -70,12 +72,14 @@ func getXauthAndProto(display string, trusted bool, timeout int) (string, string
 	debug("xauth list command: %v", listArgs)
 	out, err := execXauthCommand(listArgs)
 	if err != nil {
-		return "", "", fmt.Errorf("xauth list failed: %v", err)
+		debug("xauth list failed: %v", err)
+		return genFakeXauth(trusted)
 	}
 	if out != "" {
 		tokens := strings.Fields(out)
 		if len(tokens) < 3 {
-			return "", "", fmt.Errorf("invalid xauth list output: %s", out)
+			debug("invalid xauth list output: %s", out)
+			return genFakeXauth(trusted)
 		}
 		return tokens[2], tokens[1], nil
 	}
@@ -98,13 +102,12 @@ func execXauthCommand(args []string) (string, error) {
 }
 
 func genFakeXauth(trusted bool) (string, string, error) {
-	if !trusted {
-		return "", "", fmt.Errorf("untrusted X11 forwarding setup failed since no xauth program")
-	}
 	cookie := make([]byte, 16)
 	if _, err := rand.Read(cookie); err != nil {
 		return "", "", fmt.Errorf("random cookie failed: %v", err)
 	}
-	warning("No xauth data; using fake authentication data for X11 forwarding.")
+	if trusted {
+		warning("No xauth data; using fake authentication data for X11 forwarding.")
+	}
 	return fmt.Sprintf("%x", cookie), kSshX11Proto, nil
 }
