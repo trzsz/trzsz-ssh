@@ -708,6 +708,8 @@ trzsz-ssh ( tssh ) is an ssh client designed as a drop-in replacement for the op
 
   - Try using `tssh` in [Cygwin](https://www.cygwin.com/), [MSYS2](https://www.msys2.org/) or [Git Bash](https://www.atlassian.com/git/tutorials/git-bash).
 
+  - Since `v0.1.21`, the default Windows version no longer supports Windows7, you need to download the version with the `win7` keyword in [Releases](https://github.com/trzsz/trzsz-ssh/releases) to use.
+
 - If the `tssh` specific configuration items are configured in `~/.ssh/config`, and openssh report an error `Bad configuration option`.
 
   - You can add `#!!` prefix to the items, openssh will treat it as a comment, while `tssh` will treat it as one of the valid configurations.

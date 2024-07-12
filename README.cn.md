@@ -706,6 +706,8 @@ trzsz-ssh ( tssh ) 设计为 ssh 客户端的直接替代品，提供与 openssh
 
   - 可以尝试在 [Cygwin](https://www.cygwin.com/)、[MSYS2](https://www.msys2.org/) 或 [Git Bash](https://www.atlassian.com/git/tutorials/git-bash) 内使用 `tssh`。
 
+  - 从 `v0.1.21` 起，默认的 Windows 版本不再支持 Windows7，需要在 [Releases](https://github.com/trzsz/trzsz-ssh/releases) 中下载带有 `win7` 关键字的版本来使用。
+
 - 如果在 `~/.ssh/config` 中配置了 `tssh` 特有的配置项后，标准 `ssh` 报错 `Bad configuration option`。
 
   - 可以在出错配置项中加上前缀 `#!!`，标准 `ssh` 会将它当作注释，而 `tssh` 则会认为它是有效配置之一。
