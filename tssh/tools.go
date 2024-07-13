@@ -301,7 +301,9 @@ func (m *passwordModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.passwordInput = m.passwordInput[:len(m.passwordInput)-1]
 			}
 		case tea.KeyRunes, tea.KeySpace:
-			m.passwordInput += string(msg.Runes)
+			if len(msg.Runes) > 0 && msg.Runes[0] != 0 {
+				m.passwordInput += string(msg.Runes)
+			}
 			m.err = nil
 		}
 	case error:
