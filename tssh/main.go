@@ -162,7 +162,7 @@ func TsshMain(argv []string) int {
 	// choose ssh alias
 	dest := ""
 	quit := false
-	if args.Destination == "" {
+	if args.Destination == "" || args.Destination == "FAKE_DEST_IN_WARP" {
 		if !isTerminal {
 			parser.WriteHelp(os.Stderr)
 			return 3

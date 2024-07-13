@@ -690,7 +690,7 @@ trzsz-ssh ( tssh ) is an ssh client designed as a drop-in replacement for the op
 
 ## Trouble shooting
 
-- In the Warp terminal, the features like Blocks requires renaming `tssh` to `ssh`. It is recommended to create a soft link (friendly for updates):
+- In the Warp terminal, the features like blocks requires renaming `tssh` to `ssh`. It is recommended to create a soft link (friendly for updates):
 
   ```
   sudo ln -sv $(which tssh) /usr/local/bin/ssh
@@ -698,7 +698,17 @@ trzsz-ssh ( tssh ) is an ssh client designed as a drop-in replacement for the op
 
   - After the soft link, `ssh -V` should output `trzsz ssh` plus the version number. If not, it means that the soft link is unsuccessful, or `openssh` has a higher priority in `PATH`, and you need to soft link to another path or adjust the priority of `PATH`.
 
-  - After the soft link, you need to use `ssh` directly, which is equivalent to `tssh`. If you still use `tssh`, it will not support the Blocks feature.
+  - In order to make `tssh` search login also support the blocks feature, you need to create a `tssh` function in `~/.bash_profile` ( bash ) or `~/.zshrc` ( zsh ):
+
+    ```sh
+    tssh() {
+        if [ $# -eq 0 ]; then
+            ssh FAKE_DEST_IN_WARP
+        else
+            ssh "$@"
+        fi
+    }
+    ```
 
   - The `--dragfile` argument may disable the Warp features, please refer to the previous section to configure `EnableDragFile` to enable the drag and drop to upload feature.
 
