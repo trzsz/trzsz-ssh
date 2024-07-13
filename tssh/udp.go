@@ -704,14 +704,14 @@ func (c *sshUdpChannel) Stderr() io.ReadWriter {
 	return nil
 }
 
-func sshUdpLogin(args *sshArgs, param *sshParam, ss *sshClientSession, udpMode int) (*sshClientSession, error) {
+func sshUdpLogin(args *sshArgs, ss *sshClientSession, udpMode int) (*sshClientSession, error) {
 	defer ss.Close()
 
 	serverInfo, err := startTsshdServer(args, ss, udpMode)
 	if err != nil {
 		return nil, err
 	}
-	client, err := tsshd.NewClient(param.host, serverInfo)
+	client, err := tsshd.NewClient(ss.param.host, serverInfo)
 	if err != nil {
 		return nil, err
 	}
@@ -759,6 +759,7 @@ func sshUdpLogin(args *sshArgs, param *sshParam, ss *sshClientSession, udpMode i
 	if args.StdioForward != "" || args.NoCommand {
 		return &sshClientSession{
 			client: &udpClient,
+			param:  ss.param,
 			cmd:    ss.cmd,
 			tty:    ss.tty,
 		}, nil
@@ -778,6 +779,7 @@ func sshUdpLogin(args *sshArgs, param *sshParam, ss *sshClientSession, udpMode i
 		serverIn:  serverIn,
 		serverOut: serverOut,
 		serverErr: nil,
+		param:     ss.param,
 		cmd:       ss.cmd,
 		tty:       ss.tty,
 	}, nil

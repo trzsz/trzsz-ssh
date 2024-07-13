@@ -54,6 +54,7 @@ func TestExpandTokens(t *testing.T) {
 		result, err := expandTokens(original, args, param, "%hnpr")
 		if errMsg != "" {
 			require.NotNil(err)
+			assert.Equal(original, result)
 			assert.Equal(errMsg, err.Error())
 			return
 		}

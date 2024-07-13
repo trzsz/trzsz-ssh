@@ -102,7 +102,7 @@ func (c *controlMaster) handleStdout() <-chan error {
 	return doneCh
 }
 
-func (c *controlMaster) fillPassword(args *sshArgs, expectCount int) (cancel context.CancelFunc) {
+func (c *controlMaster) fillPassword(args *sshArgs, param *sshParam, expectCount int) (cancel context.CancelFunc) {
 	var ctx context.Context
 	expectTimeout := getExpectTimeout(args, "Ctrl")
 	if expectTimeout > 0 {
@@ -112,7 +112,8 @@ func (c *controlMaster) fillPassword(args *sshArgs, expectCount int) (cancel con
 	}
 
 	expect := &sshExpect{
-		alias: args.Destination,
+		param: param,
+		args:  args,
 		ctx:   ctx,
 		pre:   "Ctrl",
 		out:   make(chan []byte, 100),
@@ -141,7 +142,7 @@ func (c *controlMaster) checkExit() <-chan struct{} {
 	return exitCh
 }
 
-func (c *controlMaster) start(args *sshArgs) error {
+func (c *controlMaster) start(args *sshArgs, param *sshParam) error {
 	var err error
 	c.cmd = exec.Command(c.path, c.args...)
 	expectCount := getExpectCount(args, "Ctrl")
@@ -157,7 +158,7 @@ func (c *controlMaster) start(args *sshArgs) error {
 		defer tty.Close()
 		c.cmd.Stdin = tty
 		c.ptmx = pty
-		cancel := c.fillPassword(args, expectCount)
+		cancel := c.fillPassword(args, param, expectCount)
 		defer cancel()
 	}
 	if c.stdout, err = c.cmd.StdoutPipe(); err != nil {
@@ -250,7 +251,7 @@ func getOpenSSH() (string, int, int, error) {
 	return sshPath, majorVersion, minorVersion, nil
 }
 
-func startControlMaster(args *sshArgs, sshPath string) error {
+func startControlMaster(args *sshArgs, param *sshParam, sshPath string) error {
 	cmdArgs := []string{"-T", "-oRemoteCommand=none", "-oConnectTimeout=10"}
 
 	if args.Debug {
@@ -311,7 +312,7 @@ func startControlMaster(args *sshArgs, sshPath string) error {
 	}
 
 	ctrlMaster := &controlMaster{path: sshPath, args: cmdArgs}
-	if err := ctrlMaster.start(args); err != nil {
+	if err := ctrlMaster.start(args, param); err != nil {
 		return err
 	}
 	debug("start control master success")
@@ -356,7 +357,7 @@ func connectViaControl(args *sshArgs, param *sshParam) SshClient {
 		}
 		fallthrough
 	case "auto", "autoask":
-		if err := startControlMaster(args, sshPath); err != nil {
+		if err := startControlMaster(args, param, sshPath); err != nil {
 			warning("start control master failed: %v", err)
 		}
 	}

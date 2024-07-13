@@ -93,21 +93,21 @@ func expandTokens(str string, args *sshArgs, param *sshParam, tokens string) (st
 		}
 		state = 0
 		if !strings.ContainsRune(tokens, c) {
-			return "", fmt.Errorf("token [%%%c] in [%s] is not supported", c, str)
+			return str, fmt.Errorf("token [%%%c] in [%s] is not supported", c, str)
 		}
 		switch c {
 		case '%':
 			buf.WriteRune('%')
 		case 'h':
 			if !isHostValid(param.host) {
-				return "", fmt.Errorf("hostname contains invalid characters")
+				return str, fmt.Errorf("hostname contains invalid characters")
 			}
 			buf.WriteString(param.host)
 		case 'p':
 			buf.WriteString(param.port)
 		case 'r':
 			if !isUserValid(param.user) {
-				return "", fmt.Errorf("remote username contains invalid characters")
+				return str, fmt.Errorf("remote username contains invalid characters")
 			}
 			buf.WriteString(param.user)
 		case 'n':
@@ -131,11 +131,11 @@ func expandTokens(str string, args *sshArgs, param *sshParam, tokens string) (st
 			}
 			buf.WriteString(fmt.Sprintf("%x", sha1.Sum([]byte(hashStr))))
 		default:
-			return "", fmt.Errorf("token [%%%c] in [%s] is not supported yet", c, str)
+			return str, fmt.Errorf("token [%%%c] in [%s] is not supported yet", c, str)
 		}
 	}
 	if state != 0 {
-		return "", fmt.Errorf("[%s] ends with %% is invalid", str)
+		return str, fmt.Errorf("[%s] ends with %% is invalid", str)
 	}
 	return buf.String(), nil
 }

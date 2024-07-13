@@ -207,6 +207,7 @@ type sshClientSession struct {
 	serverIn  io.WriteCloser
 	serverOut io.Reader
 	serverErr io.Reader
+	param     *sshParam
 	cmd       string
 	tty       bool
 }
