@@ -118,7 +118,7 @@ func getSetEnvs(args *sshArgs) ([]*sshEnv, error) {
 	return envs, nil
 }
 
-func sendAndSetEnv(args *sshArgs, session sshSession) (string, error) {
+func sendAndSetEnv(args *sshArgs, session SshSession) (string, error) {
 	sendEnvs, err := getSendEnvs(args)
 	if err != nil {
 		return "", err

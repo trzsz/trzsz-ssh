@@ -448,14 +448,14 @@ func isFileNotExistOrEmpty(path string) bool {
 //
 // return true to quit with return code
 // return false to continue ssh login
-func execLocalTools(args *sshArgs) (int, bool) {
+func execLocalTools(argv []string, args *sshArgs) (int, bool) {
 	switch {
 	case args.Ver:
 		fmt.Println(args.Version())
 		return 0, true
 	case args.EncSecret:
 		return execEncodeSecret()
-	case args.NewHost || len(os.Args) == 1 && isFileNotExistOrEmpty(userConfig.configPath):
+	case args.NewHost || len(argv) == 0 && isFileNotExistOrEmpty(userConfig.configPath):
 		return execNewHost(args)
 	default:
 		return 0, false
@@ -463,7 +463,7 @@ func execLocalTools(args *sshArgs) (int, bool) {
 }
 
 // execRemoteTools execute remote tools if necessary
-func execRemoteTools(args *sshArgs, client sshClient) {
+func execRemoteTools(args *sshArgs, client SshClient) {
 	switch {
 	case args.InstallTrzsz:
 		execInstallTrzsz(args, client)

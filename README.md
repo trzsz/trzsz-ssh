@@ -170,6 +170,44 @@ trzsz-ssh ( tssh ) offers additional useful features:
 
 - Download from the [GitHub Releases](https://github.com/trzsz/trzsz-ssh/releases), unzip and add to `PATH` environment.
 
+## Development
+
+The `github.com/trzsz/trzsz-ssh/tssh` can be used as a library, for example:
+
+```go
+package main
+
+import (
+	"log"
+	"os"
+
+	"github.com/trzsz/trzsz-ssh/tssh"
+)
+
+func main() {
+	// Example 1: execute command on remote server
+	client, err := tssh.SshLogin(&tssh.SshArgs{Destination: "root@192.168.0.1"})
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer client.Close()
+	session, err := client.NewSession()
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer session.Close()
+	output, err := session.CombinedOutput("whoami")
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("I'm %s", string(output))
+
+	// Example 2: run the tssh program
+	code := tssh.TsshMain([]string{"-t", "root@192.168.0.1", "bash -l"})
+	os.Exit(code)
+}
+```
+
 ## Contributing
 
 Welcome and thank you for considering contributing. We appreciate all forms of support, from coding and testing to documentation and CI/CD improvements.

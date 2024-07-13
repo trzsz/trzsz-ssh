@@ -992,7 +992,7 @@ func getNetworkAddressFamily(args *sshArgs) string {
 	}
 }
 
-func sshConnect(args *sshArgs, client sshClient, proxy string) (sshClient, *sshParam, bool, error) {
+func sshConnect(args *sshArgs, client SshClient, proxy string) (SshClient, *sshParam, bool, error) {
 	param, err := getSshParam(args)
 	if err != nil {
 		return nil, nil, false, err
@@ -1028,7 +1028,7 @@ func sshConnect(args *sshArgs, client sshClient, proxy string) (sshClient, *sshP
 
 	network := getNetworkAddressFamily(args)
 
-	proxyConnect := func(client sshClient, proxy string) (sshClient, *sshParam, bool, error) {
+	proxyConnect := func(client SshClient, proxy string) (SshClient, *sshParam, bool, error) {
 		debug("login to [%s], addr: %s", args.Destination, param.addr)
 		conn, err := client.DialTimeout(network, param.addr, 10*time.Second)
 		if err != nil {
@@ -1078,7 +1078,7 @@ func sshConnect(args *sshArgs, client sshClient, proxy string) (sshClient, *sshP
 	}
 
 	// has proxies
-	var proxyClient sshClient
+	var proxyClient SshClient
 	for _, proxy = range param.proxy {
 		proxyClient, _, _, err = sshConnect(&sshArgs{Destination: proxy}, proxyClient, proxy)
 		if err != nil {
@@ -1088,7 +1088,7 @@ func sshConnect(args *sshArgs, client sshClient, proxy string) (sshClient, *sshP
 	return proxyConnect(proxyClient, proxy)
 }
 
-func keepAlive(client sshClient, args *sshArgs) {
+func keepAlive(client SshClient, args *sshArgs) {
 	getOptionValue := func(option string) int {
 		value, err := strconv.Atoi(getOptionConfig(args, option))
 		if err != nil {
@@ -1129,7 +1129,7 @@ func keepAlive(client sshClient, args *sshArgs) {
 	}()
 }
 
-func sshAgentForward(args *sshArgs, param *sshParam, client sshClient, session sshSession) {
+func sshAgentForward(args *sshArgs, param *sshParam, client SshClient, session SshSession) {
 	if args.NoForwardAgent || !args.ForwardAgent && strings.ToLower(getOptionConfig(args, "ForwardAgent")) != "yes" {
 		return
 	}

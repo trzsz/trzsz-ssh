@@ -116,9 +116,16 @@ func cleanupAfterLogin() {
 
 var isTerminal bool = isatty.IsTerminal(os.Stdin.Fd()) || isatty.IsCygwinTerminal(os.Stdin.Fd())
 
-func TsshMain() int {
+// TrzMain is the main function of tssh program.
+func TsshMain(argv []string) int {
+	// parse ssh args
 	var args sshArgs
-	parser := arg.MustParse(&args)
+	parser, err := arg.NewParser(arg.Config{Out: os.Stderr, Exit: os.Exit}, &args)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return -1
+	}
+	parser.MustParse(argv)
 
 	// debug log
 	if args.Debug {
@@ -129,7 +136,6 @@ func TsshMain() int {
 	defer cleanupOnExit()
 
 	// print message after stdin reset
-	var err error
 	defer func() {
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%v\r\n", err)
@@ -149,7 +155,7 @@ func TsshMain() int {
 	}
 
 	// execute local tools if necessary
-	if code, quit := execLocalTools(&args); quit {
+	if code, quit := execLocalTools(argv, &args); quit {
 		return code
 	}
 

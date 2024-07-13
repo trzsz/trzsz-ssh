@@ -88,7 +88,7 @@ func getAgentClient(args *sshArgs, param *sshParam) agent.ExtendedAgent {
 	return agentClient
 }
 
-func forwardToRemote(client sshClient, addr string) error {
+func forwardToRemote(client SshClient, addr string) error {
 	channels := client.HandleChannelOpen(kAgentChannelType)
 	if channels == nil {
 		return fmt.Errorf("agent: already have handler for %s", kAgentChannelType)
@@ -122,7 +122,7 @@ func forwardAgentRequest(channel ssh.Channel, addr string) {
 	forwardChannel(channel, conn)
 }
 
-func requestAgentForwarding(session sshSession) error {
+func requestAgentForwarding(session SshSession) error {
 	ok, err := session.SendRequest(kAgentRequestName, true, nil)
 	if err != nil {
 		return err

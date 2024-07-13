@@ -127,7 +127,7 @@ func (c *sshUdpClient) Close() error {
 	return c.client.Close()
 }
 
-func (c *sshUdpClient) NewSession() (sshSession, error) {
+func (c *sshUdpClient) NewSession() (SshSession, error) {
 	stream, err := c.newStream("session")
 	if err != nil {
 		return nil, err

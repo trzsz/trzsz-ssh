@@ -31,5 +31,5 @@ import (
 )
 
 func main() {
-	os.Exit(tssh.TsshMain())
+	os.Exit(tssh.TsshMain(os.Args[1:]))
 }

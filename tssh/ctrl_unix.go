@@ -318,7 +318,7 @@ func startControlMaster(args *sshArgs, sshPath string) error {
 	return nil
 }
 
-func connectViaControl(args *sshArgs, param *sshParam) sshClient {
+func connectViaControl(args *sshArgs, param *sshParam) SshClient {
 	ctrlMaster := getOptionConfig(args, "ControlMaster")
 	ctrlPath := getOptionConfig(args, "ControlPath")
 

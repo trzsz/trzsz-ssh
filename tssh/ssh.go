@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -40,36 +41,169 @@ const (
 	kAgentRequestName = "auth-agent-req@openssh.com"
 )
 
-type sshClient interface {
+// SshClient implements a traditional SSH client that supports shells,
+// subprocesses, TCP port/streamlocal forwarding and tunneled dialing.
+type SshClient interface {
+
+	// Wait blocks until the connection has shut down.
 	Wait() error
+
+	// Close closes the underlying network connection.
 	Close() error
-	NewSession() (sshSession, error)
+
+	// NewSession opens a new Session for this client.
+	NewSession() (SshSession, error)
+
+	// DialTimeout initiates a connection to the addr from the remote host.
 	DialTimeout(network, addr string, timeout time.Duration) (net.Conn, error)
+
+	// Listen requests the remote peer open a listening socket on addr.
 	Listen(network, addr string) (net.Listener, error)
+
+	// HandleChannelOpen returns a channel on which NewChannel requests
+	// for the given type are sent. If the type already is being handled,
+	// nil is returned. The channel is closed when the connection is closed.
 	HandleChannelOpen(channelType string) <-chan ssh.NewChannel
+
+	// SendRequest sends a global request, and returns the reply.
 	SendRequest(name string, wantReply bool, payload []byte) (bool, []byte, error)
 }
 
-type sshSession interface {
+// SshSession represents a connection to a remote command or shell.
+type SshSession interface {
+
+	// Wait waits for the remote command to exit.
 	Wait() error
+
+	// Close closes the underlying network connection.
 	Close() error
+
+	// Shell starts a login shell on the remote host.
 	Shell() error
+
+	// Run runs cmd on the remote host.
 	Run(cmd string) error
+
+	// Start runs cmd on the remote host.
 	Start(cmd string) error
+
+	// WindowChange informs the remote host about a terminal window dimension
+	// change to height rows and width columns.
 	WindowChange(height, width int) error
+
+	// Setenv sets an environment variable that will be applied to any
+	// command executed by Shell or Run.
 	Setenv(name, value string) error
+
+	// StdinPipe returns a pipe that will be connected to the
+	// remote command's standard input when the command starts.
 	StdinPipe() (io.WriteCloser, error)
+
+	// StdoutPipe returns a pipe that will be connected to the
+	// remote command's standard output when the command starts.
 	StdoutPipe() (io.Reader, error)
+
+	// StderrPipe returns a pipe that will be connected to the
+	// remote command's standard error when the command starts.
 	StderrPipe() (io.Reader, error)
+
+	// Output runs cmd on the remote host and returns its standard output.
 	Output(cmd string) ([]byte, error)
+
+	// CombinedOutput runs cmd on the remote host and returns its combined
+	// standard output and standard error.
 	CombinedOutput(cmd string) ([]byte, error)
+
+	// RequestPty requests the association of a pty with the session on the remote host.
 	RequestPty(term string, height, width int, termmodes ssh.TerminalModes) error
+
+	// SendRequest sends an out-of-band channel request on the SSH channel
+	// underlying the session.
 	SendRequest(name string, wantReply bool, payload []byte) (bool, error)
 }
 
+// SshArgs specifies the arguments to log in to the remote server.
+type SshArgs struct {
+
+	// Destination specifies the remote server to log in to.
+	// e.g., alias in ~/.ssh/config, [user@]hostname[:port].
+	Destination string
+
+	// IPv4Only forces ssh to use IPv4 addresses only
+	IPv4Only bool
+
+	// IPv6Only forces ssh to use IPv6 addresses only
+	IPv6Only bool
+
+	// Port to connect to on the remote host
+	Port int
+
+	// LoginName specifies the user to log in as on the remote machine
+	LoginName string
+
+	// Identity selects the identity (private key) for public key authentication
+	Identity []string
+
+	// CipherSpec specifies the cipher for encrypting the session
+	CipherSpec string
+
+	// ConfigFile specifies the per-user configuration file
+	ConfigFile string
+
+	// ProxyJump specifies the jump hosts separated by comma characters
+	ProxyJump string
+
+	// Option gives options in the format used in the configuration file
+	Option map[string][]string
+
+	// Debug causes ssh to print debugging messages about its progress
+	Debug bool
+
+	// Udp means using UDP protocol ( QUIC / KCP ) connection like mosh
+	Udp bool
+
+	// TsshdPath specifies the tsshd absolute path on the server
+	TsshdPath string
+}
+
+// SshLogin logs in to the remote server and creates a Client.
+func SshLogin(args *SshArgs) (SshClient, error) {
+	options := make(map[string][]string)
+	for key, values := range args.Option {
+		name := strings.ToLower(key)
+		if _, ok := options[name]; ok {
+			return nil, fmt.Errorf("option %s is repeated", name)
+		}
+		options[name] = values
+	}
+	if err := initUserConfig(args.ConfigFile); err != nil {
+		return nil, err
+	}
+	ss, err := sshLogin(&sshArgs{
+		NoCommand:   true,
+		Destination: args.Destination,
+		IPv4Only:    args.IPv4Only,
+		IPv6Only:    args.IPv6Only,
+		Port:        args.Port,
+		LoginName:   args.LoginName,
+		Identity:    multiStr{args.Identity},
+		CipherSpec:  args.CipherSpec,
+		ConfigFile:  args.ConfigFile,
+		ProxyJump:   args.ProxyJump,
+		Option:      sshOption{options},
+		Debug:       args.Debug,
+		Udp:         args.Udp,
+		TsshdPath:   args.TsshdPath,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ss.client, nil
+}
+
 type sshClientSession struct {
-	client    sshClient
-	session   sshSession
+	client    SshClient
+	session   SshSession
 	serverIn  io.WriteCloser
 	serverOut io.Reader
 	serverErr io.Reader
@@ -101,7 +235,7 @@ func (c *sshClientWrapper) Close() error {
 	return c.client.Close()
 }
 
-func (c *sshClientWrapper) NewSession() (sshSession, error) {
+func (c *sshClientWrapper) NewSession() (SshSession, error) {
 	return c.client.NewSession()
 }
 
@@ -132,7 +266,7 @@ func (c *sshClientWrapper) SendRequest(name string, wantReply bool, payload []by
 	return c.client.SendRequest(name, wantReply, payload)
 }
 
-func sshNewClient(c ssh.Conn, chans <-chan ssh.NewChannel, reqs <-chan *ssh.Request) sshClient {
+func sshNewClient(c ssh.Conn, chans <-chan ssh.NewChannel, reqs <-chan *ssh.Request) SshClient {
 	client := ssh.NewClient(c, chans, reqs)
 	return &sshClientWrapper{client}
 }

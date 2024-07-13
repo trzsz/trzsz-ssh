@@ -70,7 +70,7 @@ func getLatestTrzszVersion() (string, error) {
 	return release.TagName[1:], nil
 }
 
-func checkTrzszVersion(client sshClient, cmd, name, version string) bool {
+func checkTrzszVersion(client SshClient, cmd, name, version string) bool {
 	session, err := client.NewSession()
 	if err != nil {
 		return false
@@ -91,16 +91,16 @@ func pathJoin(path, name string) string {
 	return fmt.Sprintf("%s/%s", path, name)
 }
 
-func checkInstalledVersion(client sshClient, path, name, version string) bool {
+func checkInstalledVersion(client SshClient, path, name, version string) bool {
 	cmd := fmt.Sprintf("%s -v", pathJoin(path, name))
 	return checkTrzszVersion(client, cmd, name, version)
 }
 
-func checkTrzszExecutable(client sshClient, name, version string) bool {
+func checkTrzszExecutable(client SshClient, name, version string) bool {
 	return checkTrzszVersion(client, fmt.Sprintf("$SHELL -l -c '%s -v'", name), name, version)
 }
 
-func checkTrzszPathEnv(client sshClient, version, path string) {
+func checkTrzszPathEnv(client SshClient, version, path string) {
 	trzExecutable := checkTrzszExecutable(client, "trz", version)
 	tszExecutable := checkTrzszExecutable(client, "tsz", version)
 	if !trzExecutable || !tszExecutable {
@@ -108,7 +108,7 @@ func checkTrzszPathEnv(client sshClient, version, path string) {
 	}
 }
 
-func getRemoteUserHome(client sshClient) (string, error) {
+func getRemoteUserHome(client SshClient) (string, error) {
 	session, err := client.NewSession()
 	if err != nil {
 		return "", err
@@ -135,7 +135,7 @@ func getRemoteUserHome(client sshClient) (string, error) {
 	return "~", nil
 }
 
-func getRemoteServerOS(client sshClient) (string, error) {
+func getRemoteServerOS(client SshClient) (string, error) {
 	session, err := client.NewSession()
 	if err != nil {
 		return "", err
@@ -156,7 +156,7 @@ func getRemoteServerOS(client sshClient) (string, error) {
 	}
 }
 
-func getRemoteServerArch(client sshClient) (string, error) {
+func getRemoteServerArch(client SshClient) (string, error) {
 	session, err := client.NewSession()
 	if err != nil {
 		return "", err
@@ -183,7 +183,7 @@ func getRemoteServerArch(client sshClient) (string, error) {
 	}
 }
 
-func mkdirInstallPath(client sshClient, path string) error {
+func mkdirInstallPath(client SshClient, path string) error {
 	session, err := client.NewSession()
 	if err != nil {
 		return err
@@ -306,7 +306,7 @@ func readTrzszBinary(path, version, svrOS, arch string) ([]byte, []byte, error) 
 	return extractTrzszBinary(gzr, version, svrOS, arch)
 }
 
-func uploadTrzszBinary(client sshClient, path string, trz, tsz []byte) error {
+func uploadTrzszBinary(client SshClient, path string, trz, tsz []byte) error {
 	session, err := client.NewSession()
 	if err != nil {
 		return err
@@ -403,7 +403,7 @@ func uploadTrzszBinary(client sshClient, path string, trz, tsz []byte) error {
 	return nil
 }
 
-func execInstallTrzsz(args *sshArgs, client sshClient) {
+func execInstallTrzsz(args *sshArgs, client SshClient) {
 	version := args.TrzszVersion
 	if version == "" {
 		var err error

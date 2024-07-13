@@ -94,7 +94,7 @@ type tsshConfig struct {
 	wildcardPatterns    []*ssh_config.Pattern
 }
 
-var userConfig = &tsshConfig{}
+var userConfig *tsshConfig
 
 func parseTsshConfig() {
 	path := filepath.Join(userHomeDir, ".tssh.conf")
@@ -218,8 +218,8 @@ func showTsshConfig() {
 	}
 }
 
-func initUserConfig(configFile string) error {
-	var err error
+func initUserConfig(configFile string) (err error) {
+	userConfig = &tsshConfig{}
 	userHomeDir, err = os.UserHomeDir()
 	if err != nil {
 		debug("user home dir failed: %v", err)
