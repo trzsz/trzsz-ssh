@@ -113,9 +113,10 @@ func enableTrzsz(args *sshArgs, ss *sshClientSession) error {
 	disableTrzsz := strings.ToLower(getExOptionConfig(args, "EnableTrzsz")) == "no"
 	enableZmodem := args.Zmodem || strings.ToLower(getExOptionConfig(args, "EnableZmodem")) == "yes"
 	enableDragFile := args.DragFile || strings.ToLower(getExOptionConfig(args, "EnableDragFile")) == "yes"
+	enableOSC52 := strings.ToLower(getExOptionConfig(args, "EnableOSC52")) == "yes"
 
 	// disable trzsz ( trz / tsz )
-	if disableTrzsz && !enableZmodem && !enableDragFile {
+	if disableTrzsz && !enableZmodem && !enableDragFile && !enableOSC52 {
 		wrapStdIO(ss.serverIn, ss.serverOut, ss.serverErr, ss.tty)
 		onTerminalResize(func(width, height int) { _ = ss.session.WindowChange(height, width) })
 		return nil
@@ -161,6 +162,7 @@ func enableTrzsz(args *sshArgs, ss *sshClientSession) error {
 		DetectDragFile:  enableDragFile,
 		DetectTraceLog:  args.TraceLog,
 		EnableZmodem:    enableZmodem,
+		EnableOSC52:     enableOSC52,
 	})
 
 	// reset terminal size on resize

@@ -649,6 +649,20 @@ trzsz-ssh ( tssh ) is an ssh client designed as a drop-in replacement for the op
 
 - `Key=Value # Comment` configuration (with `=` sign), `openssh` considers the content after `#` to be a comment in some cases, and considers it not to be a comment in some other cases; `tssh` always considers the content after `#` not to be a comment.
 
+## Clipboard Integration
+
+- In the `~/.ssh/config` or `ExConfigPath` configuration file, configure `EnableOSC52` to `Yes` to enable the clipboard integration feature.
+
+  ```
+  Host *
+    # If configured in ~/.ssh/config, add `#!!` prefix to be compatible with openssh.
+    EnableOSC52 Yes
+  ```
+
+- Clipboard integration allows remote servers to write to the local clipboard via OSC52 sequences.
+
+- On Linux, clipboard integration requires `xclip` or `xsel` command to be installed.
+
 ## Other Features
 
 - Use `-f` to run in the background, you can add `--reconnect`, it will automatically reconnect when the background process exits.
