@@ -68,30 +68,31 @@ type sshHost struct {
 }
 
 type tsshConfig struct {
-	language            string
-	configPath          string
-	sysConfigPath       string
-	exConfigPath        string
-	defaultUploadPath   string
-	defaultDownloadPath string
-	promptThemeLayout   string
-	promptThemeColors   map[string]string
-	promptPageSize      uint8
-	promptDefaultMode   string
-	promptDetailItems   string
-	promptCursorIcon    string
-	promptSelectedIcon  string
-	setTerminalTitle    string
-	loadConfig          sync.Once
-	loadExConfig        sync.Once
-	loadHosts           sync.Once
-	config              *ssh_config.Config
-	sysConfig           *ssh_config.Config
-	exConfig            *ssh_config.Config
-	loadDefaultColors   sync.Once
-	defaultThemeColors  map[string]string
-	allHosts            []*sshHost
-	wildcardPatterns    []*ssh_config.Pattern
+	language              string
+	configPath            string
+	sysConfigPath         string
+	exConfigPath          string
+	defaultUploadPath     string
+	defaultDownloadPath   string
+	dragFileUploadCommand string
+	promptThemeLayout     string
+	promptThemeColors     map[string]string
+	promptPageSize        uint8
+	promptDefaultMode     string
+	promptDetailItems     string
+	promptCursorIcon      string
+	promptSelectedIcon    string
+	setTerminalTitle      string
+	loadConfig            sync.Once
+	loadExConfig          sync.Once
+	loadHosts             sync.Once
+	config                *ssh_config.Config
+	sysConfig             *ssh_config.Config
+	exConfig              *ssh_config.Config
+	loadDefaultColors     sync.Once
+	defaultThemeColors    map[string]string
+	allHosts              []*sshHost
+	wildcardPatterns      []*ssh_config.Pattern
 }
 
 var userConfig *tsshConfig
@@ -138,6 +139,8 @@ func parseTsshConfig() {
 			userConfig.defaultUploadPath = resolveHomeDir(value)
 		case name == "defaultdownloadpath" && userConfig.defaultDownloadPath == "":
 			userConfig.defaultDownloadPath = resolveHomeDir(value)
+		case name == "dragfileuploadcommand" && userConfig.dragFileUploadCommand == "":
+			userConfig.dragFileUploadCommand = value
 		case name == "promptthemelayout" && userConfig.promptThemeLayout == "":
 			userConfig.promptThemeLayout = value
 		case name == "promptthemecolors" && len(userConfig.promptThemeColors) == 0:
@@ -191,6 +194,9 @@ func showTsshConfig() {
 	}
 	if userConfig.defaultDownloadPath != "" {
 		debug("DefaultDownloadPath = %s", userConfig.defaultDownloadPath)
+	}
+	if userConfig.dragFileUploadCommand != "" {
+		debug("DragFileUploadCommand = %s", userConfig.dragFileUploadCommand)
 	}
 	if userConfig.promptThemeLayout != "" {
 		debug("PromptThemeLayout = %s", userConfig.promptThemeLayout)

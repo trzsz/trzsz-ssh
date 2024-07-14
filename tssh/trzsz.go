@@ -169,9 +169,14 @@ func enableTrzsz(args *sshArgs, ss *sshClientSession) error {
 		_ = ss.session.WindowChange(height, width)
 	})
 
-	// setup default paths
+	// setup trzsz config
 	trzszFilter.SetDefaultUploadPath(userConfig.defaultUploadPath)
 	trzszFilter.SetDefaultDownloadPath(userConfig.defaultDownloadPath)
+	dragFileUploadCommand := getExOptionConfig(args, "DragFileUploadCommand")
+	if dragFileUploadCommand == "" {
+		dragFileUploadCommand = userConfig.dragFileUploadCommand
+	}
+	trzszFilter.SetDragFileUploadCommand(dragFileUploadCommand)
 
 	// setup tunnel connect
 	trzszFilter.SetTunnelConnector(func(port int) net.Conn {

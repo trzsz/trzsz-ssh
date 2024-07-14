@@ -300,6 +300,14 @@ trzsz-ssh ( tssh ) 设计为 ssh 客户端的直接替代品，提供与 openssh
     EnableDragFile Yes
   ```
 
+- 如果想在拖拽上传时覆盖现有文件，请将 `DragFileUploadCommand` 配置为 `trz -y` ：
+
+  ```
+  Host xxx
+    # 如果配置在 ~/.ssh/config 中，可以加上 `#!!` 前缀，以兼容标准 ssh
+    DragFileUploadCommand trz -y
+  ```
+
 - 如果只是想临时启用拖拽上传功能，可以在命令行中使用 `tssh --dragfile` 登录服务器。
 
 - 在 `~/.ssh/config` 或 `ExConfigPath` 配置文件中，配置 `EnableTrzsz` 为 `No` 禁用 trzsz 和 zmodem。
@@ -320,6 +328,15 @@ trzsz-ssh ( tssh ) 设计为 ssh 客户端的直接替代品，提供与 openssh
   Host *
     # 如果配置在 ~/.ssh/config 中，可以加上 `#!!` 前缀，以兼容标准 ssh
     EnableZmodem Yes
+  ```
+
+- 如果想在拖拽文件时使用 rz 上传，请将 `DragFileUploadCommand` 配置为 `rz` ：
+
+  ```
+  Host xxx
+    # 如果配置在 ~/.ssh/config 中，可以加上 `#!!` 前缀，以兼容标准 ssh
+    EnableDragFile Yes
+    DragFileUploadCommand rz
   ```
 
 - 除了服务器，本地电脑也要安装 `lrzsz`，Windows 可以从 [lrzsz-win32](https://github.com/trzsz/lrzsz-win32/releases) 下载，解压并加到 `PATH` 环境变量中，也可以如下安装：
@@ -587,6 +604,9 @@ trzsz-ssh ( tssh ) 设计为 ssh 客户端的直接替代品，提供与 openssh
 
   # tsz 下载时，自动保存的路径，为空时弹出对话框手工选择，默认为空
   DefaultDownloadPath = ~/Downloads
+
+  # 全局的拖拽文件上传命令，注意 ~/.ssh/config 中配置的优先级更高
+  DragFileUploadCommand = trz -y
 
   # tssh 搜索和选择服务器时，配置主题风格和自定义颜色
   PromptThemeLayout = simple

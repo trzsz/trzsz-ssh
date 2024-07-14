@@ -300,6 +300,14 @@ trzsz-ssh ( tssh ) is an ssh client designed as a drop-in replacement for the op
     EnableDragFile Yes
   ```
 
+- If you want to overwrite the existing files when dragging files to upload, configure `DragFileUploadCommand` to `trz -y`:
+
+  ```
+  Host xxx
+    # If configured in ~/.ssh/config, add `#!!` prefix to be compatible with openssh.
+    DragFileUploadCommand trz -y
+  ```
+
 - If you want to temporarily enable the drag and drop to upload feature, use `tssh --dragfile` to log in.
 
 - In the `~/.ssh/config` or `ExConfigPath` configuration file, configure `EnableTrzsz` to `No` to disable the trzsz and zmodem feature.
@@ -320,6 +328,15 @@ trzsz-ssh ( tssh ) is an ssh client designed as a drop-in replacement for the op
   Host *
     # If configured in ~/.ssh/config, add `#!!` prefix to be compatible with openssh.
     EnableZmodem Yes
+  ```
+
+- If you want to use `rz` to upload when dragging files, configure `DragFileUploadCommand` to `rz`:
+
+  ```
+  Host xxx
+    # If configured in ~/.ssh/config, add `#!!` prefix to be compatible with openssh.
+    EnableDragFile Yes
+    DragFileUploadCommand rz
   ```
 
 - Not only the server, but also the local computer needs to install `lrzsz`. For Windows, you can download from [lrzsz-win32](https://github.com/trzsz/lrzsz-win32/releases), unzip and add to `PATH` environment, or install it as follows:
@@ -587,6 +604,9 @@ trzsz-ssh ( tssh ) is an ssh client designed as a drop-in replacement for the op
 
   # The automatically save path for tsz downloading, the default is empty which poping up a folder dialog.
   DefaultDownloadPath = ~/Downloads
+
+  # The global drag file upload command, note that the priority configured in ~/.ssh/config is higher.
+  DragFileUploadCommand = trz -y
 
   # When searching and selecting servers with tssh, the theme and colors.
   PromptThemeLayout = simple
