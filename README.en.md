@@ -608,6 +608,9 @@ trzsz-ssh ( tssh ) is an ssh client designed as a drop-in replacement for the op
   # The global drag file upload command, note that the priority configured in ~/.ssh/config is higher.
   DragFileUploadCommand = trz -y
 
+  # The trzsz progress bar will gradient from the first color to the second color. Don't include `#`.
+  ProgressColorPair = B14FFF 00FFA3
+
   # When searching and selecting servers with tssh, the theme and colors.
   PromptThemeLayout = simple
   PromptThemeColors = {"active_host": "magenta|bold", "inactive_host": "magenta"}

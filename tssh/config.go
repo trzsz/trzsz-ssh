@@ -75,6 +75,7 @@ type tsshConfig struct {
 	defaultUploadPath     string
 	defaultDownloadPath   string
 	dragFileUploadCommand string
+	progressColorPair     string
 	promptThemeLayout     string
 	promptThemeColors     map[string]string
 	promptPageSize        uint8
@@ -141,6 +142,8 @@ func parseTsshConfig() {
 			userConfig.defaultDownloadPath = resolveHomeDir(value)
 		case name == "dragfileuploadcommand" && userConfig.dragFileUploadCommand == "":
 			userConfig.dragFileUploadCommand = value
+		case name == "progresscolorpair" && userConfig.progressColorPair == "":
+			userConfig.progressColorPair = value
 		case name == "promptthemelayout" && userConfig.promptThemeLayout == "":
 			userConfig.promptThemeLayout = value
 		case name == "promptthemecolors" && len(userConfig.promptThemeColors) == 0:
@@ -197,6 +200,9 @@ func showTsshConfig() {
 	}
 	if userConfig.dragFileUploadCommand != "" {
 		debug("DragFileUploadCommand = %s", userConfig.dragFileUploadCommand)
+	}
+	if userConfig.progressColorPair != "" {
+		debug("ProgressColorPair = %s", userConfig.progressColorPair)
 	}
 	if userConfig.promptThemeLayout != "" {
 		debug("PromptThemeLayout = %s", userConfig.promptThemeLayout)

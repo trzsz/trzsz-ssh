@@ -177,6 +177,7 @@ func enableTrzsz(args *sshArgs, ss *sshClientSession) error {
 		dragFileUploadCommand = userConfig.dragFileUploadCommand
 	}
 	trzszFilter.SetDragFileUploadCommand(dragFileUploadCommand)
+	trzszFilter.SetProgressColorPair(userConfig.progressColorPair)
 
 	// setup tunnel connect
 	trzszFilter.SetTunnelConnector(func(port int) net.Conn {
