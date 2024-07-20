@@ -32,10 +32,14 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+
+	"github.com/alessio/shellescape"
 )
 
 type tmuxMgr struct {
-	keywords string
+	keywords     string
+	majorVersion int
+	minorVersion int
 }
 
 func (m *tmuxMgr) openTerminals(keywords string, openType int, hosts []*sshHost) {
@@ -58,7 +62,7 @@ func (m *tmuxMgr) openTerminals(keywords string, openType int, hosts []*sshHost)
 }
 
 func (m *tmuxMgr) appendArgs(alias string, args ...string) ([]string, error) {
-	cmdArgs := args
+	var cmdArgs []string
 	keywordsMatched := false
 	for _, arg := range os.Args {
 		if m.keywords != "" && arg == m.keywords {
@@ -76,7 +80,7 @@ func (m *tmuxMgr) appendArgs(alias string, args ...string) ([]string, error) {
 	} else if !keywordsMatched {
 		return nil, fmt.Errorf("unable to handle replace keywords '%s'", m.keywords)
 	}
-	return cmdArgs, nil
+	return append(args, shellescape.QuoteCommand(cmdArgs)), nil
 }
 
 func (m *tmuxMgr) openWindows(hosts []*sshHost) {
@@ -102,13 +106,16 @@ func (m *tmuxMgr) openWindows(hosts []*sshHost) {
 
 func (m *tmuxMgr) openPanes(hosts []*sshHost) {
 	matrix := getPanesMatrix(hosts)
-	out, err := exec.Command("tmux", "display", "-p", "#{pane_id}|#{pane_title}").Output()
+	out, err := exec.Command("tmux", "display", "-p", "#{pane_id}|#{pane_title}|#{version}").Output()
 	if err != nil {
 		warning("Failed to get tmux pane id and title: %v", err)
 		return
 	}
 	output := strings.TrimSpace(string(out))
-	tokens := strings.SplitN(output, "|", 2)
+	tokens := strings.Split(output, "|")
+	if len(tokens) > 2 && tokens[2] != "" {
+		m.parseTmuxVersion(tokens[2])
+	}
 	matrix[0][0].paneId = tokens[0]
 	for i := len(matrix) - 1; i > 0; i-- {
 		matrix[i][0].paneId = m.splitWindow(matrix[i][0].alias, "-v", matrix[0][0].paneId, strconv.Itoa(100/(i+1)))
@@ -146,7 +153,13 @@ func (m *tmuxMgr) splitWindow(alias, axes, target, percentage string) string {
 	if target == "" {
 		return ""
 	}
-	args, err := m.appendArgs(alias, "splitw", axes, "-t", target, "-p", percentage, "-P", "-F", "#{pane_id}")
+	var err error
+	var args []string
+	if m.majorVersion > 3 || (m.majorVersion == 3 && m.minorVersion >= 1) {
+		args, err = m.appendArgs(alias, "splitw", axes, "-t", target, "-l", percentage+"%", "-P", "-F", "#{pane_id}")
+	} else {
+		args, err = m.appendArgs(alias, "splitw", axes, "-t", target, "-p", percentage, "-P", "-F", "#{pane_id}")
+	}
 	if err != nil {
 		warning("Failed to split tmux window: %v", err)
 		return ""
@@ -179,4 +192,26 @@ func getTmuxManager() terminalManager {
 
 func getWindowsTerminalManager() terminalManager {
 	return nil
+}
+
+func (m *tmuxMgr) parseTmuxVersion(version string) {
+	pos := strings.IndexByte(version, '.')
+	if pos < 1 {
+		return
+	}
+	if ver, err := strconv.Atoi(version[:pos]); err == nil {
+		m.majorVersion = ver
+	}
+	subver := version[pos+1:]
+	pos = len(subver)
+	for i, c := range subver {
+		if c >= '0' && c <= '9' {
+			continue
+		}
+		pos = i
+		break
+	}
+	if ver, err := strconv.Atoi(subver[:pos]); err == nil {
+		m.minorVersion = ver
+	}
 }
