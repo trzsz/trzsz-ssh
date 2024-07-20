@@ -15,7 +15,7 @@ require (
 	github.com/mattn/go-runewidth v0.0.15
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/pquerna/otp v1.4.0
-	github.com/skeema/knownhosts v1.2.2
+	github.com/skeema/knownhosts v1.3.0
 	github.com/stretchr/testify v1.8.4
 	github.com/trzsz/go-arg v1.5.3
 	github.com/trzsz/go-socks5 v0.1.0
@@ -23,8 +23,8 @@ require (
 	github.com/trzsz/pageant v0.1.0
 	github.com/trzsz/promptui v0.10.7
 	github.com/trzsz/ssh_config v1.3.6
-	github.com/trzsz/trzsz-go v1.1.8-0.20240714125311-1a1c1eb2eede
-	github.com/trzsz/tsshd v0.1.2
+	github.com/trzsz/trzsz-go v1.1.8-0.20240720040127-f462ee534824
+	github.com/trzsz/tsshd v0.1.3-0.20240720085856-c35640ee47be
 	golang.org/x/crypto v0.25.0
 	golang.org/x/sys v0.22.0
 	golang.org/x/term v0.22.0
@@ -39,7 +39,7 @@ require (
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/boombuler/barcode v1.0.2 // indirect
 	github.com/charmbracelet/x/ansi v0.1.4 // indirect
-	github.com/charmbracelet/x/input v0.1.2 // indirect
+	github.com/charmbracelet/x/input v0.1.3 // indirect
 	github.com/charmbracelet/x/term v0.1.1 // indirect
 	github.com/charmbracelet/x/windows v0.1.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
@@ -51,7 +51,7 @@ require (
 	github.com/josephspurrier/goversioninfo v1.4.0 // indirect
 	github.com/klauspost/compress v1.17.9 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.8 // indirect
-	github.com/klauspost/reedsolomon v1.12.2 // indirect
+	github.com/klauspost/reedsolomon v1.12.3 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/mattn/go-localereader v0.0.1 // indirect
 	github.com/muesli/ansi v0.0.0-20230316100256-276c6243b2f6 // indirect
@@ -71,7 +71,7 @@ require (
 	github.com/xtaci/kcp-go/v5 v5.6.8 // indirect
 	github.com/xtaci/smux v1.5.24 // indirect
 	go.uber.org/mock v0.4.0 // indirect
-	golang.org/x/exp v0.0.0-20240707233637-46b078467d37 // indirect
+	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56 // indirect
 	golang.org/x/image v0.18.0 // indirect
 	golang.org/x/mod v0.19.0 // indirect
 	golang.org/x/net v0.27.0 // indirect
