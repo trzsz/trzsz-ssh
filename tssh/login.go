@@ -568,7 +568,7 @@ func readQuestionAnswerConfig(dest string, idx int, question string) string {
 	}
 
 	if command := getSecretConfig(dest, "otp"+qhex); command != "" {
-		if answer := getOtpCommandOutput(command); answer != "" {
+		if answer := getOtpCommandOutput(command, question); answer != "" {
 			return answer
 		}
 	}
@@ -590,7 +590,7 @@ func readQuestionAnswerConfig(dest string, idx int, question string) string {
 	qcmd := fmt.Sprintf("OtpCommand%d", idx)
 	debug("the otp command key for question '%s' is %s", question, qcmd)
 	if command := getSecretConfig(dest, qcmd); command != "" {
-		if answer := getOtpCommandOutput(command); answer != "" {
+		if answer := getOtpCommandOutput(command, question); answer != "" {
 			return answer
 		}
 	}

@@ -572,6 +572,14 @@ trzsz-ssh ( tssh ) 设计为 ssh 客户端的直接替代品，提供与 openssh
       encotp636f64653a20 77b4ce85d087b39909e563efb165659b22b9ea700a537f1258bdf56ce6fdd6ea70bc7591ea5c01918537a65433133bc0bd5ed3e4
   ```
 
+- 可以自己实现获取动态密码的程序，指定 `%q` 参数可以得到问题内容，将动态密码输出到 stdout 并正常退出即可，调试信息可以输出到 stderr （ `tssh --debug` 运行时可以看到 ）。配置举例（序号代表第几个问题，一般只有一个问题，只需配置 `OtpCommand1` 即可）：
+
+  ```
+  Host custom_otp_command
+      #!! OtpCommand1 /path/to/your_own_program %q
+      #!! OtpCommand2 python C:\your_python_code.py %q
+  ```
+
 - 如果启用了 `ControlMaster` 多路复用，或者是在 `Warp` 终端，请参考前面 `自动交互` 加 `Ctrl` 前缀来实现。
 
   ```

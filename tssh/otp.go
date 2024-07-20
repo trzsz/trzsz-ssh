@@ -33,18 +33,21 @@ import (
 	"github.com/pquerna/otp/totp"
 )
 
-func getOtpCommandOutput(command string) string {
+func getOtpCommandOutput(command, question string) string {
 	argv, err := splitCommandLine(command)
 	if err != nil || len(argv) == 0 {
 		warning("split otp command failed: %v", err)
 		return ""
 	}
-	if enableDebugLogging {
-		for i, arg := range argv {
-			debug("otp command argv[%d] = %s", i, arg)
+	var args []string
+	for i, arg := range argv {
+		if i > 0 && arg == "%q" {
+			arg = question
 		}
+		debug("otp command argv[%d] = %s", i, arg)
+		args = append(args, arg)
 	}
-	cmd := exec.Command(argv[0], argv[1:]...)
+	cmd := exec.Command(args[0], args[1:]...)
 	var outBuf, errBuf bytes.Buffer
 	cmd.Stdout = &outBuf
 	cmd.Stderr = &errBuf
@@ -55,6 +58,9 @@ func getOtpCommandOutput(command string) string {
 			warning("exec otp command failed: %v", err)
 		}
 		return ""
+	}
+	if enableDebugLogging && errBuf.Len() > 0 {
+		debug("otp command stderr output: %s", errBuf.String())
 	}
 	return strings.TrimSpace(outBuf.String())
 }

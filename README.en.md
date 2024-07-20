@@ -572,6 +572,14 @@ trzsz-ssh ( tssh ) is an ssh client designed as a drop-in replacement for the op
       encotp636f64653a20 77b4ce85d087b39909e563efb165659b22b9ea700a537f1258bdf56ce6fdd6ea70bc7591ea5c01918537a65433133bc0bd5ed3e4
   ```
 
+- You can write a program to obtain the one-time password. Specify the `%q` argument if you want to get the question. Just output the one-time password to stdout and exit with 0, and the debugging information can be output to stderr (you can see it when running `tssh --debug`). Configuration example (the serial number represents the number of questions, generally there is only one question, just configure `OtpCommand1`):
+
+  ```
+  Host custom_otp_command
+      #!! OtpCommand1 /path/to/your_own_program %q
+      #!! OtpCommand2 python C:\your_python_code.py %q
+  ```
+
 - If `ControlMaster` multiplexing is enabled or using `Warp` terminal, you will need to use the `Automated Interaction` mentioned earlier to achieve remembering answers.
 
   ```

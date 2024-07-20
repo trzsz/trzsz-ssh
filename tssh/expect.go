@@ -357,19 +357,19 @@ func (e *sshExpect) wrapOutput(reader io.Reader, writer io.Writer, ch chan []byt
 	}
 }
 
-func (e *sshExpect) waitForPattern(pattern string, caseSends *caseSendList) error {
+func (e *sshExpect) waitForPattern(pattern string, caseSends *caseSendList) (string, error) {
 	expr := quoteExpectPattern(pattern)
 	re, err := regexp.Compile(expr)
 	if err != nil {
 		warning("compile expect expr [%s] failed: %v", expr, err)
-		return err
+		return "", err
 	}
 	var builder strings.Builder
 	for {
 		var buf []byte
 		select {
 		case <-e.ctx.Done():
-			return e.ctx.Err()
+			return "", e.ctx.Err()
 		case buf = <-e.out:
 		case buf = <-e.err:
 		}
@@ -387,7 +387,7 @@ func (e *sshExpect) waitForPattern(pattern string, caseSends *caseSendList) erro
 				case <-e.out:
 				case <-e.err:
 				default:
-					return nil
+					return builder.String(), nil
 				}
 			}
 		} else {
@@ -396,7 +396,7 @@ func (e *sshExpect) waitForPattern(pattern string, caseSends *caseSendList) erro
 	}
 }
 
-func (e *sshExpect) getExpectSender(idx int) *expectSender {
+func (e *sshExpect) getExpectSender(idx int, question string) *expectSender {
 	if pass := getExConfig(e.args.Destination, fmt.Sprintf("%sExpectSendPass%d", e.pre, idx)); pass != "" {
 		secret, err := decodeSecret(pass)
 		if err != nil {
@@ -425,7 +425,7 @@ func (e *sshExpect) getExpectSender(idx int) *expectSender {
 			warning("decode %sExpectSendEncOtp%d [%s] failed: %v", e.pre, idx, encOtp, err)
 			return nil
 		}
-		return newPassSender(e, getOtpCommandOutput(command))
+		return newPassSender(e, getOtpCommandOutput(command, question))
 	}
 
 	if secret := getExConfig(e.args.Destination, fmt.Sprintf("%sExpectSendTotp%d", e.pre, idx)); secret != "" {
@@ -433,7 +433,7 @@ func (e *sshExpect) getExpectSender(idx int) *expectSender {
 	}
 
 	if command := getExConfig(e.args.Destination, fmt.Sprintf("%sExpectSendOtp%d", e.pre, idx)); command != "" {
-		return newPassSender(e, getOtpCommandOutput(command))
+		return newPassSender(e, getOtpCommandOutput(command, question))
 	}
 
 	return nil
@@ -458,13 +458,14 @@ func (e *sshExpect) execInteractions(writer io.Writer, expectCount int) {
 				warning("Invalid ExpectCaseSendText%d: %v", idx, err)
 			}
 		}
-		if err := e.waitForPattern(pattern, caseSends); err != nil {
+		question, err := e.waitForPattern(pattern, caseSends)
+		if err != nil {
 			return
 		}
 		if e.ctx.Err() != nil {
 			return
 		}
-		sender := e.getExpectSender(idx)
+		sender := e.getExpectSender(idx, question)
 		if !sender.sendInput(writer, strconv.Itoa(idx)) {
 			return
 		}
