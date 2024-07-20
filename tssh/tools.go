@@ -466,8 +466,10 @@ func execLocalTools(argv []string, args *sshArgs) (int, bool) {
 
 // execRemoteTools execute remote tools if necessary
 func execRemoteTools(args *sshArgs, client SshClient) {
-	switch {
-	case args.InstallTrzsz:
+	if args.InstallTrzsz {
 		execInstallTrzsz(args, client)
+	}
+	if args.InstallTsshd {
+		execInstallTsshd(args, client)
 	}
 }

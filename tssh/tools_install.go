@@ -46,12 +46,12 @@ const (
 	kScpError = 2
 )
 
-type trzszRelease struct {
+type releaseTag struct {
 	TagName string `json:"tag_name"`
 }
 
-func getLatestTrzszVersion() (string, error) {
-	resp, err := http.Get("https://api.github.com/repos/trzsz/trzsz-go/releases/latest")
+func getLatestVersion(url string) (string, error) {
+	resp, err := http.Get(url)
 	if err != nil {
 		return "", err
 	}
@@ -63,14 +63,14 @@ func getLatestTrzszVersion() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	var release trzszRelease
+	var release releaseTag
 	if err := json.Unmarshal(body, &release); err != nil {
 		return "", err
 	}
 	return release.TagName[1:], nil
 }
 
-func checkTrzszVersion(client SshClient, cmd, name, version string) bool {
+func checkVersion(client SshClient, cmd, version string) bool {
 	session, err := client.NewSession()
 	if err != nil {
 		return false
@@ -80,7 +80,7 @@ func checkTrzszVersion(client SshClient, cmd, name, version string) bool {
 	if err != nil {
 		return false
 	}
-	return strings.TrimSpace(string(output)) == fmt.Sprintf("%s (trzsz) go %s", name, version)
+	return strings.TrimSpace(string(output)) == version
 }
 
 func pathJoin(path, name string) string {
@@ -93,16 +93,16 @@ func pathJoin(path, name string) string {
 
 func checkInstalledVersion(client SshClient, path, name, version string) bool {
 	cmd := fmt.Sprintf("%s -v", pathJoin(path, name))
-	return checkTrzszVersion(client, cmd, name, version)
+	return checkVersion(client, cmd, version)
 }
 
-func checkTrzszExecutable(client SshClient, name, version string) bool {
-	return checkTrzszVersion(client, fmt.Sprintf("$SHELL -l -c '%s -v'", name), name, version)
+func checkExecutable(client SshClient, name, version string) bool {
+	return checkVersion(client, fmt.Sprintf("$SHELL -l -c '%s -v'", name), version)
 }
 
 func checkTrzszPathEnv(client SshClient, version, path string) {
-	trzExecutable := checkTrzszExecutable(client, "trz", version)
-	tszExecutable := checkTrzszExecutable(client, "tsz", version)
+	trzExecutable := checkExecutable(client, "trz", "trz (trzsz) go "+version)
+	tszExecutable := checkExecutable(client, "tsz", "tsz (trzsz) go "+version)
 	if !trzExecutable || !tszExecutable {
 		toolsInfo("InstallTrzsz", "you may need to add %s to the PATH environment variable", path)
 	}
@@ -200,9 +200,21 @@ func mkdirInstallPath(client SshClient, path string) error {
 	return nil
 }
 
-func extractTrzszBinary(gzr io.Reader, version, svrOS, arch string) ([]byte, []byte, error) {
-	pkgName := fmt.Sprintf("trzsz_%s_%s_%s", version, svrOS, arch)
-	var trz, tsz bytes.Buffer
+type binaryHelper struct {
+	trzsz bool
+	trz   []byte
+	tsz   []byte
+	tsshd []byte
+}
+
+func (h *binaryHelper) extractBinary(gzr io.Reader, version, svrOS, arch string) error {
+	var pkgName string
+	if h.trzsz {
+		pkgName = fmt.Sprintf("trzsz_%s_%s_%s", version, svrOS, arch)
+	} else {
+		pkgName = fmt.Sprintf("tsshd_%s_%s_%s", version, svrOS, arch)
+	}
+	var trz, tsz, tsshd bytes.Buffer
 	tarReader := tar.NewReader(gzr)
 	for {
 		header, err := tarReader.Next()
@@ -210,60 +222,89 @@ func extractTrzszBinary(gzr io.Reader, version, svrOS, arch string) ([]byte, []b
 			break
 		}
 		if err != nil {
-			return nil, nil, err
+			return err
 		}
 		if header.Typeflag == tar.TypeDir {
 			if header.Name != pkgName {
-				return nil, nil, fmt.Errorf("package [%s] does not match [%s]", header.Name, pkgName)
+				return fmt.Errorf("package [%s] does not match [%s]", header.Name, pkgName)
 			}
 			continue
 		}
 		switch header.Name {
 		case pkgName + "/trz":
 			if _, err := io.Copy(&trz, tarReader); err != nil {
-				return nil, nil, err
+				return err
 			}
 		case pkgName + "/tsz":
 			if _, err := io.Copy(&tsz, tarReader); err != nil {
-				return nil, nil, err
+				return err
 			}
 		case pkgName + "/trzsz":
 			continue
+		case pkgName + "/tsshd":
+			if _, err := io.Copy(&tsshd, tarReader); err != nil {
+				return err
+			}
 		default:
 			if strings.HasPrefix(header.Name, "trzsz_") {
 				switch filepath.Base(header.Name) {
 				case "trz", "tsz", "trzsz":
-					return nil, nil, fmt.Errorf("package [%s] does not match [%s]", filepath.Dir(header.Name), pkgName)
+					return fmt.Errorf("package [%s] does not match [%s]", filepath.Dir(header.Name), pkgName)
 				}
 			}
-			return nil, nil, fmt.Errorf("package contains unexpected files: %s", header.Name)
+			if strings.HasPrefix(header.Name, "tsshd_") {
+				switch filepath.Base(header.Name) {
+				case "tsshd":
+					return fmt.Errorf("package [%s] does not match [%s]", filepath.Dir(header.Name), pkgName)
+				}
+			}
+			return fmt.Errorf("package contains unexpected files: %s", header.Name)
 		}
 	}
-	if trz.Len() == 0 {
-		return nil, nil, fmt.Errorf("can't find trz binary in the package")
+	if h.trzsz {
+		if trz.Len() == 0 {
+			return fmt.Errorf("can't find trz binary in the package")
+		}
+		if tsz.Len() == 0 {
+			return fmt.Errorf("can't find tsz binary in the package")
+		}
+	} else {
+		if tsshd.Len() == 0 {
+			return fmt.Errorf("can't find tsshd binary in the package")
+		}
 	}
-	if tsz.Len() == 0 {
-		return nil, nil, fmt.Errorf("can't find tsz binary in the package")
-	}
-	return trz.Bytes(), tsz.Bytes(), nil
+	h.trz = trz.Bytes()
+	h.tsz = tsz.Bytes()
+	h.tsshd = tsshd.Bytes()
+	return nil
 }
 
-func downloadTrzszBinary(version, svrOS, arch string) ([]byte, []byte, error) {
-	url := fmt.Sprintf("https://github.com/trzsz/trzsz-go/releases/download/v%s/trzsz_%s_%s_%s.tar.gz",
-		version, version, svrOS, arch)
-	toolsInfo("InstallTrzsz", "download url: %s", url)
+func (h *binaryHelper) downloadBinary(version, svrOS, arch string) error {
+	var url string
+	if h.trzsz {
+		url = fmt.Sprintf("https://github.com/trzsz/trzsz-go/releases/download/v%s/trzsz_%s_%s_%s.tar.gz",
+			version, version, svrOS, arch)
+	} else {
+		url = fmt.Sprintf("https://github.com/trzsz/tsshd/releases/download/v%s/tsshd_%s_%s_%s.tar.gz",
+			version, version, svrOS, arch)
+	}
+	name := "InstallTrzsz"
+	if !h.trzsz {
+		name = "InstallTsshd"
+	}
+	toolsInfo(name, "download url: %s", url)
 
 	resp, err := http.Get(url)
 	if err != nil {
-		return nil, nil, err
+		return err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, nil, fmt.Errorf("http response status code %d", resp.StatusCode)
+		return fmt.Errorf("http response status code %d", resp.StatusCode)
 	}
 
 	contentLength := int(resp.ContentLength)
-	progress := newToolsProgress("InstallTrzsz", "download percentage", contentLength)
+	progress := newToolsProgress(name, "download percentage", contentLength)
 	defer progress.stopProgress()
 
 	buffer := make([]byte, contentLength)
@@ -275,7 +316,7 @@ func downloadTrzszBinary(version, svrOS, arch string) ([]byte, []byte, error) {
 		}
 		n, err := resp.Body.Read(buffer[currentStep:maxBufferIdx])
 		if err != nil {
-			return nil, nil, err
+			return err
 		}
 		currentStep += n
 		progress.addStep(n)
@@ -283,30 +324,30 @@ func downloadTrzszBinary(version, svrOS, arch string) ([]byte, []byte, error) {
 
 	gzr, err := gzip.NewReader(bytes.NewReader(buffer))
 	if err != nil {
-		return nil, nil, err
+		return err
 	}
 	defer gzr.Close()
 
-	return extractTrzszBinary(gzr, version, svrOS, arch)
+	return h.extractBinary(gzr, version, svrOS, arch)
 }
 
-func readTrzszBinary(path, version, svrOS, arch string) ([]byte, []byte, error) {
+func (h *binaryHelper) readBinary(path, version, svrOS, arch string) error {
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, nil, err
+		return err
 	}
 	defer file.Close()
 
 	gzr, err := gzip.NewReader(file)
 	if err != nil {
-		return nil, nil, err
+		return err
 	}
 	defer gzr.Close()
 
-	return extractTrzszBinary(gzr, version, svrOS, arch)
+	return h.extractBinary(gzr, version, svrOS, arch)
 }
 
-func uploadTrzszBinary(client SshClient, path string, trz, tsz []byte) error {
+func (h *binaryHelper) uploadBinary(client SshClient, path string) error {
 	session, err := client.NewSession()
 	if err != nil {
 		return err
@@ -321,7 +362,11 @@ func uploadTrzszBinary(client SshClient, path string, trz, tsz []byte) error {
 	if err != nil {
 		return err
 	}
-	progress := newToolsProgress("InstallTrzsz", "upload percentage", len(trz)+len(tsz))
+	name := "InstallTrzsz"
+	if !h.trzsz {
+		name = "InstallTsshd"
+	}
+	progress := newToolsProgress(name, "upload percentage", len(h.trz)+len(h.tsz)+len(h.tsshd))
 
 	var errMsg []string
 	checkTransferResponse := func() bool {
@@ -371,17 +416,29 @@ func uploadTrzszBinary(client SshClient, path string, trz, tsz []byte) error {
 		if !checkTransferResponse() {
 			return
 		}
-		if !writeTransferCommand(fmt.Sprintf("C0755 %d trz\n", len(trz))) {
-			return
+		if len(h.trz) > 0 {
+			if !writeTransferCommand(fmt.Sprintf("C0755 %d trz\n", len(h.trz))) {
+				return
+			}
+			if !writeBinaryContent(h.trz) {
+				return
+			}
 		}
-		if !writeBinaryContent(trz) {
-			return
+		if len(h.tsz) > 0 {
+			if !writeTransferCommand(fmt.Sprintf("C0755 %d tsz\n", len(h.tsz))) {
+				return
+			}
+			if !writeBinaryContent(h.tsz) {
+				return
+			}
 		}
-		if !writeTransferCommand(fmt.Sprintf("C0755 %d tsz\n", len(tsz))) {
-			return
-		}
-		if !writeBinaryContent(tsz) {
-			return
+		if len(h.tsshd) > 0 {
+			if !writeTransferCommand(fmt.Sprintf("C0755 %d tsshd\n", len(h.tsshd))) {
+				return
+			}
+			if !writeBinaryContent(h.tsshd) {
+				return
+			}
 		}
 		_ = writeTransferCommand("E\n")
 	}()
@@ -407,7 +464,7 @@ func execInstallTrzsz(args *sshArgs, client SshClient) {
 	version := args.TrzszVersion
 	if version == "" {
 		var err error
-		if version, err = getLatestTrzszVersion(); err != nil {
+		if version, err = getLatestVersion("https://api.github.com/repos/trzsz/trzsz-go/releases/latest"); err != nil {
 			toolsWarn("InstallTrzsz", "get latest trzsz version failed: %v", err)
 			toolsInfo("InstallTrzsz", "you can specify the version of trzsz through --trzsz-version")
 			return
@@ -428,8 +485,8 @@ func execInstallTrzsz(args *sshArgs, client SshClient) {
 		}
 	}
 
-	trzInstalled := checkInstalledVersion(client, installPath, "trz", version)
-	tszInstalled := checkInstalledVersion(client, installPath, "tsz", version)
+	trzInstalled := checkInstalledVersion(client, installPath, "trz", "trz (trzsz) go "+version)
+	tszInstalled := checkInstalledVersion(client, installPath, "tsz", "tsz (trzsz) go "+version)
 	if trzInstalled && tszInstalled {
 		toolsSucc("InstallTrzsz", "trzsz %s has been installed in %s", version, installPath)
 		checkTrzszPathEnv(client, version, installPath)
@@ -453,27 +510,97 @@ func execInstallTrzsz(args *sshArgs, client SshClient) {
 		return
 	}
 
-	var trz, tsz []byte
+	h := binaryHelper{trzsz: true}
 	if args.TrzszBinPath != "" {
-		trz, tsz, err = readTrzszBinary(args.TrzszBinPath, version, svrOS, arch)
-		if err != nil {
+		if err := h.readBinary(args.TrzszBinPath, version, svrOS, arch); err != nil {
 			toolsWarn("InstallTrzsz", "extract installation files failed: %v", err)
 			return
 		}
 	} else {
-		trz, tsz, err = downloadTrzszBinary(version, svrOS, arch)
-		if err != nil {
+		if err := h.downloadBinary(version, svrOS, arch); err != nil {
 			toolsWarn("InstallTrzsz", "download installation files failed: %v", err)
 			toolsInfo("InstallTrzsz", "you can download the release from github and specify it with --trzsz-bin-path")
 			return
 		}
 	}
 
-	if err := uploadTrzszBinary(client, installPath, trz, tsz); err != nil {
+	if err := h.uploadBinary(client, installPath); err != nil {
 		toolsWarn("InstallTrzsz", "upload trzsz binary files failed: %v", err)
 		return
 	}
 
 	toolsSucc("InstallTrzsz", "trzsz %s installation to %s completed successfully", version, installPath)
 	checkTrzszPathEnv(client, version, installPath)
+}
+
+func execInstallTsshd(args *sshArgs, client SshClient) {
+	version := args.TsshdVersion
+	if version == "" {
+		var err error
+		if version, err = getLatestVersion("https://api.github.com/repos/trzsz/tsshd/releases/latest"); err != nil {
+			toolsWarn("InstallTsshd", "get latest tsshd version failed: %v", err)
+			toolsInfo("InstallTsshd", "you can specify the version of tsshd through --tsshd-version")
+			return
+		}
+	}
+
+	installPath := args.InstallPath
+	if installPath == "" {
+		installPath = "~/.local/bin/"
+	}
+
+	if strings.HasPrefix(installPath, "~/") {
+		home, err := getRemoteUserHome(client)
+		if err != nil {
+			toolsWarn("InstallTsshd", "get remote user home path failed: %v", err)
+		} else {
+			installPath = pathJoin(home, installPath[2:])
+		}
+	}
+
+	tsshdInstalled := checkInstalledVersion(client, installPath, "tsshd", "trzsz sshd "+version)
+	if tsshdInstalled {
+		toolsSucc("InstallTsshd", "tsshd %s has been installed in %s", version, installPath)
+		toolsInfo("InstallTsshd", "you may need to specify 'TsshdPath %s' in ~/.ssh/config", installPath)
+		return
+	}
+
+	svrOS, err := getRemoteServerOS(client)
+	if err != nil {
+		toolsWarn("InstallTsshd", "get remote server operating system failed: %v", err)
+		return
+	}
+
+	arch, err := getRemoteServerArch(client)
+	if err != nil {
+		toolsWarn("InstallTsshd", "get remote server cpu architecture failed: %v", err)
+		return
+	}
+
+	if err := mkdirInstallPath(client, installPath); err != nil {
+		toolsWarn("InstallTsshd", "mkdir [%s] failed: %v", installPath, err)
+		return
+	}
+
+	h := binaryHelper{trzsz: false}
+	if args.TsshdBinPath != "" {
+		if err := h.readBinary(args.TsshdBinPath, version, svrOS, arch); err != nil {
+			toolsWarn("InstallTsshd", "extract installation files failed: %v", err)
+			return
+		}
+	} else {
+		if err := h.downloadBinary(version, svrOS, arch); err != nil {
+			toolsWarn("InstallTsshd", "download installation files failed: %v", err)
+			toolsInfo("InstallTsshd", "you can download the release from github and specify it with --tsshd-bin-path")
+			return
+		}
+	}
+
+	if err := h.uploadBinary(client, installPath); err != nil {
+		toolsWarn("InstallTsshd", "upload tsshd binary files failed: %v", err)
+		return
+	}
+
+	toolsSucc("InstallTsshd", "tsshd %s installation to %s completed successfully", version, installPath)
+	toolsInfo("InstallTsshd", "you may need to specify 'TsshdPath %s' in ~/.ssh/config", installPath)
 }

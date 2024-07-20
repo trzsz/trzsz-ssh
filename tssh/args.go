@@ -85,9 +85,12 @@ type sshArgs struct {
 	NewHost        bool        `arg:"--new-host" help:"[tools] add new host to configuration"`
 	EncSecret      bool        `arg:"--enc-secret" help:"[tools] encode secret for configuration"`
 	InstallTrzsz   bool        `arg:"--install-trzsz" help:"[tools] install trzsz to the remote server"`
+	InstallTsshd   bool        `arg:"--install-tsshd" help:"[tools] install tsshd to the remote server"`
 	InstallPath    string      `arg:"--install-path" placeholder:"path" help:"[tools] install path, default: '~/.local/bin/'"`
 	TrzszVersion   string      `arg:"--trzsz-version" placeholder:"x.x.x" help:"[tools] install the specified version of trzsz"`
 	TrzszBinPath   string      `arg:"--trzsz-bin-path" placeholder:"path" help:"[tools] trzsz binary installation package path"`
+	TsshdVersion   string      `arg:"--tsshd-version" placeholder:"x.x.x" help:"[tools] install the specified version of tsshd"`
+	TsshdBinPath   string      `arg:"--tsshd-bin-path" placeholder:"path" help:"[tools] tsshd binary installation package path"`
 	originalDest   string
 }
 
