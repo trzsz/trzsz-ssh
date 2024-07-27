@@ -35,6 +35,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode"
 
 	"github.com/google/shlex"
 	"github.com/trzsz/tsshd/tsshd"
@@ -849,6 +850,37 @@ func getTsshdCommand(args *sshArgs, udpMode int) string {
 
 	if udpMode == kUdpModeKcp {
 		buf.WriteString(" --kcp")
+	}
+
+	if udpPort := getExOptionConfig(args, "UdpPort"); udpPort != "" {
+		ports := strings.FieldsFunc(udpPort, func(c rune) bool {
+			return unicode.IsSpace(c) || c == ',' || c == '-'
+		})
+		if len(ports) == 1 {
+			port, err := strconv.Atoi(ports[0])
+			if err != nil {
+				warning("UdpPort %s is invalid: %v", udpPort, err)
+			} else {
+				buf.WriteString(fmt.Sprintf(" --port %d", port))
+			}
+		} else if len(ports) == 2 {
+			for {
+				lowPort, err := strconv.Atoi(ports[0])
+				if err != nil {
+					warning("UdpPort %s is invalid: %v", udpPort, err)
+					break
+				}
+				highPort, err := strconv.Atoi(ports[1])
+				if err != nil {
+					warning("UdpPort %s is invalid: %v", udpPort, err)
+					break
+				}
+				buf.WriteString(fmt.Sprintf(" --port %d-%d", lowPort, highPort))
+				break // nolint:all
+			}
+		} else {
+			warning("UdpPort %s is invalid", udpPort)
+		}
 	}
 
 	return buf.String()
