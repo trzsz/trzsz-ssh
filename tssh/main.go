@@ -272,5 +272,10 @@ func sshStart(args *sshArgs) error {
 	if args.Background {
 		_ = ss.client.Wait()
 	}
+
+	// wait for the output to be read by the parent process
+	if !isTerminal {
+		outputWaitGroup.Wait()
+	}
 	return nil
 }

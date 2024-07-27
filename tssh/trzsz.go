@@ -32,10 +32,13 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/trzsz/trzsz-go/trzsz"
 )
+
+var outputWaitGroup sync.WaitGroup
 
 func writeAll(dst io.Writer, data []byte) error {
 	m := 0
@@ -53,6 +56,11 @@ func writeAll(dst io.Writer, data []byte) error {
 func wrapStdIO(serverIn io.WriteCloser, serverOut io.Reader, serverErr io.Reader, tty bool) {
 	win := runtime.GOOS == "windows"
 	forwardIO := func(reader io.Reader, writer io.WriteCloser, input bool) {
+		done := true
+		if !input {
+			done = false
+			outputWaitGroup.Add(1)
+		}
 		defer writer.Close()
 		buffer := make([]byte, 32*1024)
 		for {
@@ -72,20 +80,20 @@ func wrapStdIO(serverIn io.WriteCloser, serverOut io.Reader, serverErr io.Reader
 				}
 			}
 			if err == io.EOF {
-				if win && tty && input {
+				if win && isTerminal && tty && input {
 					_, _ = writer.Write([]byte{0x1A}) // ctrl + z
 					continue
 				}
-				if !input {
-					continue // ignore output EOF
+				if input {
+					return // input EOF
 				}
-				// delay and close
-				for {
-					time.Sleep(time.Second)
-					if lastTime := lastServerAliveTime.Load(); lastTime != nil && time.Since(*lastTime) > 2*time.Second {
-						return
-					}
+				// ignore output EOF
+				if !done {
+					outputWaitGroup.Done()
+					done = true
 				}
+				time.Sleep(100 * time.Millisecond)
+				continue
 			}
 			if err != nil {
 				return
