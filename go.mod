@@ -20,7 +20,7 @@ require (
 	github.com/trzsz/go-arg v1.5.3
 	github.com/trzsz/go-socks5 v0.1.0
 	github.com/trzsz/iterm2 v0.1.2
-	github.com/trzsz/pageant v0.1.0
+	github.com/trzsz/pageant v0.1.1
 	github.com/trzsz/promptui v0.10.7
 	github.com/trzsz/ssh_config v1.3.6
 	github.com/trzsz/trzsz-go v1.1.8-0.20240720040127-f462ee534824
