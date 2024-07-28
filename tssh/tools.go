@@ -465,11 +465,16 @@ func execLocalTools(argv []string, args *sshArgs) (int, bool) {
 }
 
 // execRemoteTools execute remote tools if necessary
-func execRemoteTools(args *sshArgs, client SshClient) {
+func execRemoteTools(args *sshArgs, ss *sshClientSession) (int, bool) {
 	if args.InstallTrzsz {
-		execInstallTrzsz(args, client)
+		execInstallTrzsz(args, ss.client)
 	}
 	if args.InstallTsshd {
-		execInstallTsshd(args, client)
+		execInstallTsshd(args, ss.client)
 	}
+	if len(args.UploadFile.values) > 0 {
+		code := execTrzUpload(args, ss)
+		return code, true
+	}
+	return 0, false
 }

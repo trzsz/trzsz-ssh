@@ -136,7 +136,7 @@ func enableTrzsz(args *sshArgs, ss *sshClientSession) error {
 
 	trzsz.SetAffectedByWindows(false)
 
-	if args.Relay || isNoGUI() {
+	if args.Relay || !args.Client && isNoGUI() {
 		// run as a relay
 		trzszRelay := trzsz.NewTrzszRelay(os.Stdin, os.Stdout, ss.serverIn, ss.serverOut, trzsz.TrzszOptions{
 			DetectTraceLog: args.TraceLog,
@@ -173,6 +173,11 @@ func enableTrzsz(args *sshArgs, ss *sshClientSession) error {
 		EnableOSC52:     enableOSC52,
 	})
 
+	// reset terminal on exit
+	onExitFuncs = append(onExitFuncs, func() {
+		trzszFilter.ResetTerminal()
+	})
+
 	// reset terminal size on resize
 	onTerminalResize(func(width, height int) {
 		trzszFilter.SetTerminalColumns(int32(width))
@@ -181,12 +186,19 @@ func enableTrzsz(args *sshArgs, ss *sshClientSession) error {
 
 	// setup trzsz config
 	trzszFilter.SetDefaultUploadPath(userConfig.defaultUploadPath)
-	trzszFilter.SetDefaultDownloadPath(userConfig.defaultDownloadPath)
+
+	downloadPath := args.DownloadPath
+	if downloadPath == "" {
+		downloadPath = userConfig.defaultDownloadPath
+	}
+	trzszFilter.SetDefaultDownloadPath(downloadPath)
+
 	dragFileUploadCommand := getExOptionConfig(args, "DragFileUploadCommand")
 	if dragFileUploadCommand == "" {
 		dragFileUploadCommand = userConfig.dragFileUploadCommand
 	}
 	trzszFilter.SetDragFileUploadCommand(dragFileUploadCommand)
+
 	trzszFilter.SetProgressColorPair(userConfig.progressColorPair)
 
 	// setup tunnel connect

@@ -318,6 +318,18 @@ trzsz-ssh ( tssh ) is an ssh client designed as a drop-in replacement for the op
     EnableTrzsz No
   ```
 
+- You can use the `--upload-file` argument to specify file or directory to upload directly in the command line, and you can specify the `trz` upload command arguments and save path after the server, such as:
+
+  ```sh
+  tssh --upload-file /path/to/file1 --upload-file /path/to/dir2 xxx_server '~/.local/bin/trz -d /tmp/'
+  ```
+
+- You can use `tsz` in the command line to directly download files and directories to your local computer. You can also use the `--download-path` argument to specify the path for local saving, such as:
+
+  ```sh
+  tssh -t --client --download-path /tmp/ xxx_server 'tsz -d /path/to/file1 /path/to/dir2'
+  ```
+
 ![tssh trzsz](https://trzsz.github.io/images/tssh_trzsz.gif)
 
 ## Support zmodem
@@ -352,6 +364,18 @@ trzsz-ssh ( tssh ) is an ssh client designed as a drop-in replacement for the op
 - If you want to temporarily enable the zmodem ( rz / sz ) feature, use `tssh --zmodem` to log in.
 
 - About the progress, the transferred and speed are not precise. It just indicating that the transfer is in progress.
+
+- You can use the `--upload-file` argument to specify file to upload directly in the command line, and `cd` to the save path and specify the `rz` command with arguments after the server, such as:
+
+  ```sh
+  tssh --upload-file /path/to/file1 --upload-file /path/to/file2 xxx_server 'cd /tmp/ && rz -yeb'
+  ```
+
+- You can use `sz` in the command line to directly download files to your local computer. You can also use the `--download-path` argument to specify the path for local saving, such as:
+
+  ```sh
+  tssh -t --client --zmodem --download-path /tmp/ xxx_server 'sz /path/to/file1 /path/to/file2'
+  ```
 
 ## Batch Login
 

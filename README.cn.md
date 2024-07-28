@@ -318,6 +318,18 @@ trzsz-ssh ( tssh ) 设计为 ssh 客户端的直接替代品，提供与 openssh
     EnableTrzsz No
   ```
 
+- 可使用 `--upload-file` 参数在命令行中指定文件或目录直接上传，也可在服务器后面指定 `trz` 上传命令参数和保存路径，如：
+
+  ```sh
+  tssh --upload-file /path/to/file1 --upload-file /path/to/dir2 xxx_server '~/.local/bin/trz -d /tmp/'
+  ```
+
+- 可在命令行中使用 `tsz` 直接下载文件或目录到本地，可一并使用 `--download-path` 参数指定本地保存的路径，如：
+
+  ```sh
+  tssh -t --client --download-path /tmp/ xxx_server 'tsz -d /path/to/file1 /path/to/dir2'
+  ```
+
 ![tssh trzsz](https://trzsz.github.io/images/tssh_trzsz.gif)
 
 ## 支持 zmodem
@@ -352,6 +364,18 @@ trzsz-ssh ( tssh ) 设计为 ssh 客户端的直接替代品，提供与 openssh
 - 如果只是想临时启用 `rz / sz` 传文件功能，可以在命令行中使用 `tssh --zmodem` 登录服务器。
 
 - 关于 `rz / sz` 进度条，己传大小和传输速度会有一点偏差，它的主要作用只是指示传输正在进行中。
+
+- 可使用 `--upload-file` 参数在命令行中指定文件直接上传，在服务器后面 `cd` 到保存路径再指定 `rz` 命令及参数即可，如：
+
+  ```sh
+  tssh --upload-file /path/to/file1 --upload-file /path/to/file2 xxx_server 'cd /tmp/ && rz -yeb'
+  ```
+
+- 可在命令行中使用 `sz` 直接下载文件到本地，可一并使用 `--download-path` 参数指定本地保存的路径，如：
+
+  ```sh
+  tssh -t --client --zmodem --download-path /tmp/ xxx_server 'sz /path/to/file1 /path/to/file2'
+  ```
 
 ## 批量登录
 

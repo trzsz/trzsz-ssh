@@ -120,7 +120,7 @@ var isTerminal bool = isatty.IsTerminal(os.Stdin.Fd()) || isatty.IsCygwinTermina
 func TsshMain(argv []string) int {
 	// parse ssh args
 	var args sshArgs
-	parser, err := arg.NewParser(arg.Config{Out: os.Stderr, Exit: os.Exit}, &args)
+	parser, err := arg.NewParser(arg.Config{HideLongOptions: true, Out: os.Stderr, Exit: os.Exit}, &args)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return -1
@@ -194,17 +194,16 @@ func TsshMain(argv []string) int {
 	args.originalDest = dest
 
 	// start ssh program
-	if err = sshStart(&args); err != nil {
-		return 6
-	}
-	return 0
+	var code int
+	code, err = sshStart(&args)
+	return code
 }
 
-func sshStart(args *sshArgs) error {
+func sshStart(args *sshArgs) (int, error) {
 	// ssh login
 	ss, err := sshLogin(args)
 	if err != nil {
-		return err
+		return 10, err
 	}
 	defer ss.Close()
 
@@ -213,18 +212,18 @@ func sshStart(args *sshArgs) error {
 		var wg *sync.WaitGroup
 		wg, err = stdioForward(ss.client, args.StdioForward)
 		if err != nil {
-			return err
+			return 11, err
 		}
 		cleanupAfterLogin()
 		wg.Wait()
-		return nil
+		return 0, nil
 	}
 
 	// not executing remote command
 	if args.NoCommand {
 		cleanupAfterLogin()
 		_ = ss.client.Wait()
-		return nil
+		return 0, nil
 	}
 
 	// set terminal title
@@ -236,16 +235,18 @@ func sshStart(args *sshArgs) error {
 	}
 
 	// execute remote tools if necessary
-	execRemoteTools(args, ss.client)
+	if code, quit := execRemoteTools(args, ss); quit {
+		return code, nil
+	}
 
 	// run command or start shell
 	if ss.cmd != "" {
 		if err := ss.session.Start(ss.cmd); err != nil {
-			return fmt.Errorf("start command [%s] failed: %v", ss.cmd, err)
+			return 12, fmt.Errorf("start command [%s] failed: %v", ss.cmd, err)
 		}
 	} else {
 		if err := ss.session.Shell(); err != nil {
-			return fmt.Errorf("start shell failed: %v", err)
+			return 13, fmt.Errorf("start shell failed: %v", err)
 		}
 	}
 
@@ -256,14 +257,14 @@ func sshStart(args *sshArgs) error {
 	if isTerminal && ss.tty {
 		state, err := makeStdinRaw()
 		if err != nil {
-			return err
+			return 14, err
 		}
 		defer resetStdin(state)
 	}
 
 	// enable trzsz
 	if err := enableTrzsz(args, ss); err != nil {
-		return err
+		return 15, err
 	}
 
 	// cleanup and wait for exit
@@ -277,5 +278,5 @@ func sshStart(args *sshArgs) error {
 	if !isTerminal {
 		outputWaitGroup.Wait()
 	}
-	return nil
+	return 0, nil
 }
