@@ -23,8 +23,8 @@ require (
 	github.com/trzsz/pageant v0.1.1
 	github.com/trzsz/promptui v0.10.7
 	github.com/trzsz/ssh_config v1.3.6
-	github.com/trzsz/trzsz-go v1.1.8-0.20240728122806-7706c75f5426
-	github.com/trzsz/tsshd v0.1.3-0.20240728123755-e3d9535a080b
+	github.com/trzsz/trzsz-go v1.1.8-0.20240802233811-b3066439a5b2
+	github.com/trzsz/tsshd v0.1.3-0.20240802235136-e1e5793fe3f1
 	golang.org/x/crypto v0.25.0
 	golang.org/x/sys v0.22.0
 	golang.org/x/term v0.22.0
@@ -61,15 +61,15 @@ require (
 	github.com/onsi/ginkgo/v2 v2.19.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/quic-go/quic-go v0.45.1 // indirect
+	github.com/quic-go/quic-go v0.45.2 // indirect
 	github.com/randall77/makefat v0.0.0-20210315173500-7ddd0e42c844 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/templexxx/cpu v0.1.1-0.20240303154708-598a14b050c5 // indirect
 	github.com/templexxx/xorsimd v0.4.2 // indirect
 	github.com/tjfoc/gmsm v1.4.1 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
-	github.com/xtaci/kcp-go/v5 v5.6.11 // indirect
-	github.com/xtaci/smux v1.5.25 // indirect
+	github.com/xtaci/kcp-go/v5 v5.6.12 // indirect
+	github.com/xtaci/smux v1.5.27 // indirect
 	go.uber.org/mock v0.4.0 // indirect
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56 // indirect
 	golang.org/x/image v0.18.0 // indirect
