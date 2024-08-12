@@ -25,15 +25,17 @@ SOFTWARE.
 package tssh
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"math"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
-	"github.com/charmbracelet/bubbletea"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -459,6 +461,20 @@ func execLocalTools(argv []string, args *sshArgs) (int, bool) {
 		return execEncodeSecret()
 	case args.NewHost || len(argv) == 0 && isFileNotExistOrEmpty(userConfig.configPath):
 		return execNewHost(args)
+	case args.ListHosts:
+		hosts := getAllHosts()
+		result, err := json.MarshalIndent(hosts, "", "  ")
+		if err != nil {
+			panic(err)
+		}
+
+		hostsJson := string(result)
+		if runtime.GOOS == "windows" {
+			hostsJson = strings.ReplaceAll(hostsJson, "\n", "\r\n")
+		}
+		fmt.Println(hostsJson)
+
+		return 0, true
 	default:
 		return 0, false
 	}

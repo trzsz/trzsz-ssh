@@ -94,6 +94,7 @@ type sshArgs struct {
 	TsshdBinPath   string      `arg:"--tsshd-bin-path" placeholder:"path" help:"[tools] tsshd binary installation package path"`
 	UploadFile     multiStr    `arg:"--upload-file" placeholder:"path" help:"[tools] upload the local file to remote server"`
 	DownloadPath   string      `arg:"--download-path" placeholder:"path" help:"[tools] the local saving path for downloading"`
+	ListHosts      bool        `arg:"--list-hosts" help:"[tools] list all hosts in configuration"`
 	originalDest   string
 }
 
