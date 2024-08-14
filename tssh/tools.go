@@ -463,9 +463,14 @@ func execLocalTools(argv []string, args *sshArgs) (int, bool) {
 		return execNewHost(args)
 	case args.ListHosts:
 		hosts := getAllHosts()
+
+		if hosts == nil {
+			hosts = []*sshHost{}
+		}
 		result, err := json.MarshalIndent(hosts, "", "  ")
 		if err != nil {
-			panic(err)
+			warning("json marshal indent failed: %v", err)
+			return 1, true
 		}
 
 		hostsJson := string(result)

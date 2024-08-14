@@ -64,7 +64,7 @@ type sshHost struct {
 	ProxyJump     string
 	RemoteCommand string
 	GroupLabels   string
-	Selected      bool
+	Selected      bool `json:"-"`
 }
 
 type tsshConfig struct {
