@@ -25,12 +25,10 @@ SOFTWARE.
 package tssh
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"math"
 	"os"
-	"runtime"
 	"strings"
 	"time"
 
@@ -462,24 +460,7 @@ func execLocalTools(argv []string, args *sshArgs) (int, bool) {
 	case args.NewHost || len(argv) == 0 && isFileNotExistOrEmpty(userConfig.configPath):
 		return execNewHost(args)
 	case args.ListHosts:
-		hosts := getAllHosts()
-
-		if hosts == nil {
-			hosts = []*sshHost{}
-		}
-		result, err := json.MarshalIndent(hosts, "", "  ")
-		if err != nil {
-			warning("json marshal indent failed: %v", err)
-			return 1, true
-		}
-
-		hostsJson := string(result)
-		if runtime.GOOS == "windows" {
-			hostsJson = strings.ReplaceAll(hostsJson, "\n", "\r\n")
-		}
-		fmt.Println(hostsJson)
-
-		return 0, true
+		return execListHosts()
 	default:
 		return 0, false
 	}
