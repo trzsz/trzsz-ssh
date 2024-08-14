@@ -85,6 +85,7 @@ type sshArgs struct {
 	TsshdPath      string      `arg:"--tsshd-path" placeholder:"path" help:"[udp] tsshd absolute path on the server"`
 	NewHost        bool        `arg:"--new-host" help:"[tools] add new host to configuration"`
 	EncSecret      bool        `arg:"--enc-secret" help:"[tools] encode secret for configuration"`
+	ListHosts      bool        `arg:"--list-hosts" help:"[tools] list all hosts in configuration"`
 	InstallTrzsz   bool        `arg:"--install-trzsz" help:"[tools] install trzsz to the remote server"`
 	InstallTsshd   bool        `arg:"--install-tsshd" help:"[tools] install tsshd to the remote server"`
 	InstallPath    string      `arg:"--install-path" placeholder:"path" help:"[tools] install path, default: '~/.local/bin/'"`

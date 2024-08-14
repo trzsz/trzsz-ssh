@@ -33,7 +33,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
-	"github.com/charmbracelet/bubbletea"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -459,6 +459,8 @@ func execLocalTools(argv []string, args *sshArgs) (int, bool) {
 		return execEncodeSecret()
 	case args.NewHost || len(argv) == 0 && isFileNotExistOrEmpty(userConfig.configPath):
 		return execNewHost(args)
+	case args.ListHosts:
+		return execListHosts()
 	default:
 		return 0, false
 	}
