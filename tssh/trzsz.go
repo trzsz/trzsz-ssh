@@ -185,11 +185,18 @@ func enableTrzsz(args *sshArgs, ss *sshClientSession) error {
 	})
 
 	// setup trzsz config
-	trzszFilter.SetDefaultUploadPath(userConfig.defaultUploadPath)
+	defaultUploadPath := getExOptionConfig(args, "DefaultUploadPath")
+	if defaultUploadPath == "" {
+		defaultUploadPath = userConfig.defaultUploadPath
+	}
+	trzszFilter.SetDefaultUploadPath(defaultUploadPath)
 
 	downloadPath := args.DownloadPath
 	if downloadPath == "" {
-		downloadPath = userConfig.defaultDownloadPath
+		downloadPath = getExOptionConfig(args, "DefaultDownloadPath")
+		if downloadPath == "" {
+			downloadPath = userConfig.defaultDownloadPath
+		}
 	}
 	trzszFilter.SetDefaultDownloadPath(downloadPath)
 
