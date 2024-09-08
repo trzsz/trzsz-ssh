@@ -648,21 +648,23 @@ func predictDestination(dest string) (string, bool, error) {
 		}
 	}
 
-	match := false
-	keywords := strings.Fields(strings.ToLower(dest))
-	for _, host := range hosts {
-		if matchHost(host, keywords) {
-			match = true
-			break
-		}
-	}
-	if !match {
-		return dest, false, nil
-	}
-
 	if fastLookupHost(dest) {
 		return dest, false, nil
 	}
 
-	return chooseAlias(dest)
+	matchedAliases := make([]string, 0)
+	keywords := strings.Fields(strings.ToLower(dest))
+	for _, host := range hosts {
+		if matchHost(host, keywords) {
+			matchedAliases = append(matchedAliases, host.Alias)
+		}
+	}
+	switch len(matchedAliases) {
+	case 0:
+		return dest, false, nil
+	case 1:
+		return matchedAliases[0], false, nil
+	default:
+		return chooseAlias(dest)
+	}
 }
