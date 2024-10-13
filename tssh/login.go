@@ -1090,8 +1090,7 @@ func sshConnect(args *sshArgs, client SshClient, proxy string) (SshClient, *sshP
 
 func keepAlive(client SshClient, args *sshArgs) {
 	getOptionValue := func(option string) int {
-		value, err := strconv.Atoi(getOptionConfig(args, option))
-		if err != nil {
+		if value, err := strconv.Atoi(getOptionConfig(args, option)); err == nil {
 			return value
 		}
 		return 0
