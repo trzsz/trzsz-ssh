@@ -31,13 +31,42 @@ import (
 	"strings"
 )
 
-// SetDNS sets the net.DefaultResolver to use the given DNS server.
-func SetDNS(dns string) {
-	if !strings.Contains(dns, "://") {
-		dns = "udp://" + dns
+// setDNS sets the net.DefaultResolver to use the given DNS server.
+func setDNS(dns string) error {
+
+	network, dns, err := resolveDnsAddress(dns)
+	if err != nil {
+		return err
+
 	}
 
-	svrParse, _ := url.Parse(dns)
+	net.DefaultResolver = &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, _, addr string) (net.Conn, error) {
+			debug("use custom DNS: %s://%s", network, dns)
+			var d net.Dialer
+			return d.DialContext(ctx, network, dns)
+		},
+	}
+	return nil
+
+}
+
+func resolveDnsAddress(dns string) (string, string, error) {
+
+	var preParseDns string
+	if !strings.Contains(dns, "://") {
+		preParseDns = "udp://" + dns
+	} else {
+		preParseDns = dns
+	}
+
+	svrParse, err := url.Parse(preParseDns)
+	if err != nil {
+		warning("parse dns [%s] failed: %v", dns, err)
+		return "", "", err
+
+	}
 
 	var network string
 	switch strings.ToLower(svrParse.Scheme) {
@@ -55,13 +84,6 @@ func SetDNS(dns string) {
 	}
 
 	dns = net.JoinHostPort(host, port)
+	return network, dns, nil
 
-	net.DefaultResolver = &net.Resolver{
-		PreferGo: true,
-		Dial: func(ctx context.Context, _, addr string) (net.Conn, error) {
-			debug("use custom DNS: %s", dns)
-			var d net.Dialer
-			return d.DialContext(ctx, network, dns)
-		},
-	}
 }
