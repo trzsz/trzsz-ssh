@@ -10,12 +10,12 @@ import (
 func TestDNS(t *testing.T) {
 
 	assert := assert.New(t)
-	assertDestEqual := func(preParseDns, dnsResolution string) {
+	assertDestEqual := func(waitParseDns, expectedDns string) {
 
 		t.Helper()
-		network, dns, err := resolveDnsAddress(preParseDns)
+		network, dns, err := resolveDnsAddress(waitParseDns)
 		assert.Nil(err)
-		assert.Equal(fmt.Sprintf("%s://%s", network, dns), dnsResolution)
+		assert.Equal(expectedDns, fmt.Sprintf("%s://%s", network, dns))
 
 	}
 
