@@ -43,6 +43,7 @@ import (
 
 	"github.com/alessio/shellescape"
 	"github.com/skeema/knownhosts"
+	"github.com/trzsz/ssh_config"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/term"
 )
@@ -1090,15 +1091,23 @@ func sshConnect(args *sshArgs, client SshClient, proxy string) (SshClient, *sshP
 
 func keepAlive(client SshClient, args *sshArgs) {
 	getOptionValue := func(option string) int {
-		if value, err := strconv.Atoi(getOptionConfig(args, option)); err == nil {
-			return value
+		config := getOptionConfig(args, option)
+		if config == "" {
+			return 0
 		}
-		return 0
+		value, err := strconv.Atoi(config)
+		if err != nil {
+			warning("%s [%s] invalid: %v", option, config, err)
+			return 0
+		}
+		return value
 	}
 
+	ssh_config.SetDefault("ServerAliveInterval", "10")
 	serverAliveInterval := getOptionValue("ServerAliveInterval")
 	if serverAliveInterval <= 0 {
-		serverAliveInterval = 10
+		debug("no keep alive")
+		return
 	}
 	serverAliveCountMax := getOptionValue("ServerAliveCountMax")
 	if serverAliveCountMax <= 0 {
