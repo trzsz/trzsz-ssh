@@ -32,11 +32,11 @@ import (
 )
 
 // setDNS sets the net.DefaultResolver to use the given DNS server.
-func setDNS(dns string) error {
+func setDNS(dns string) {
 
 	network, dns, err := resolveDnsAddress(dns)
 	if err != nil {
-		return err
+		return
 
 	}
 
@@ -48,7 +48,6 @@ func setDNS(dns string) error {
 			return d.DialContext(ctx, network, dns)
 		},
 	}
-	return nil
 
 }
 
