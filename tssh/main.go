@@ -193,6 +193,10 @@ func TsshMain(argv []string) int {
 	args.Destination = dest
 	args.originalDest = dest
 
+	if args.Dns != "" {
+		setDNS(args.Dns)
+	}
+
 	// start ssh program
 	var code int
 	code, err = sshStart(&args)
