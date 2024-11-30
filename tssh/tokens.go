@@ -130,6 +130,12 @@ func expandTokens(str string, args *sshArgs, param *sshParam, tokens string) (st
 				hashStr += param.proxy[len(param.proxy)-1]
 			}
 			buf.WriteString(fmt.Sprintf("%x", sha1.Sum([]byte(hashStr))))
+		case 'k':
+			if hostKeyAlias := getOptionConfig(args, "HostKeyAlias"); hostKeyAlias != "" {
+				buf.WriteString(hostKeyAlias)
+			} else {
+				buf.WriteString(args.Destination)
+			}
 		default:
 			return str, fmt.Errorf("token [%%%c] in [%s] is not supported yet", c, str)
 		}
