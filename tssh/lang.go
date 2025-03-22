@@ -27,7 +27,6 @@ package tssh
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 )
 
@@ -90,7 +89,7 @@ func chooseLanguage() {
 		userConfig.language = "chinese"
 	}
 
-	path := filepath.Join(userHomeDir, ".tssh.conf")
+	path := getTsshConfigPath(true)
 	if err := writeLanguage(path, language); err != nil {
 		warning("write language [%s] to %s failed:", language, path, err)
 		return

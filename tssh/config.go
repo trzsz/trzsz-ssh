@@ -98,10 +98,36 @@ type tsshConfig struct {
 
 var userConfig *tsshConfig
 
+func getTsshConfigPath(forCreating bool) string {
+	xdgConfigHome := os.Getenv("XDG_CONFIG_HOME")
+	if xdgConfigHome == "" {
+		xdgConfigHome = filepath.Join(userHomeDir, ".config")
+	}
+	xdgPath := filepath.Join(xdgConfigHome, "tssh/tssh.conf")
+	if isFileExist(xdgPath) {
+		return xdgPath
+	}
+	homePath := filepath.Join(userHomeDir, ".tssh.conf")
+	if isFileExist(homePath) {
+		return homePath
+	}
+	if forCreating {
+		if isFileExist(xdgConfigHome) {
+			cfgPath := filepath.Join(xdgConfigHome, "tssh")
+			if err := os.Mkdir(cfgPath, 0700); err != nil {
+				warning("create config path [%s] failed:", cfgPath, err)
+			}
+			return xdgPath
+		}
+		return homePath
+	}
+	debug("%s or %s does not exist", xdgPath, homePath)
+	return ""
+}
+
 func parseTsshConfig() {
-	path := filepath.Join(userHomeDir, ".tssh.conf")
-	if !isFileExist(path) {
-		debug("%s does not exist", path)
+	path := getTsshConfigPath(false)
+	if path == "" {
 		return
 	}
 

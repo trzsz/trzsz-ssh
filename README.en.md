@@ -182,18 +182,18 @@ trzsz-ssh ( tssh ) is an ssh client designed as a drop-in replacement for the op
 
 ## Custom Theme
 
-- `tssh` supports a few themes. Choose one by setting `PromptThemeLayout` in `~/.tssh.conf`. Welcome to create more and better themes together.
+- `tssh` supports a few themes. Choose one by setting `PromptThemeLayout` in `$XDG_CONFIG_HOME/tssh/tssh.conf` ( or `~/.tssh.conf` ). Welcome to create more and better themes together.
 
-- Each theme supports custom colors. Just configure the `PromptThemeColors` in `~/.tssh.conf` to override the default colors as you prefer.
+- Each theme supports custom colors. Just configure the `PromptThemeColors` in `$XDG_CONFIG_HOME/tssh/tssh.conf` ( or `~/.tssh.conf` ) to override the default colors as you prefer.
 
 - Please [❤️vote❤️](https://github.com/trzsz/trzsz-ssh/issues/75) for your favorite theme. The theme with the highest number of votes will be set as the default theme in the next version.
 
 ### tiny theme
 
-- Configure `PromptThemeLayout = tiny` in `~/.tssh.conf` to choose `tiny theme`.
+- Configure `PromptThemeLayout = tiny` in `$XDG_CONFIG_HOME/tssh/tssh.conf` ( or `~/.tssh.conf` ) to choose `tiny theme`.
   ![tssh tiny](https://trzsz.github.io/images/tssh_tiny.gif)
 
-- Configure `PromptThemeColors` in `~/.tssh.conf` and configure it in one line. `tiny theme` supports the following color items:
+- Configure `PromptThemeColors` in `$XDG_CONFIG_HOME/tssh/tssh.conf` ( or `~/.tssh.conf` ) and configure it in one line. `tiny theme` supports the following color items:
 
   <details><summary><code>tiny theme colors and default values:</code></summary>
 
@@ -250,17 +250,17 @@ trzsz-ssh ( tssh ) is an ssh client designed as a drop-in replacement for the op
 
 ### simple theme
 
-- Configure `PromptThemeLayout = simple` in `~/.tssh.conf` to choose `simple theme`.
+- Configure `PromptThemeLayout = simple` in `$XDG_CONFIG_HOME/tssh/tssh.conf` ( or `~/.tssh.conf` ) to choose `simple theme`.
   ![tssh simple](https://trzsz.github.io/images/tssh_simple.gif)
 
 - The custom colors and default values of `simple theme` are exactly the same as the `tiny theme`.
 
 ### table theme
 
-- Configure `PromptThemeLayout = table` in `~/.tssh.conf` to choose `table theme`.
+- Configure `PromptThemeLayout = table` in `$XDG_CONFIG_HOME/tssh/tssh.conf` ( or `~/.tssh.conf` ) to choose `table theme`.
   ![tssh table](https://trzsz.github.io/images/tssh_table.gif)
 
-- Configure `PromptThemeColors` in `~/.tssh.conf` and configure it in one line. `table theme` supports the following color items:
+- Configure `PromptThemeColors` in `$XDG_CONFIG_HOME/tssh/tssh.conf` ( or `~/.tssh.conf` ) and configure it in one line. `table theme` supports the following color items:
 
   <details><summary><code>table theme colors and default values:</code></summary>
 
@@ -622,7 +622,7 @@ trzsz-ssh ( tssh ) is an ssh client designed as a drop-in replacement for the op
 
 ## Custom Configuration
 
-- The following custom configurations are supported in `~/.tssh.conf` (`C:\Users\your_name\.tssh.conf` on Windows):
+- The following custom configurations are supported in `$XDG_CONFIG_HOME/tssh/tssh.conf` ( or `~/.tssh.conf`, `C:\Users\your_name\.tssh.conf` on Windows):
 
   ```
   # SSH configuration path, the default is ~/.ssh/config
@@ -731,7 +731,7 @@ trzsz-ssh ( tssh ) is an ssh client designed as a drop-in replacement for the op
   PROMPT_COMMAND='echo -ne "\033]0;${USER}@${HOSTNAME}: ${PWD}\007"'
   ```
 
-  - If `SetTerminalTitle = Yes` is set in `~/.tssh.conf`, the terminal title is automatically set after login, but `PROMPT_COMMAND` on the server overrides the title set by `tssh`.
+  - If `SetTerminalTitle = Yes` is set in `$XDG_CONFIG_HOME/tssh/tssh.conf` ( or `~/.tssh.conf` ), the terminal title is automatically set after login, but `PROMPT_COMMAND` on the server overrides the title set by `tssh`.
   - `tssh` does not reset to the original title after exiting, you need to set `PROMPT_COMMAND` in the local shell so that it overrides the title set by `tssh`.
 
 ## UDP Mode
