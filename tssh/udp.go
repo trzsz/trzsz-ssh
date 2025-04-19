@@ -246,6 +246,7 @@ func (c *sshUdpClient) udpKeepAlive(udpMode int, totalTimeout, intervalTimeout t
 				return
 			}
 			if udpMode == kUdpModeQuic && elapsedTime > reconnectTimeout {
+				debug("quic try to reconnect")
 				if err := c.client.Reconnect(); err != nil {
 					warning("quic reconnect failed: %v", err)
 				} else {
