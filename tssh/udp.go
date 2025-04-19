@@ -64,6 +64,7 @@ type sshUdpClient struct {
 	channelMap    map[string]chan ssh.NewChannel
 	lastAliveTime atomic.Pointer[time.Time]
 	closed        atomic.Bool
+	reconnecting  atomic.Bool
 }
 
 func (c *sshUdpClient) newStream(cmd string) (stream net.Conn, err error) {
@@ -247,10 +248,9 @@ func (c *sshUdpClient) udpKeepAlive(udpMode int, totalTimeout, intervalTimeout t
 			}
 			if udpMode == kUdpModeQuic && elapsedTime > reconnectTimeout {
 				debug("quic try to reconnect")
-				if err := c.client.Reconnect(); err != nil {
+				c.reconnecting.Store(true)
+				if err := c.client.Reconnect(); err != nil && c.reconnecting.Load() {
 					warning("quic reconnect failed: %v", err)
-				} else {
-					debug("quic successfully reconnected")
 				}
 			}
 		}
@@ -281,6 +281,10 @@ func (c *sshUdpClient) handleBusEvent() {
 		case "alive":
 			now := time.Now()
 			c.lastAliveTime.Store(&now)
+			if c.reconnecting.Load() {
+				c.reconnecting.Store(false)
+				debug("quic successfully reconnected")
+			}
 		default:
 			warning("unknown command bus command: %s", command)
 		}

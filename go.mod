@@ -24,7 +24,7 @@ require (
 	github.com/trzsz/promptui v0.10.8
 	github.com/trzsz/ssh_config v1.3.6
 	github.com/trzsz/trzsz-go v1.1.8
-	github.com/trzsz/tsshd v0.1.4-0.20250419041956-0b2b5187a876
+	github.com/trzsz/tsshd v0.1.4-0.20250419171920-909700138702
 	golang.org/x/crypto v0.37.0
 	golang.org/x/sys v0.32.0
 	golang.org/x/term v0.31.0
