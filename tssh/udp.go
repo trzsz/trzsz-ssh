@@ -844,13 +844,17 @@ func startTsshdServer(args *sshArgs, ss *sshClientSession, udpMode int) (*tsshd.
 	if pos >= 0 {
 		output = output[pos+1:]
 	}
+	pos = strings.LastIndex(output, "}")
+	if pos >= 0 {
+		output = output[:pos+1]
+	}
 	if !strings.HasPrefix(output, "{") || !strings.HasSuffix(output, "}") {
-		return nil, fmt.Errorf("run tsshd failed: %s", output)
+		return nil, fmt.Errorf("run tsshd failed: %s", strconv.QuoteToASCII(output))
 	}
 
 	var info tsshd.ServerInfo
 	if err := json.Unmarshal([]byte(output), &info); err != nil {
-		return nil, fmt.Errorf("json unmarshal [%s] failed: %v", output, err)
+		return nil, fmt.Errorf("json unmarshal [%s] failed: %v", strconv.QuoteToASCII(output), err)
 	}
 
 	return &info, nil
