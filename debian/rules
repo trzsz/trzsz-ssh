@@ -3,4 +3,4 @@ export CGO_ENABLED=0
 export GOCACHE=/tmp/.cache/go-build
 
 %:
-	PATH="/usr/lib/go-1.21/bin:${PATH}" dh $@
+	PATH="/usr/lib/go-1.25/bin:${PATH}" dh $@

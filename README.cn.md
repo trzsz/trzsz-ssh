@@ -119,7 +119,7 @@ trzsz-ssh ( tssh ) 设计为 ssh 客户端的直接替代品，提供与 openssh
 
   </details>
 
-- 用 Go 直接安装（ 要求 go 1.21 以上 ）
+- 用 Go 直接安装（ 要求 go 1.25 以上 ）
 
   <details><summary><code>go install github.com/trzsz/trzsz-ssh/cmd/tssh@latest</code></summary>
 
@@ -131,7 +131,7 @@ trzsz-ssh ( tssh ) 设计为 ssh 客户端的直接替代品，提供与 openssh
 
   </details>
 
-- 用 Go 自己编译（ 要求 go 1.21 以上 ）
+- 用 Go 自己编译（ 要求 go 1.25 以上 ）
 
   <details><summary><code>sudo make install</code></summary>
 

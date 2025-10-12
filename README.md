@@ -144,7 +144,7 @@ trzsz-ssh ( tssh ) offers additional useful features:
 
   </details>
 
-- Install with Go ( Requires go 1.21 or later )
+- Install with Go ( Requires go 1.25 or later )
 
   <details><summary><code>go install github.com/trzsz/trzsz-ssh/cmd/tssh@latest</code></summary>
 
@@ -156,7 +156,7 @@ trzsz-ssh ( tssh ) offers additional useful features:
 
   </details>
 
-- Build from source ( Requires go 1.21 or later )
+- Build from source ( Requires go 1.25 or later )
 
   <details><summary><code>sudo make install</code></summary>
 

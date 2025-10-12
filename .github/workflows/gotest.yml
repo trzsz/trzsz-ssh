@@ -9,7 +9,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.21"
+          go-version: "1.25"
       - name: go test
         run: go test -v -count=1 ./tssh
   go-test-on-macos:
@@ -20,7 +20,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.21"
+          go-version: "1.25"
       - name: go test
         run: go test -v -count=1 ./tssh
   go-test-on-windows:
@@ -31,7 +31,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.21"
+          go-version: "1.25"
       - name: go test
         run: go test -v -count=1 ./tssh
   go-release-snapshot:
@@ -42,7 +42,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.21"
+          go-version: "1.25"
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
@@ -55,15 +55,16 @@ jobs:
       - name: Checkout trzsz-ssh
         uses: actions/checkout@v4
       - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.21"
-      - name: Revert Go1.21
         run: |
-          cd $(go env GOROOT)
-          curl https://github.com/golang/go/commit/9e43850a3298a9b8b1162ba0033d4c53f8637571.diff | patch --verbose -R -p 1
+          wget -q https://github.com/thongtech/go-legacy-win7/releases/download/v1.25.2-1/go-legacy-win7-1.25.2-1.linux_amd64.tar.gz -O /tmp/go.tar.gz
+          tar -C $HOME -xzf /tmp/go.tar.gz
       - name: Build trzsz-ssh
         run: |
+          export GOROOT=$HOME/go-legacy-win7
+          export GOPATH=$HOME/go
+          export PATH=$GOROOT/bin:$GOPATH/bin:$PATH
+          which go
+          go version
           go test -v -count=1 ./tssh
           GOOS=windows GOARCH=386 go build -o tssh_win7_i386/ ./cmd/tssh/
           GOOS=windows GOARCH=amd64 go build -o tssh_win7_x86_64/ ./cmd/tssh/
