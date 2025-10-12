@@ -60,6 +60,9 @@ func TestParseBindCfg(t *testing.T) {
 	assertBindCfg("[fe80::6358:bbae:26f8:7859]:8002", "fe80::6358:bbae:26f8:7859", 8002)
 	assertBindCfg("[12a5:00c8:dae6:bd0a:8312:07f8:bc94:a1d9]:8003", "12a5:00c8:dae6:bd0a:8312:07f8:bc94:a1d9", 8003)
 
+	assertBindCfg("/bind_socket", "/bind_socket", -1)
+	assertBindCfg("/bind/socket", "/bind/socket", -1)
+
 	assertCfgError := func(arg, errMsg string) {
 		t.Helper()
 		_, err := parseBindCfg(arg)
@@ -122,6 +125,15 @@ func TestParseForwardCfg(t *testing.T) {
 	assertForwardCfg("12a5:00c8:dae6:bd0a:8312:07f8:bc94:a1d9/8007 \t ::1/9007", "12a5:00c8:dae6:bd0a:8312:07f8:bc94:a1d9", 8007, "::1", 9007)
 	assertForwardCfg("/8008 \t localhost/9008", "", 8008, "localhost", 9008)
 	assertForwardCfg("*/8009 \t fe80::6358:bbae:26f8:7859/9009", "*", 8009, "fe80::6358:bbae:26f8:7859", 9009)
+
+	assertForwardCfgNil("8000 /forward_socket", nil, 8000, "/forward_socket", -1)
+	assertForwardCfgNil("8000 \t /forward/socket", nil, 8000, "/forward/socket", -1)
+	assertForwardCfg("localhost:8001 /forward_socket", "localhost", 8001, "/forward_socket", -1)
+	assertForwardCfg("localhost:8001 \t /forward/socket", "localhost", 8001, "/forward/socket", -1)
+	assertForwardCfg("/bind_socket localhost:9001", "/bind_socket", -1, "localhost", 9001)
+	assertForwardCfg("/bind/socket \t localhost:9002", "/bind/socket", -1, "localhost", 9002)
+	assertForwardCfg("/bind_socket /forward_socket", "/bind_socket", -1, "/forward_socket", -1)
+	assertForwardCfg("/bind/socket \t /forward/socket", "/bind/socket", -1, "/forward/socket", -1)
 
 	assertArgError := func(arg, errMsg string) {
 		t.Helper()
@@ -187,6 +199,15 @@ func TestParseForwardArg(t *testing.T) {
 	assertForwardCfg("12a5:00c8:dae6:bd0a:8312:07f8:bc94:a1d9/8007/::1/9007", "12a5:00c8:dae6:bd0a:8312:07f8:bc94:a1d9", 8007, "::1", 9007)
 	assertForwardCfg("/8008/localhost/9008", "", 8008, "localhost", 9008)
 	assertForwardCfg("*/8009/fe80::6358:bbae:26f8:7859/9009", "*", 8009, "fe80::6358:bbae:26f8:7859", 9009)
+
+	assertForwardCfgNil("8000:/forward_socket", nil, 8000, "/forward_socket", -1)
+	assertForwardCfgNil("8000:/forward/socket", nil, 8000, "/forward/socket", -1)
+	assertForwardCfg("localhost:8001:/forward_socket", "localhost", 8001, "/forward_socket", -1)
+	assertForwardCfg("localhost:8001:/forward/socket", "localhost", 8001, "/forward/socket", -1)
+	assertForwardCfg("/bind_socket:localhost:9001", "/bind_socket", -1, "localhost", 9001)
+	assertForwardCfg("/bind/socket:localhost:9002", "/bind/socket", -1, "localhost", 9002)
+	assertForwardCfg("/bind_socket:/forward_socket", "/bind_socket", -1, "/forward_socket", -1)
+	assertForwardCfg("/bind/socket:/forward/socket", "/bind/socket", -1, "/forward/socket", -1)
 
 	assertArgError := func(arg, errMsg string) {
 		t.Helper()

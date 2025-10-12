@@ -106,6 +106,14 @@ func cleanupOnExit() {
 	}
 }
 
+var onCloseFuncs []func()
+
+func cleanupOnClose() {
+	for i := len(onCloseFuncs) - 1; i >= 0; i-- {
+		onCloseFuncs[i]()
+	}
+}
+
 var afterLoginFuncs []func()
 
 func cleanupAfterLogin() {
@@ -211,10 +219,13 @@ func sshStart(args *sshArgs) (int, error) {
 	}
 	defer ss.Close()
 
+	// cleanup on close
+	defer cleanupOnClose()
+
 	// stdio forward
 	if args.StdioForward != "" {
 		var wg *sync.WaitGroup
-		wg, err = stdioForward(ss.client, args.StdioForward)
+		wg, err = stdioForward(args, ss.client, args.StdioForward)
 		if err != nil {
 			return 11, err
 		}

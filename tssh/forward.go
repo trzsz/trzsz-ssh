@@ -66,6 +66,7 @@ var doubleIPv6Regexp = regexp.MustCompile(`^\[([:\da-fA-F]+)\]:(\d+):\[([:\da-fA
 var firstIPv6Regexp = regexp.MustCompile(`^\[([:\da-fA-F]+)\]:(\d+):([^:]+):(\d+)$`)
 var secondIPv6Regexp = regexp.MustCompile(`^([^:]+)?:(\d+):\[([:\da-fA-F]+)\]:(\d+)$`)
 var middleIPv6Regexp = regexp.MustCompile(`^(\d+):\[([:\da-fA-F]+)\]:(\d+)$`)
+var unixSocketRegexp = regexp.MustCompile(`^\/.+$`)
 
 func parseBindCfg(s string) (*bindCfg, error) {
 	s = strings.TrimSpace(s)
@@ -99,6 +100,10 @@ func parseBindCfg(s string) (*bindCfg, error) {
 	tokens = strings.Split(s, ":")
 	if len(tokens) == 2 && portOnlyRegexp.MatchString(tokens[1]) {
 		return newBindArg(&tokens[0], tokens[1])
+	}
+
+	if unixSocketRegexp.MatchString(s) {
+		return newBindArg(&s, "-1")
 	}
 
 	return nil, fmt.Errorf("invalid bind specification: %s", s)
@@ -139,6 +144,10 @@ func parseForwardCfg(s string) (*forwardCfg, error) {
 	tokens = strings.Split(dest, ":")
 	if len(tokens) == 2 && portOnlyRegexp.MatchString(tokens[1]) {
 		return newForwardCfg(tokens[0], tokens[1])
+	}
+
+	if unixSocketRegexp.MatchString(dest) {
+		return newForwardCfg(dest, "-1")
 	}
 
 	return nil, fmt.Errorf("invalid forward config: %s", s)
@@ -196,6 +205,19 @@ func parseForwardArg(s string) (*forwardCfg, error) {
 		return newForwardCfg(&tokens[0], tokens[1], tokens[2], tokens[3])
 	}
 
+	if len(tokens) == 2 && portOnlyRegexp.MatchString(tokens[0]) && unixSocketRegexp.MatchString(tokens[1]) {
+		return newForwardCfg(nil, tokens[0], tokens[1], "-1")
+	}
+	if len(tokens) == 3 && portOnlyRegexp.MatchString(tokens[1]) && unixSocketRegexp.MatchString(tokens[2]) {
+		return newForwardCfg(&tokens[0], tokens[1], tokens[2], "-1")
+	}
+	if len(tokens) == 3 && portOnlyRegexp.MatchString(tokens[2]) && unixSocketRegexp.MatchString(tokens[0]) {
+		return newForwardCfg(&tokens[0], "-1", tokens[1], tokens[2])
+	}
+	if len(tokens) == 2 && unixSocketRegexp.MatchString(tokens[0]) && unixSocketRegexp.MatchString(tokens[1]) {
+		return newForwardCfg(&tokens[0], "-1", tokens[1], "-1")
+	}
+
 	return nil, fmt.Errorf("invalid forward specification: %s", s)
 }
 
@@ -211,6 +233,9 @@ func listenOnLocal(args *sshArgs, addr *string, port string) (listeners []net.Li
 		} else {
 			debug("forward listen on local %s '%s' success", network, address)
 			listeners = append(listeners, listener)
+			onCloseFuncs = append(onCloseFuncs, func() {
+				_ = listener.Close()
+			})
 		}
 	}
 	if addr == nil && isGatewayPorts(args) || addr != nil && (*addr == "" || *addr == "*") {
@@ -221,6 +246,10 @@ func listenOnLocal(args *sshArgs, addr *string, port string) (listeners []net.Li
 	if addr == nil {
 		listen("tcp4", joinHostPort("127.0.0.1", port))
 		listen("tcp6", joinHostPort("::1", port))
+		return
+	}
+	if strings.HasPrefix(*addr, "/") && port == "-1" {
+		listen("unix", *addr)
 		return
 	}
 	listen("tcp", joinHostPort(*addr, port))
@@ -235,6 +264,9 @@ func listenOnRemote(args *sshArgs, client SshClient, addr *string, port string) 
 		} else {
 			debug("forward listen on remote %s '%s' success", network, address)
 			listeners = append(listeners, listener)
+			onCloseFuncs = append(onCloseFuncs, func() {
+				_ = listener.Close()
+			})
 		}
 	}
 	if addr == nil && isGatewayPorts(args) || addr != nil && (*addr == "" || *addr == "*") {
@@ -247,12 +279,16 @@ func listenOnRemote(args *sshArgs, client SshClient, addr *string, port string) 
 		listen("tcp6", joinHostPort("::1", port))
 		return
 	}
+	if strings.HasPrefix(*addr, "/") && port == "-1" {
+		listen("unix", *addr)
+		return
+	}
 	listen("tcp", joinHostPort(*addr, port))
 	return
 }
 
-func stdioForward(client SshClient, addr string) (*sync.WaitGroup, error) {
-	conn, err := client.DialTimeout("tcp", addr, 10*time.Second)
+func stdioForward(args *sshArgs, client SshClient, addr string) (*sync.WaitGroup, error) {
+	conn, err := client.DialTimeout("tcp", addr, getConnectTimeout(args))
 	if err != nil {
 		return nil, fmt.Errorf("stdio forward failed: %v", err)
 	}
@@ -287,7 +323,7 @@ func dynamicForward(client SshClient, b *bindCfg, args *sshArgs) {
 	server, err := socks5.New(&socks5.Config{
 		Resolver: &sshResolver{},
 		Dial: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			return client.DialTimeout(network, addr, 10*time.Second)
+			return client.DialTimeout(network, addr, getConnectTimeout(args))
 		},
 		Logger: log.New(io.Discard, "", log.LstdFlags),
 	})
@@ -335,7 +371,15 @@ func netForward(local, remote net.Conn) {
 }
 
 func localForward(client SshClient, f *forwardCfg, args *sshArgs) {
-	remoteAddr := joinHostPort(f.destHost, strconv.Itoa(f.destPort))
+	var network, remoteAddr string
+	if f.destPort == -1 && strings.HasPrefix(f.destHost, "/") {
+		network = "unix"
+		remoteAddr = f.destHost
+	} else {
+		network = "tcp"
+		remoteAddr = joinHostPort(f.destHost, strconv.Itoa(f.destPort))
+	}
+	timeout := getConnectTimeout(args)
 	for _, listener := range listenOnLocal(args, f.bindAddr, strconv.Itoa(f.bindPort)) {
 		go func(listener net.Listener) {
 			defer listener.Close()
@@ -348,9 +392,9 @@ func localForward(client SshClient, f *forwardCfg, args *sshArgs) {
 					debug("local forward accept failed: %v", err)
 					continue
 				}
-				remote, err := client.DialTimeout("tcp", remoteAddr, 10*time.Second)
+				remote, err := client.DialTimeout(network, remoteAddr, timeout)
 				if err != nil {
-					debug("local forward dial [%s] failed: %v", remoteAddr, err)
+					debug("local forward dial [%s][%s] failed: %v", network, remoteAddr, err)
 					local.Close()
 					continue
 				}
@@ -361,7 +405,15 @@ func localForward(client SshClient, f *forwardCfg, args *sshArgs) {
 }
 
 func remoteForward(client SshClient, f *forwardCfg, args *sshArgs) {
-	localAddr := joinHostPort(f.destHost, strconv.Itoa(f.destPort))
+	var network, localAddr string
+	if f.destPort == -1 && strings.HasPrefix(f.destHost, "/") {
+		network = "unix"
+		localAddr = f.destHost
+	} else {
+		network = "tcp"
+		localAddr = joinHostPort(f.destHost, strconv.Itoa(f.destPort))
+	}
+	timeout := getConnectTimeout(args)
 	for _, listener := range listenOnRemote(args, client, f.bindAddr, strconv.Itoa(f.bindPort)) {
 		go func(listener net.Listener) {
 			defer listener.Close()
@@ -374,9 +426,9 @@ func remoteForward(client SshClient, f *forwardCfg, args *sshArgs) {
 					debug("remote forward accept failed: %v", err)
 					continue
 				}
-				local, err := net.DialTimeout("tcp", localAddr, 10*time.Second)
+				local, err := net.DialTimeout(network, localAddr, timeout)
 				if err != nil {
-					debug("remote forward dial [%s] failed: %v", localAddr, err)
+					debug("remote forward dial [%s][%s] failed: %v", network, localAddr, err)
 					remote.Close()
 					continue
 				}
