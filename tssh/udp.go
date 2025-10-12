@@ -52,6 +52,36 @@ const kDefaultUdpAliveTimeout = 100 * time.Second
 
 const kDefaultQuicAliveTimeout = 24 * time.Hour
 
+type trzszVersion [3]uint32
+
+func parseTrzszVersion(ver string) (*trzszVersion, error) {
+	tokens := strings.Split(ver, ".")
+	if len(tokens) != 3 {
+		return nil, fmt.Errorf("Version [%s] invalid", ver)
+	}
+	var version trzszVersion
+	for i := range 3 {
+		v, err := strconv.ParseUint(tokens[i], 10, 32)
+		if err != nil {
+			return nil, fmt.Errorf("Version [%s] invalid", ver)
+		}
+		version[i] = uint32(v)
+	}
+	return &version, nil
+}
+
+func (v *trzszVersion) compare(ver *trzszVersion) int {
+	for i := range 3 {
+		if v[i] < ver[i] {
+			return -1
+		}
+		if v[i] > ver[i] {
+			return 1
+		}
+	}
+	return 0
+}
+
 type sshUdpClient struct {
 	client        tsshd.Client
 	wg            sync.WaitGroup
@@ -65,6 +95,7 @@ type sshUdpClient struct {
 	lastAliveTime atomic.Pointer[time.Time]
 	closed        atomic.Bool
 	reconnecting  atomic.Bool
+	tsshdVersion  *trzszVersion
 }
 
 func (c *sshUdpClient) newStream(cmd string) (stream net.Conn, err error) {
@@ -238,6 +269,10 @@ func (c *sshUdpClient) udpKeepAlive(udpMode int, totalTimeout, intervalTimeout t
 			}
 		}
 	}()
+	needToReconnect := udpMode == kUdpModeQuic
+	if c.tsshdVersion.compare(&trzszVersion{0, 1, 3}) <= 0 {
+		needToReconnect = false
+	}
 	for {
 		if t := c.lastAliveTime.Load(); t != nil {
 			elapsedTime := time.Since(*t)
@@ -246,7 +281,7 @@ func (c *sshUdpClient) udpKeepAlive(udpMode int, totalTimeout, intervalTimeout t
 				c.exit(125)
 				return
 			}
-			if udpMode == kUdpModeQuic && elapsedTime > reconnectTimeout {
+			if needToReconnect && elapsedTime > reconnectTimeout {
 				debug("quic try to reconnect")
 				c.reconnecting.Store(true)
 				if err := c.client.Reconnect(); err != nil && c.reconnecting.Load() {
@@ -726,15 +761,20 @@ func sshUdpLogin(args *sshArgs, ss *sshClientSession, udpMode int) (*sshClientSe
 	if err != nil {
 		return nil, err
 	}
+	tsshdVersion, err := parseTrzszVersion(serverInfo.Ver)
+	if err != nil {
+		return nil, err
+	}
 	client, err := tsshd.NewClient(ss.param.host, serverInfo)
 	if err != nil {
 		return nil, err
 	}
 
 	udpClient := sshUdpClient{
-		client:     client,
-		sessionMap: make(map[uint64]*sshUdpSession),
-		channelMap: make(map[string]chan ssh.NewChannel),
+		client:       client,
+		sessionMap:   make(map[uint64]*sshUdpSession),
+		channelMap:   make(map[string]chan ssh.NewChannel),
+		tsshdVersion: tsshdVersion,
 	}
 
 	busStream, err := udpClient.newStream("bus")
