@@ -247,10 +247,14 @@ func (c *sshClientWrapper) DialTimeout(network, addr string, timeout time.Durati
 		conn, err = c.client.Dial(network, addr)
 		done <- struct{}{}
 	}()
-	select {
-	case <-time.After(timeout):
-		err = fmt.Errorf("dial [%s] timeout", addr)
-	case <-done:
+	if timeout > 0 {
+		select {
+		case <-time.After(timeout):
+			err = fmt.Errorf("dial [%s] timeout", addr)
+		case <-done:
+		}
+	} else {
+		<-done
 	}
 	return
 }

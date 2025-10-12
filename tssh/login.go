@@ -938,10 +938,14 @@ func (c *connWithTimeout) Read(b []byte) (n int, err error) {
 		n, err = c.Conn.Read(b)
 		done <- struct{}{}
 	}()
-	select {
-	case <-time.After(c.timeout):
-		err = fmt.Errorf("first read timeout")
-	case <-done:
+	if c.timeout > 0 {
+		select {
+		case <-time.After(c.timeout):
+			err = fmt.Errorf("first read timeout")
+		case <-done:
+		}
+	} else {
+		<-done
 	}
 	c.firstRead = false
 	return
@@ -993,6 +997,21 @@ func getNetworkAddressFamily(args *sshArgs) string {
 	}
 }
 
+var kDefaultConnectTimeout = 10 * time.Second
+
+func getConnectTimeout(args *sshArgs) time.Duration {
+	connectTimeout := getOptionConfig(args, "ConnectTimeout")
+	if connectTimeout == "" {
+		return kDefaultConnectTimeout
+	}
+	value, err := strconv.Atoi(connectTimeout)
+	if err != nil {
+		warning("ConnectTimeout [%s] invalid: %v", connectTimeout, err)
+		return kDefaultConnectTimeout
+	}
+	return time.Duration(value) * time.Second
+}
+
 func sshConnect(args *sshArgs, client SshClient, proxy string) (SshClient, *sshParam, bool, error) {
 	param, err := getSshParam(args)
 	if err != nil {
@@ -1014,7 +1033,7 @@ func sshConnect(args *sshArgs, client SshClient, proxy string) (SshClient, *sshP
 	config := &ssh.ClientConfig{
 		User:              param.user,
 		Auth:              authMethods,
-		Timeout:           10 * time.Second,
+		Timeout:           getConnectTimeout(args),
 		HostKeyCallback:   cb,
 		HostKeyAlgorithms: kh.HostKeyAlgorithms(param.addr),
 		BannerCallback: func(banner string) error {
@@ -1031,7 +1050,7 @@ func sshConnect(args *sshArgs, client SshClient, proxy string) (SshClient, *sshP
 
 	proxyConnect := func(client SshClient, proxy string) (SshClient, *sshParam, bool, error) {
 		debug("login to [%s], addr: %s", args.Destination, param.addr)
-		conn, err := client.DialTimeout(network, param.addr, 10*time.Second)
+		conn, err := client.DialTimeout(network, param.addr, config.Timeout)
 		if err != nil {
 			return nil, param, false, fmt.Errorf("proxy [%s] dial tcp [%s] failed: %v", proxy, param.addr, err)
 		}
@@ -1066,7 +1085,12 @@ func sshConnect(args *sshArgs, client SshClient, proxy string) (SshClient, *sshP
 	// no proxy
 	if len(param.proxy) == 0 {
 		debug("login to [%s], addr: %s", args.Destination, param.addr)
-		conn, err := net.DialTimeout(network, param.addr, config.Timeout)
+		var conn net.Conn
+		if config.Timeout > 0 {
+			conn, err = net.DialTimeout(network, param.addr, config.Timeout)
+		} else {
+			conn, err = net.Dial(network, param.addr)
+		}
 		if err != nil {
 			return nil, param, false, fmt.Errorf("dial tcp [%s] failed: %v", param.addr, err)
 		}
