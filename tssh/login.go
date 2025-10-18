@@ -1009,6 +1009,9 @@ func getConnectTimeout(args *sshArgs) time.Duration {
 		warning("ConnectTimeout [%s] invalid: %v", connectTimeout, err)
 		return kDefaultConnectTimeout
 	}
+	if value <= 0 {
+		return 24 * time.Hour
+	}
 	return time.Duration(value) * time.Second
 }
 

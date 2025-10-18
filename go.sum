@@ -149,8 +149,8 @@ github.com/trzsz/ssh_config v1.3.6 h1:+LBCg2uzhAgw2s19yqeUdD4YwW2z4kvlsXtKB6zDjm
 github.com/trzsz/ssh_config v1.3.6/go.mod h1:uSVHpGOTpBwE1FwyUrtnanlFuxZKt4dvdKFVKe41h58=
 github.com/trzsz/trzsz-go v1.1.8 h1:iygK468Zs5s0aKJ00Cc4xNieT+jCD07OFRqsYgly8X8=
 github.com/trzsz/trzsz-go v1.1.8/go.mod h1:xlsntAycx+F1KojuUPIKpe4XgrKxrUohSGl7RlMT548=
-github.com/trzsz/tsshd v0.1.4-0.20251012043817-c16ce99e18d6 h1:6NUATfS68vFou6mj5loPlXzvOaA2ALLbCzDbxWKeAoc=
-github.com/trzsz/tsshd v0.1.4-0.20251012043817-c16ce99e18d6/go.mod h1:PqM7Nr94faer6rPNRfJ7hUzQpgX9guQEWjjn/FV74UA=
+github.com/trzsz/tsshd v0.1.4-0.20251018170600-cc41910bd8f9 h1:ktCbzZP7c+SsOHbSjG5sKxzrqi8EtgDkj6y59/zwqFI=
+github.com/trzsz/tsshd v0.1.4-0.20251018170600-cc41910bd8f9/go.mod h1:PqM7Nr94faer6rPNRfJ7hUzQpgX9guQEWjjn/FV74UA=
 github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e h1:JVG44RsyaB9T2KIHavMF/ppJZNG9ZpyihvCd0w101no=
 github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e/go.mod h1:RbqR21r5mrJuqunuUZ/Dhy/avygyECGrLceyNeo4LiM=
 github.com/xtaci/kcp-go/v5 v5.6.24 h1:0tZL4NfpoESDrhaScrZfVDnYZ/3LhyVAbN/dQ2b4hbI=
