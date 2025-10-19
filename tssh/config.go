@@ -558,7 +558,7 @@ func appendPromptHosts(hosts []*sshHost, cfgHosts ...*ssh_config.Host) []*sshHos
 				}
 				continue
 			}
-			if strings.ToLower(getConfig(alias, "HideHost")) == "yes" {
+			if strings.ToLower(getExConfig(alias, "HideHost")) == "yes" {
 				continue
 			}
 			hosts = append(hosts, &sshHost{

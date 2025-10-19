@@ -66,12 +66,13 @@ var warning = func(format string, a ...any) {
 }
 
 type sshParam struct {
-	host    string
-	port    string
-	user    string
-	addr    string
-	proxy   []string
-	command string
+	host       string
+	port       string
+	user       string
+	addr       string
+	proxy      []string
+	command    string
+	allProxies []string
 }
 
 func joinHostPort(host, port string) string {
@@ -1015,7 +1016,7 @@ func getConnectTimeout(args *sshArgs) time.Duration {
 	return time.Duration(value) * time.Second
 }
 
-func sshConnect(args *sshArgs, client SshClient, proxy string) (SshClient, *sshParam, bool, error) {
+func sshConnect(args *sshArgs, client SshClient, proxy string, asProxy bool) (SshClient, *sshParam, bool, error) {
 	param, err := getSshParam(args)
 	if err != nil {
 		return nil, nil, false, err
@@ -1102,18 +1103,58 @@ func sshConnect(args *sshArgs, client SshClient, proxy string) (SshClient, *sshP
 			return nil, param, false, fmt.Errorf("new conn [%s] failed: %v", param.addr, err)
 		}
 		debug("login to [%s] success", args.Destination)
-		return sshNewClient(ncc, chans, reqs), param, false, nil
+		client := sshNewClient(ncc, chans, reqs)
+
+		if asProxy { // the first hop as proxy
+			udpMode := getUdpMode(args)
+			if udpMode != kUdpModeNo {
+				client, err = udpConnectAsProxy(args, param, client, udpMode)
+				if err != nil {
+					return nil, param, false, fmt.Errorf("udp login to [%s] failed: %v", args.Destination, err)
+				}
+			}
+		}
+
+		return client, param, false, nil
 	}
 
 	// has proxies
 	var proxyClient SshClient
 	for _, proxy = range param.proxy {
-		proxyClient, _, _, err = sshConnect(&sshArgs{Destination: proxy}, proxyClient, proxy)
+		var proxyParam *sshParam
+		proxyClient, proxyParam, _, err = sshConnect(&sshArgs{Destination: proxy}, proxyClient, proxy, true)
 		if err != nil {
 			return nil, param, false, err
 		}
+		param.allProxies = append(param.allProxies, proxyParam.allProxies...)
+		onExitFuncs = append(onExitFuncs, func() {
+			_ = proxyClient.Close()
+		})
 	}
+	param.allProxies = append(param.allProxies, param.proxy...)
 	return proxyConnect(proxyClient, proxy)
+}
+
+func udpConnectAsProxy(args *sshArgs, param *sshParam, client SshClient, udpMode int) (SshClient, error) {
+	var err error
+	ss := &sshClientSession{client: client, param: param}
+	ss.session, err = ss.client.NewSession()
+	if err != nil {
+		return nil, fmt.Errorf("ssh new session failed: %v", err)
+	}
+	ss.serverOut, err = ss.session.StdoutPipe()
+	if err != nil {
+		return nil, fmt.Errorf("stdout pipe failed: %v", err)
+	}
+	ss.serverErr, err = ss.session.StderrPipe()
+	if err != nil {
+		return nil, fmt.Errorf("stderr pipe failed: %v", err)
+	}
+	clientSession, err := sshUdpLogin(args, ss, udpMode, true)
+	if err != nil {
+		return nil, err
+	}
+	return clientSession.client, nil
 }
 
 func keepAlive(client SshClient, args *sshArgs) {
@@ -1202,13 +1243,18 @@ func sshTcpLogin(args *sshArgs) (ss *sshClientSession, udpMode int, err error) {
 
 	// ssh login
 	var control bool
-	ss.client, ss.param, control, err = sshConnect(args, nil, "")
+	ss.client, ss.param, control, err = sshConnect(args, nil, "", false)
 	if err != nil {
 		return
 	}
 
 	// udp mode ?
 	udpMode = getUdpMode(args)
+	if udpMode != kUdpModeNo && len(ss.param.allProxies) > 0 && strings.ToLower(getExOptionConfig(args, "ForceUDP")) != "yes" {
+		warning("The host [%s] is behind proxy [%s], which probably doesn't support UDP mode, so auto switch to normal mode.",
+			args.Destination, strings.Join(ss.param.allProxies, ","))
+		udpMode = kUdpModeNo
+	}
 
 	// parse cmd and tty
 	ss.cmd, ss.tty, err = parseCmdAndTTY(args, ss.param)
@@ -1281,7 +1327,7 @@ func sshLogin(args *sshArgs) (*sshClientSession, error) {
 	}
 
 	if udpMode != kUdpModeNo {
-		ss, err = sshUdpLogin(args, ss, udpMode)
+		ss, err = sshUdpLogin(args, ss, udpMode, false)
 		if err != nil {
 			return nil, err
 		}

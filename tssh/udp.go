@@ -828,10 +828,10 @@ func (c *sshUdpChannel) Stderr() io.ReadWriter {
 	return nil
 }
 
-func sshUdpLogin(args *sshArgs, ss *sshClientSession, udpMode int) (*sshClientSession, error) {
+func sshUdpLogin(args *sshArgs, ss *sshClientSession, udpMode int, asProxy bool) (*sshClientSession, error) {
 	defer ss.Close()
 
-	udpProxy := strings.ToLower(getOptionConfig(args, "UdpProxy")) != "no"
+	udpProxy := strings.ToLower(getExOptionConfig(args, "UdpProxy")) != "no"
 	serverInfo, err := startTsshdServer(args, ss, udpMode, udpProxy)
 	if err != nil {
 		return nil, err
@@ -880,6 +880,10 @@ func sshUdpLogin(args *sshArgs, ss *sshClientSession, udpMode int) (*sshClientSe
 	}
 
 	go udpClient.handleBusEvent()
+
+	if asProxy {
+		return &sshClientSession{client: &udpClient}, nil
+	}
 
 	// no exit while not executing remote command or running in background
 	if args.NoCommand || args.Background {
