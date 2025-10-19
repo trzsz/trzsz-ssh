@@ -725,13 +725,15 @@ func getPublicKeysAuthMethod(args *sshArgs, param *sshParam) ssh.AuthMethod {
 		}
 	}
 
-	if agentClient := getAgentClient(args, param); agentClient != nil {
-		signers, err := agentClient.Signers()
-		if err != nil {
-			warning("get ssh agent signers failed: %v", err)
-		} else {
-			for _, signer := range signers {
-				addPubKeySigners([]*sshSigner{{path: "ssh-agent", pubKey: signer.PublicKey(), signer: signer}})
+	if strings.ToLower(getOptionConfig(args, "IdentitiesOnly")) != "yes" {
+		if agentClient := getAgentClient(args, param); agentClient != nil {
+			signers, err := agentClient.Signers()
+			if err != nil {
+				warning("get ssh agent signers failed: %v", err)
+			} else {
+				for _, signer := range signers {
+					addPubKeySigners([]*sshSigner{{path: "ssh-agent", pubKey: signer.PublicKey(), signer: signer}})
+				}
 			}
 		}
 	}
