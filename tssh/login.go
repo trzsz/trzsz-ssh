@@ -160,6 +160,18 @@ func getSshParam(args *sshArgs) (*sshParam, error) {
 		}
 	}
 
+	// dns srv
+	if dnsSrvName := getExOptionConfig(args, "DnsSrvName"); dnsSrvName != "" {
+		host, port, err := lookupDnsSrv(dnsSrvName)
+		if err != nil {
+			warning("lookup dns srv [%s] failed: %v", dnsSrvName, err)
+		} else {
+			debug("dns srv [%s] resolves to [%s:%s]", dnsSrvName, host, port)
+			param.host = host
+			param.port = port
+		}
+	}
+
 	// login addr
 	param.addr = joinHostPort(param.host, param.port)
 

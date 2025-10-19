@@ -732,6 +732,18 @@ trzsz-ssh ( tssh ) 设计为 ssh 客户端的直接替代品，提供与 openssh
   - 如果在 `$XDG_CONFIG_HOME/tssh/tssh.conf` ( 或 `~/.tssh.conf` ) 中设置了 `SetTerminalTitle = Yes`，则会在登录后自动设置终端标题，但是服务器上的 `PROMPT_COMMAND` 会覆盖 `tssh` 设置的标题。
   - 在 `tssh` 退出后不会重置为原来的标题，你需要在本地 shell 中设置 `PROMPT_COMMAND`，让它覆盖 `tssh` 设置的标题。
 
+- 支持 DNS SRV，假设你家里有多台主机，但你只有一个公网 IP，你可以像下面这样设置 SRV 记录，并在 `~/.ssh/config` 中类似配置：
+
+  ```sh
+  $ dig +short _ssh._tcp.myhost.mydomain.com SRV
+  1 1 22029 gateway.mydomain.com.
+  ```
+
+  ```
+  Host xxx
+    #!! DnsSrvName myhost.mydomain.com
+  ```
+
 ## UDP 模式
 
 - 在服务器上安装 [tsshd](https://github.com/trzsz/tsshd)，使用 `tssh --udp xxx` 登录服务器，或者如下配置以省略 `--udp` 参数：

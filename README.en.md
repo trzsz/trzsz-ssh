@@ -734,6 +734,18 @@ trzsz-ssh ( tssh ) is an ssh client designed as a drop-in replacement for the op
   - If `SetTerminalTitle = Yes` is set in `$XDG_CONFIG_HOME/tssh/tssh.conf` ( or `~/.tssh.conf` ), the terminal title is automatically set after login, but `PROMPT_COMMAND` on the server overrides the title set by `tssh`.
   - `tssh` does not reset to the original title after exiting, you need to set `PROMPT_COMMAND` in the local shell so that it overrides the title set by `tssh`.
 
+- DNS SRV: Say you have a home network with multiple hosts, but you only have one external IP address. Set up SRV records as follows, and make similar configurations in `~/.ssh/config`:
+
+  ```sh
+  $ dig +short _ssh._tcp.myhost.mydomain.com SRV
+  1 1 22029 gateway.mydomain.com.
+  ```
+
+  ```
+  Host xxx
+    #!! DnsSrvName myhost.mydomain.com
+  ```
+
 ## UDP Mode
 
 - Install [tsshd](https://github.com/trzsz/tsshd) on the server, use `tssh --udp xxx` to login to the server, or configure as follows to omit `--udp`:
