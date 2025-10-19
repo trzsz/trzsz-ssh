@@ -512,6 +512,40 @@ func getSigner(dest string, path string) *sshSigner {
 	return &sshSigner{path: path, pubKey: signer.PublicKey(), signer: signer}
 }
 
+func getSignerWithCert(dest string, path string) []*sshSigner {
+	signer := getSigner(dest, path)
+	if signer == nil {
+		return nil
+	}
+	signers := []*sshSigner{signer}
+	certPath := path + "-cert.pub"
+	if !isFileExist(certPath) {
+		return signers
+	}
+	certBytes, err := os.ReadFile(certPath)
+	if err != nil {
+		warning("read public cert [%s] failed: %v", certPath, err)
+		return signers
+	}
+	certKey, _, _, _, err := ssh.ParseAuthorizedKey(certBytes)
+	if err != nil {
+		warning("parse public cert [%s] failed: %v", certPath, err)
+		return signers
+	}
+	cert, ok := certKey.(*ssh.Certificate)
+	if !ok {
+		warning("public cert [%s] can't be converted to ssh.Certificate", certPath)
+		return signers
+	}
+	certSigner, err := ssh.NewCertSigner(cert, signer)
+	if err != nil {
+		warning("new cert singer [%s] failed: %v", certPath, err)
+		return signers
+	}
+	signers = append(signers, &sshSigner{path: path, pubKey: certSigner.PublicKey(), signer: certSigner})
+	return signers
+}
+
 func readSecret(prompt string) (secret []byte, err error) {
 	fmt.Fprintf(os.Stderr, "%s", prompt)
 	defer fmt.Fprintf(os.Stderr, "\r\n")
@@ -649,8 +683,8 @@ var getDefaultSigners = func() func() []*sshSigner {
 				if !isFileExist(path) {
 					continue
 				}
-				if signer := getSigner(name, path); signer != nil {
-					signers = append(signers, signer)
+				if signer := getSignerWithCert(name, path); len(signer) > 0 {
+					signers = append(signers, signer...)
 				}
 			}
 		})
@@ -704,8 +738,8 @@ func getPublicKeysAuthMethod(args *sshArgs, param *sshParam) ssh.AuthMethod {
 		addPubKeySigners(getDefaultSigners())
 	} else {
 		for _, identity := range identities {
-			if signer := getSigner(args.Destination, identity); signer != nil {
-				addPubKeySigners([]*sshSigner{signer})
+			if signer := getSignerWithCert(args.Destination, identity); len(signer) > 0 {
+				addPubKeySigners(signer)
 			}
 		}
 	}
