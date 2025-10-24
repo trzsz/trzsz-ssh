@@ -37,6 +37,8 @@ import (
 	"time"
 	"unicode"
 
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/google/shlex"
 	"github.com/trzsz/tsshd/tsshd"
 	"golang.org/x/crypto/ssh"
@@ -63,11 +65,14 @@ type sshUdpClient struct {
 	channelMutex   sync.Mutex
 	channelMap     map[string]chan ssh.NewChannel
 	lastAliveTime  atomic.Pointer[time.Time]
+	aliveTimeout   time.Duration
 	closed         atomic.Bool
 	reconnecting   atomic.Bool
-	reconnectFails atomic.Uint64
+	lostConnection atomic.Bool
+	reconnectTimes atomic.Uint64
 	connectTimeout time.Duration
 	mainUdpSession *sshUdpSession
+	reconnectError atomic.Pointer[error]
 }
 
 func (c *sshUdpClient) newStream(cmd string) (stream net.Conn, err error) {
@@ -228,7 +233,7 @@ func (c *sshUdpClient) sendBusMessage(command string, msg any) error {
 	return tsshd.SendMessage(c.busStream, msg)
 }
 
-func (c *sshUdpClient) udpKeepAlive(udpProxy bool, totalTimeout, intervalTimeout time.Duration) {
+func (c *sshUdpClient) udpKeepAlive(udpProxy bool, intervalTimeout time.Duration) {
 	reconnectTimeout := intervalTimeout * 3
 	go func() {
 		for {
@@ -241,11 +246,10 @@ func (c *sshUdpClient) udpKeepAlive(udpProxy bool, totalTimeout, intervalTimeout
 			}
 		}
 	}()
-	var waitForInterrupt atomic.Bool
 	for {
 		if lastAliveTime := c.lastAliveTime.Load(); lastAliveTime != nil {
 			elapsedTime := time.Since(*lastAliveTime)
-			if elapsedTime > totalTimeout {
+			if elapsedTime > c.aliveTimeout {
 				warning("udp keep alive timeout")
 				c.exit(125)
 				return
@@ -254,10 +258,9 @@ func (c *sshUdpClient) udpKeepAlive(udpProxy bool, totalTimeout, intervalTimeout
 			if udpProxy && !c.reconnecting.Load() && elapsedTime > reconnectTimeout {
 				debug("udp try to reconnect")
 				c.reconnecting.Store(true)
+				c.reconnectTimes.Add(1)
 				if err := c.client.Reconnect(); err != nil {
-					if c.reconnectFails.Add(1) == 1 {
-						warning("udp reconnect failed: %v", err)
-					}
+					c.reconnectError.Store(&err)
 				}
 				go func() {
 					time.Sleep(intervalTimeout * 3)
@@ -265,29 +268,9 @@ func (c *sshUdpClient) udpKeepAlive(udpProxy bool, totalTimeout, intervalTimeout
 				}()
 			}
 
-			if c.mainUdpSession != nil && !waitForInterrupt.Load() && elapsedTime > 20*time.Second {
-				oldAliveTime := *lastAliveTime
-				waitForInterrupt.Store(true)
-				go func() {
-					time.Sleep(min(intervalTimeout*3, 10*time.Second))
-					ctrlC := c.mainUdpSession.interceptCtrlC()
-					defer c.mainUdpSession.cancelIntercept()
-					for {
-						if t := c.lastAliveTime.Load(); t != nil && t.After(oldAliveTime) {
-							waitForInterrupt.Store(false)
-							return
-						}
-						select {
-						case _, ok := <-ctrlC:
-							if ok {
-								warning("UDP disconnected and Ctrl+C to exit")
-								c.exit(126)
-								return
-							}
-						case <-time.After(100 * time.Millisecond):
-						}
-					}
-				}()
+			if c.mainUdpSession != nil && !c.lostConnection.Load() && elapsedTime > 15*time.Second {
+				c.lostConnection.Store(true)
+				go c.handleLostConnection(udpProxy)
 			}
 		}
 
@@ -318,10 +301,12 @@ func (c *sshUdpClient) handleBusEvent() {
 		case "alive":
 			now := time.Now()
 			c.lastAliveTime.Store(&now)
-			if c.reconnecting.Load() || c.reconnectFails.Load() > 0 {
+			if c.reconnecting.Load() || c.reconnectTimes.Load() > 0 {
 				debug("udp successfully reconnected")
 				c.reconnecting.Store(false)
-				c.reconnectFails.Store(0)
+				c.reconnectTimes.Store(0)
+				c.reconnectError.Store(nil)
+				c.lostConnection.Store(false)
 			}
 		default:
 			warning("unknown command bus command: %s", command)
@@ -388,6 +373,111 @@ func (c *sshUdpClient) exit(code int) {
 		c.wg.Done()
 	}
 	c.sessionMap = make(map[uint64]*sshUdpSession)
+}
+
+func (c *sshUdpClient) handleLostConnection(udpProxy bool) {
+	ctrlC := c.mainUdpSession.interceptCtrlC()
+	defer c.mainUdpSession.cancelIntercept()
+
+	go func() {
+		for c.lostConnection.Load() {
+			select {
+			case _, ok := <-ctrlC:
+				if ok {
+					warning("UDP disconnected and Ctrl+C to exit")
+					c.exit(126)
+					return
+				}
+			case <-time.After(200 * time.Millisecond):
+			}
+		}
+	}()
+
+	model := &noticeModel{
+		client:      c,
+		udpProxy:    udpProxy,
+		borderStyle: lipgloss.NewStyle().BorderStyle(lipgloss.NormalBorder()).BorderForeground(cyanColor).Padding(0, 1, 0, 1),
+		statusStyle: lipgloss.NewStyle().Foreground(magentaColor),
+		errorStyle:  lipgloss.NewStyle().Foreground(lipgloss.Color("240")),
+		tipsStyle:   lipgloss.NewStyle().Faint(true),
+	}
+	oriDebug, oriWarning := debug, warning
+	defer func() {
+		debug, warning = oriDebug, oriWarning
+	}()
+	debug, warning = model.debug, model.warning
+	tea.NewProgram(model, tea.WithInput(nil)).Run()
+}
+
+type noticeModel struct {
+	client      *sshUdpClient
+	udpProxy    bool
+	borderStyle lipgloss.Style
+	statusStyle lipgloss.Style
+	errorStyle  lipgloss.Style
+	tipsStyle   lipgloss.Style
+	extraMsg    string
+}
+
+func (m *noticeModel) Init() tea.Cmd {
+	return tickEvery(200 * time.Millisecond)
+}
+
+func (m *noticeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if !m.client.lostConnection.Load() {
+		return m, tea.Quit
+	}
+	if _, ok := msg.(tickMsg); ok {
+		return m, tickEvery(200 * time.Millisecond)
+	}
+	return m, nil
+}
+
+func (m *noticeModel) View() string {
+	var buf strings.Builder
+	if !m.client.lostConnection.Load() {
+		if !m.udpProxy {
+			return ""
+		}
+		buf.WriteString(m.statusStyle.Render("Reconnected to the server, you can refresh your screen to continue..."))
+		buf.WriteString("\r\n")
+		buf.WriteString(m.tipsStyle.Render("Press Enter or Ctrl+C on the command line, type :mode in vim, etc."))
+		return m.borderStyle.Render(buf.String()) + "\r\n"
+	}
+
+	if t := m.client.lastAliveTime.Load(); t != nil {
+		format := "Oops, looks like the connection to the server was lost, trying to reconnect for %d/%d seconds."
+		if !m.udpProxy {
+			format = "Oops, looks like the connection to the server was lost, auto exit countdown %d/%d seconds."
+		}
+		buf.WriteString(m.statusStyle.Render(fmt.Sprintf(format, time.Now().Sub(*t)/time.Second, m.client.aliveTimeout/time.Second)))
+		buf.WriteString("\r\n")
+	}
+	if err := m.client.reconnectError.Load(); err != nil {
+		buf.WriteString(m.errorStyle.Render("Last reconnect error: " + (*err).Error()))
+		buf.WriteString("\r\n")
+	}
+	buf.WriteString(m.tipsStyle.Render("No longer need to reconnect to the server? Press Ctrl+C to exit."))
+	if m.extraMsg != "" {
+		buf.WriteString("\r\n")
+		buf.WriteString(m.extraMsg)
+	}
+
+	return m.borderStyle.Render(buf.String())
+}
+
+func (m *noticeModel) debug(format string, a ...any) {
+	if !enableDebugLogging {
+		return
+	}
+	m.extraMsg = fmt.Sprintf(fmt.Sprintf("\033[0;36mdebug:\033[0m %s", format), a...)
+}
+
+func (m *noticeModel) warning(format string, a ...any) {
+	if !envbleWarningLogging {
+		return
+	}
+	m.extraMsg = fmt.Sprintf(fmt.Sprintf("\033[0;33mWarning: %s\033[0m", format), a...)
 }
 
 type sshUdpSession struct {
@@ -525,6 +615,23 @@ func (s *sshUdpSession) forwardStdin() {
 	}
 }
 
+func (s *sshUdpSession) forwardStdout() {
+	defer s.stdout.Close()
+	buffer := make([]byte, 32*1024)
+	for {
+		n, err := s.stream.Read(buffer)
+		if n > 0 {
+			for s.intCnt.Load() > 0 {
+				time.Sleep(10 * time.Millisecond)
+			}
+			writeAll(s.stdout, buffer[:n])
+		}
+		if err != nil {
+			break
+		}
+	}
+}
+
 func (s *sshUdpSession) interceptCtrlC() <-chan struct{} {
 	s.intMu.Lock()
 	defer s.intMu.Unlock()
@@ -570,10 +677,7 @@ func (s *sshUdpSession) startSession(msg *tsshd.StartMessage) error {
 		go s.forwardStdin()
 	}
 	if s.stdout != nil {
-		go func() {
-			defer s.stdout.Close()
-			_, _ = io.Copy(s.stdout, s.stream)
-		}()
+		go s.forwardStdout()
 	}
 	return nil
 }
@@ -876,7 +980,8 @@ func sshUdpLogin(args *sshArgs, ss *sshClientSession, udpMode int, asProxy bool)
 	if udpAliveTimeout > 0 {
 		now := time.Now()
 		udpClient.lastAliveTime.Store(&now)
-		go udpClient.udpKeepAlive(udpProxy, udpAliveTimeout, intervalTimeout)
+		udpClient.aliveTimeout = udpAliveTimeout
+		go udpClient.udpKeepAlive(udpProxy, intervalTimeout)
 	}
 
 	go udpClient.handleBusEvent()

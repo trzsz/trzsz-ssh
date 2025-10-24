@@ -51,7 +51,7 @@ import (
 var enableDebugLogging bool = false
 var envbleWarningLogging bool = true
 
-func debug(format string, a ...any) {
+var debug = func(format string, a ...any) {
 	if !enableDebugLogging {
 		return
 	}

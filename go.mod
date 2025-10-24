@@ -5,8 +5,8 @@ go 1.25
 require (
 	github.com/Microsoft/go-winio v0.6.2
 	github.com/alessio/shellescape v1.4.2
-	github.com/charmbracelet/bubbles v0.21.0
-	github.com/charmbracelet/bubbletea v1.3.10
+	github.com/charmbracelet/bubbles v0.20.0
+	github.com/charmbracelet/bubbletea v1.1.2
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/chzyer/readline v1.5.1
 	github.com/creack/pty v1.1.24

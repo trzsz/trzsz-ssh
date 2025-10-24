@@ -753,15 +753,18 @@ trzsz-ssh ( tssh ) is an ssh client designed as a drop-in replacement for the op
   ```
   Host xxx
       #!! UdpMode yes
-      #!! UdpPort 61000-62000
       #!! TsshdPath ~/go/bin/tsshd
+      #!! UdpPort 61000-62000
+      #!! UdpAliveTimeout 86400
   ```
 
 - The `tssh` plays the role of `ssh` on the client side, and the `tsshd` plays the role of `sshd` on the server side.
 
 - The `tssh` will first login to the server normally as an ssh client, and then run a new `tsshd` process on the server.
 
-- The `tsshd` process listens on a random udp port between 61000 and 62000 (can be customized by `UdpPort`), and sends its port number and a secret key back to the `tssh`process over the ssh channel. The ssh connection is then shut down, and the`tssh`process communicates with the`tsshd` process over udp.
+- The `tsshd` process listens on a random udp port between 61000 and 62000 (can be customized by `UdpPort`), and sends its port number and a secret key back to the `tssh` process over the ssh channel. The ssh connection is then shut down, and the `tssh` process communicates with the `tsshd` process over udp.
+
+- The `tsshd` process will exit if the network is disconnected for more than 24 hours by default, and no longer support reconnection. This can be adjusted by modifying the configuration `UdpAliveTimeout` in seconds.
 
 - The `tsshd` supports `QUIC` protocol and `KCP` protocol (the default is `QUIC`), which can be specified on the command line (such as `-oUdpMode=KCP`), or configured as follows:
 
