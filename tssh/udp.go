@@ -436,12 +436,9 @@ func (m *noticeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *noticeModel) View() string {
 	var buf strings.Builder
 	if !m.client.lostConnection.Load() {
-		if !m.udpProxy {
-			return ""
-		}
 		buf.WriteString(m.statusStyle.Render("Reconnected to the server, you can refresh your screen to continue..."))
 		buf.WriteString("\r\n")
-		buf.WriteString(m.tipsStyle.Render("Press Enter or Ctrl+C on the command line, type :mode in vim, etc."))
+		buf.WriteString(m.tipsStyle.Render("Press Enter or Ctrl+C on the command line, type :redraw! in vim, etc."))
 		return m.borderStyle.Render(buf.String()) + "\r\n"
 	}
 
