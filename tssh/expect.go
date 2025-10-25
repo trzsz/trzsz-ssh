@@ -124,6 +124,8 @@ func (s *expectSender) decodeText(text string) []*expectSendText {
 			buf.WriteRune('\r')
 		case 'n':
 			buf.WriteRune('\n')
+		case 't':
+			buf.WriteRune('\t')
 		case '|':
 			texts = append(texts, s.newSendText(text[idx:i-1], buf.String()))
 			idx = i + 1
