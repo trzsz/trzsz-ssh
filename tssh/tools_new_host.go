@@ -55,7 +55,7 @@ func (n *newHostTool) promptConfigPath() {
 			stat, err := os.Stat(path)
 			if os.IsNotExist(err) {
 				dir := filepath.Dir(path)
-				if !isFileExist(dir) {
+				if !isDirExist(dir) {
 					if err := os.MkdirAll(dir, 0700); err != nil {
 						return fmt.Errorf("create directory [%s] failed: %v", dir, err)
 					}

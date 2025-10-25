@@ -485,10 +485,19 @@ func newPassphraseSigner(path string, priKey []byte, err *ssh.PassphraseMissingE
 }
 
 func isFileExist(path string) bool {
-	if _, err := os.Stat(path); os.IsNotExist(err) {
+	stat, _ := os.Stat(path)
+	if stat == nil {
 		return false
 	}
-	return true
+	return !stat.IsDir()
+}
+
+func isDirExist(path string) bool {
+	stat, _ := os.Stat(path)
+	if stat == nil {
+		return false
+	}
+	return stat.IsDir()
 }
 
 func canReadFile(path string) bool {
@@ -768,6 +777,10 @@ func getAuthMethods(args *sshArgs, param *sshParam) []ssh.AuthMethod {
 	var authMethods []ssh.AuthMethod
 	if authMethod := getPublicKeysAuthMethod(args, param); authMethod != nil {
 		debug("add auth method: public key authentication")
+		authMethods = append(authMethods, authMethod)
+	}
+	if authMethod := getGSSAPIWithMICAuthMethod(args, param.host); authMethod != nil {
+		debug("add auth method: gssapi-with-mic authentication")
 		authMethods = append(authMethods, authMethod)
 	}
 	if authMethod := getKeyboardInteractiveAuthMethod(args, param.host, param.user); authMethod != nil {
