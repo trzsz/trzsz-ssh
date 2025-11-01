@@ -158,12 +158,12 @@ func (n *newHostTool) writeHost() {
 		toolsErrorExit("open config file failed: %v", err)
 	}
 	defer file.Close()
-	if _, err := file.WriteString(fmt.Sprintf(`
+	if _, err := fmt.Fprintf(file, `
 Host %s
     HostName %s
     Port %d
     User %s
-`, n.hostAlias, n.hostName, n.hostPort, n.userName)); err != nil {
+`, n.hostAlias, n.hostName, n.hostPort, n.userName); err != nil {
 		toolsErrorExit("write config file failed: %v", err)
 	}
 	if n.password != "" {
@@ -171,8 +171,9 @@ Host %s
 		if err != nil {
 			toolsErrorExit("encode password failed: %v", err)
 		}
-		if _, err := file.WriteString(fmt.Sprintf(`    #!! encPassword %s
-`, secret)); err != nil {
+		if _, err := fmt.Fprintf(file, `    #!! encPassword %s
+    #!! encQuestionAnswer1 %s
+`, secret, secret); err != nil {
 			toolsErrorExit("write config file failed: %v", err)
 		}
 	}
@@ -205,6 +206,13 @@ func execNewHost(args *sshArgs) (int, bool) {
 	n.writeHost()
 
 	if n.loginImmediately() {
+		if n.configPath != userConfig.configPath {
+			args.ConfigFile = n.configPath
+			if err := initUserConfig(args.ConfigFile); err != nil {
+				warning("init user config [%s] failed: %v", args.ConfigFile, err)
+				return 1, true
+			}
+		}
 		args.Destination = n.hostAlias
 		return 0, false
 	}
