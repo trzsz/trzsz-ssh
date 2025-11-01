@@ -437,9 +437,9 @@ func (m *noticeModel) View() string {
 	var buf strings.Builder
 	if !m.client.lostConnection.Load() {
 		buf.WriteString(m.statusStyle.Render("Reconnected to the server, you can refresh your screen to continue..."))
-		buf.WriteString("\r\n")
+		buf.WriteByte('\n')
 		buf.WriteString(m.tipsStyle.Render("Press Enter or Ctrl+C on the command line, type :redraw! in vim, etc."))
-		return m.borderStyle.Render(buf.String()) + "\r\n"
+		return m.borderStyle.Render(buf.String()) + "\n"
 	}
 
 	if t := m.client.lastAliveTime.Load(); t != nil {
@@ -447,16 +447,16 @@ func (m *noticeModel) View() string {
 		if !m.udpProxy {
 			format = "Oops, looks like the connection to the server was lost, auto exit countdown %d/%d seconds."
 		}
-		buf.WriteString(m.statusStyle.Render(fmt.Sprintf(format, time.Now().Sub(*t)/time.Second, m.client.aliveTimeout/time.Second)))
-		buf.WriteString("\r\n")
+		buf.WriteString(m.statusStyle.Render(fmt.Sprintf(format, time.Since(*t)/time.Second, m.client.aliveTimeout/time.Second)))
+		buf.WriteByte('\n')
 	}
 	if err := m.client.reconnectError.Load(); err != nil {
 		buf.WriteString(m.errorStyle.Render("Last reconnect error: " + (*err).Error()))
-		buf.WriteString("\r\n")
+		buf.WriteByte('\n')
 	}
 	buf.WriteString(m.tipsStyle.Render("No longer need to reconnect to the server? Press Ctrl+C to exit."))
 	if m.extraMsg != "" {
-		buf.WriteString("\r\n")
+		buf.WriteByte('\n')
 		buf.WriteString(m.extraMsg)
 	}
 

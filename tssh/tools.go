@@ -173,7 +173,7 @@ func (m *textInputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *textInputModel) View() string {
 	if m.done {
-		return fmt.Sprintf("%s%s%s\r\n\r\n", lipgloss.NewStyle().Foreground(greenColor).Render(m.promptLabel),
+		return fmt.Sprintf("%s%s%s\n\n", lipgloss.NewStyle().Foreground(greenColor).Render(m.promptLabel),
 			lipgloss.NewStyle().Faint(true).Render(": "), m.getValue())
 	}
 
@@ -187,7 +187,7 @@ func (m *textInputModel) View() string {
 	if !m.quit {
 		builder.WriteString(m.textInput.View())
 	}
-	builder.WriteString("\r\n")
+	builder.WriteByte('\n')
 	if m.err != nil {
 		builder.WriteString(lipgloss.NewStyle().Foreground(redColor).Render(m.err.Error()))
 	} else if m.helpMessage != "" {
@@ -318,7 +318,7 @@ func (m *passwordModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *passwordModel) View() string {
 	if m.done {
-		return fmt.Sprintf("%s%s%s\r\n\r\n", lipgloss.NewStyle().Foreground(greenColor).Render(m.promptLabel),
+		return fmt.Sprintf("%s%s%s\n\n", lipgloss.NewStyle().Foreground(greenColor).Render(m.promptLabel),
 			lipgloss.NewStyle().Faint(true).Render(": "), strings.Repeat("*", len(m.passwordInput)))
 	}
 
@@ -333,7 +333,7 @@ func (m *passwordModel) View() string {
 	} else {
 		builder.WriteRune(' ')
 	}
-	builder.WriteString("\r\n")
+	builder.WriteByte('\n')
 	if m.err != nil {
 		builder.WriteString(lipgloss.NewStyle().Foreground(redColor).Render(m.err.Error()))
 	} else if m.helpMessage != "" {
@@ -402,20 +402,20 @@ func (m *listModel) View() string {
 		return ""
 	}
 	var builder strings.Builder
-	builder.WriteString(lipgloss.NewStyle().Foreground(cyanColor).Render(m.promptLabel+":") + "\r\n")
+	builder.WriteString(lipgloss.NewStyle().Foreground(cyanColor).Render(m.promptLabel+":") + "\n")
 	if m.helpMessage != "" {
-		builder.WriteString(lipgloss.NewStyle().Faint(true).Render(m.helpMessage) + "\r\n")
+		builder.WriteString(lipgloss.NewStyle().Faint(true).Render(m.helpMessage) + "\n")
 	}
 	for i, item := range m.items {
 		if i == m.cursor {
 			builder.WriteString(lipgloss.NewStyle().Foreground(magentaColor).
-				Render(fmt.Sprintf("> %s", item)) + "\r\n")
+				Render(fmt.Sprintf("> %s", item)) + "\n")
 		} else {
-			builder.WriteString(lipgloss.NewStyle().Render(fmt.Sprintf("  %s", item)) + "\r\n")
+			builder.WriteString(lipgloss.NewStyle().Render(fmt.Sprintf("  %s", item)) + "\n")
 		}
 	}
 	builder.WriteString(lipgloss.NewStyle().Faint(true).
-		Render("Use ↓ ↑ j k or tab to navigate, Enter to choose.") + "\r\n")
+		Render("Use ↓ ↑ j k or tab to navigate, Enter to choose.") + "\n")
 	return builder.String()
 }
 
