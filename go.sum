@@ -174,10 +174,10 @@ github.com/trzsz/promptui v0.10.8 h1:kM1GbE3hFt9puk7GIeI458Ea/V7yt95NcQEbC3164EQ
 github.com/trzsz/promptui v0.10.8/go.mod h1:9dp59ixe32qBV9GjDxQ1PDWwbzHjTzveZenQwEoVHbg=
 github.com/trzsz/ssh_config v1.3.6 h1:+LBCg2uzhAgw2s19yqeUdD4YwW2z4kvlsXtKB6zDjmQ=
 github.com/trzsz/ssh_config v1.3.6/go.mod h1:uSVHpGOTpBwE1FwyUrtnanlFuxZKt4dvdKFVKe41h58=
-github.com/trzsz/trzsz-go v1.1.8 h1:iygK468Zs5s0aKJ00Cc4xNieT+jCD07OFRqsYgly8X8=
-github.com/trzsz/trzsz-go v1.1.8/go.mod h1:xlsntAycx+F1KojuUPIKpe4XgrKxrUohSGl7RlMT548=
-github.com/trzsz/tsshd v0.1.5 h1:LkQ7Br/YJmIY5Hd3fPrKo5+/ZEIiWn9GZc486butVyc=
-github.com/trzsz/tsshd v0.1.5/go.mod h1:Z20bhbltT4AKzRXUaS9HJbCf8N0qrRchzQL7X3xhsGg=
+github.com/trzsz/trzsz-go v1.1.9-0.20251101033158-688c42a09fb5 h1:vUTElf382H58EaRyT5+C5FD3Xgab3xtQ8NMDQKrWSNA=
+github.com/trzsz/trzsz-go v1.1.9-0.20251101033158-688c42a09fb5/go.mod h1:NJuuOwSVNgMbi6ObItNMyrhKzGFgU9pKx2gE0j6wm9k=
+github.com/trzsz/tsshd v0.1.6-0.20251102150350-af3868ce77b1 h1:nQJMA/mPR4oVympZh1oD/flK3NagYtZXwr2o+fGnUXs=
+github.com/trzsz/tsshd v0.1.6-0.20251102150350-af3868ce77b1/go.mod h1:Z20bhbltT4AKzRXUaS9HJbCf8N0qrRchzQL7X3xhsGg=
 github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e h1:JVG44RsyaB9T2KIHavMF/ppJZNG9ZpyihvCd0w101no=
 github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e/go.mod h1:RbqR21r5mrJuqunuUZ/Dhy/avygyECGrLceyNeo4LiM=
 github.com/xtaci/kcp-go/v5 v5.6.24 h1:0tZL4NfpoESDrhaScrZfVDnYZ/3LhyVAbN/dQ2b4hbI=

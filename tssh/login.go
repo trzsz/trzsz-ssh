@@ -1117,7 +1117,7 @@ func sshConnect(args *sshArgs, client SshClient, proxy string, asProxy bool) (Ss
 		debug("login to [%s], addr: %s", args.Destination, param.addr)
 		conn, err := client.DialTimeout(network, param.addr, config.Timeout)
 		if err != nil {
-			return nil, param, false, fmt.Errorf("proxy [%s] dial tcp [%s] failed: %v", proxy, param.addr, err)
+			return nil, param, false, fmt.Errorf("proxy [%s] dial [%s] [%s] failed: %v", proxy, network, param.addr, err)
 		}
 		ncc, chans, reqs, err := ssh.NewClientConn(&connWithTimeout{conn, config.Timeout, true}, param.addr, config)
 		if err != nil {
@@ -1157,7 +1157,7 @@ func sshConnect(args *sshArgs, client SshClient, proxy string, asProxy bool) (Ss
 			conn, err = net.Dial(network, param.addr)
 		}
 		if err != nil {
-			return nil, param, false, fmt.Errorf("dial tcp [%s] failed: %v", param.addr, err)
+			return nil, param, false, fmt.Errorf("dial [%s] [%s] failed: %v", network, param.addr, err)
 		}
 		ncc, chans, reqs, err := ssh.NewClientConn(&connWithTimeout{conn, config.Timeout, true}, param.addr, config)
 		if err != nil {
@@ -1196,6 +1196,8 @@ func sshConnect(args *sshArgs, client SshClient, proxy string, asProxy bool) (Ss
 	return proxyConnect(proxyClient, proxy)
 }
 
+var firstHopUdpClient *sshUdpClient
+
 func udpConnectAsProxy(args *sshArgs, param *sshParam, client SshClient, udpMode int) (SshClient, error) {
 	var err error
 	ss := &sshClientSession{client: client, param: param}
@@ -1215,6 +1217,7 @@ func udpConnectAsProxy(args *sshArgs, param *sshParam, client SshClient, udpMode
 	if err != nil {
 		return nil, err
 	}
+	firstHopUdpClient = clientSession.client.(*sshUdpClient)
 	return clientSession.client, nil
 }
 
@@ -1312,7 +1315,7 @@ func sshTcpLogin(args *sshArgs) (ss *sshClientSession, udpMode int, err error) {
 	// udp mode ?
 	udpMode = getUdpMode(args)
 	if udpMode != kUdpModeNo && len(ss.param.allProxies) > 0 && strings.ToLower(getExOptionConfig(args, "ForceUDP")) != "yes" {
-		warning("The host [%s] is behind proxy [%s], which probably doesn't support UDP mode, so auto switch to normal mode.",
+		warning("The host [%s] is behind proxy [%s], which probably doesn't support UDP mode, so auto switch to TCP mode.",
 			args.Destination, strings.Join(ss.param.allProxies, ","))
 		udpMode = kUdpModeNo
 	}
@@ -1352,6 +1355,12 @@ func sshTcpLogin(args *sshArgs) (ss *sshClientSession, udpMode int, err error) {
 	if err != nil {
 		err = fmt.Errorf("ssh new session failed: %v", err)
 		return
+	}
+
+	// for UDP connection loss notification
+	if firstHopUdpClient != nil && udpMode == kUdpModeNo {
+		firstHopUdpClient.mainSession = &sshUdpMainSession{SshSession: ss.session, udpClient: firstHopUdpClient}
+		ss.session = firstHopUdpClient.mainSession
 	}
 
 	// session input and output

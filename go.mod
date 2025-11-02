@@ -8,6 +8,7 @@ require (
 	github.com/charmbracelet/bubbles v0.21.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
+	github.com/charmbracelet/x/ansi v0.10.2
 	github.com/chzyer/readline v1.5.1
 	github.com/creack/pty v1.1.24
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
@@ -24,8 +25,8 @@ require (
 	github.com/trzsz/pageant v0.1.1
 	github.com/trzsz/promptui v0.10.8
 	github.com/trzsz/ssh_config v1.3.6
-	github.com/trzsz/trzsz-go v1.1.8
-	github.com/trzsz/tsshd v0.1.5
+	github.com/trzsz/trzsz-go v1.1.9-0.20251101033158-688c42a09fb5
+	github.com/trzsz/tsshd v0.1.6-0.20251102150350-af3868ce77b1
 	golang.org/x/crypto v0.43.0
 	golang.org/x/sys v0.37.0
 	golang.org/x/term v0.36.0
@@ -40,7 +41,6 @@ require (
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/boombuler/barcode v1.1.0 // indirect
 	github.com/charmbracelet/colorprofile v0.3.2 // indirect
-	github.com/charmbracelet/x/ansi v0.10.2 // indirect
 	github.com/charmbracelet/x/cellbuf v0.0.13 // indirect
 	github.com/charmbracelet/x/term v0.2.2 // indirect
 	github.com/clipperhouse/stringish v0.1.1 // indirect

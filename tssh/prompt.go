@@ -30,6 +30,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"reflect"
 	"strings"
 	"time"
 
@@ -565,6 +566,15 @@ func chooseAlias(keywords string) (string, bool, error) {
 
 	theme := getPromptTheme()
 	termMgr := getTerminalManager()
+	funcMap := promptui.FuncMap
+	funcMap["getExConfig"] = getExConfig
+	funcMap["hasField"] = func(obj any, field string) bool {
+		v := reflect.ValueOf(obj)
+		if v.Kind() == reflect.Pointer {
+			v = v.Elem()
+		}
+		return v.FieldByName(field).IsValid()
+	}
 
 	pipeIn, pipeOut := io.Pipe()
 	prompt := sshPrompt{
@@ -581,6 +591,7 @@ func chooseAlias(keywords string) (string, bool, error) {
 				HideLabel:       theme.HideLabel,
 				ItemsRenderer:   theme.ItemsRenderer,
 				DetailsRenderer: theme.DetailsRenderer,
+				FuncMap:         funcMap,
 			},
 			Size:         getPromptPageSize(),
 			Searcher:     searcher,

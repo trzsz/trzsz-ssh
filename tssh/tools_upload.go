@@ -49,6 +49,7 @@ func execTrzUpload(args *sshArgs, ss *sshClientSession) int {
 		DetectTraceLog:  args.TraceLog,
 		EnableZmodem:    true,
 	})
+	defer trzszFilter.Close()
 	defer trzszFilter.ResetTerminal()
 	onTerminalResize(func(width, height int) {
 		trzszFilter.SetTerminalColumns(int32(width))

@@ -57,8 +57,13 @@ func getDefaultDetailsTemplate() string {
 	var builder strings.Builder
 	builder.WriteString(fmt.Sprintf(`{{ "--------- SSH Details ----------\n" | %s }}`, getThemeColor("details_title")))
 	addItem := func(name string) {
-		builder.WriteString(fmt.Sprintf(`{{- if .%s }}{{ "%s:" | %s }}{{ "\t" }}{{ .%s | %s }}{{ "\n" }}{{ end }}`,
-			name, name, getThemeColor("details_name"), name, getThemeColor("details_value")))
+		builder.WriteString(fmt.Sprintf(`{{ if hasField . "%s" }}`+
+			`{{- if .%s }}{{ "%s:" | %s }}{{ "\t" }}{{ .%s | %s }}{{ "\n" }}{{ end }}`+
+			`{{ else }}{{ $value := getExConfig .Alias "%s" }}`+
+			`{{- if $value }}{{ "%s:" | %s }}{{ "\t" }}{{ $value | %s }}{{ "\n" }}{{ end }}`+
+			`{{ end }}`,
+			name, name, name, getThemeColor("details_name"), name, getThemeColor("details_value"),
+			name, name, getThemeColor("details_name"), getThemeColor("details_value")))
 	}
 	for _, item := range getPromptDetailItems() {
 		switch strings.ToLower(item) {
@@ -83,7 +88,7 @@ func getDefaultDetailsTemplate() string {
 		case "remotecommand":
 			addItem("RemoteCommand")
 		default:
-			warning("Unknown prompt detail item: %s", item)
+			addItem(item)
 		}
 	}
 	return builder.String()
@@ -248,7 +253,7 @@ func (t *tableTheme) renderDetails(item interface{}) string {
 		case "remotecommand":
 			addItem("RemoteCommand", host.RemoteCommand)
 		default:
-			warning("Unknown prompt detail item: %s", item)
+			addItem(item, getExConfig(host.Alias, item))
 		}
 	}
 	tbl := table.New().BorderRow(true).Rows(data...).

@@ -120,6 +120,12 @@ type SshSession interface {
 	// SendRequest sends an out-of-band channel request on the SSH channel
 	// underlying the session.
 	SendRequest(name string, wantReply bool, payload []byte) (bool, error)
+
+	// RedrawScreen clear and redraw the screen right now.
+	RedrawScreen()
+
+	// GetTerminalWidth returns the width of the terminal
+	GetTerminalWidth() int
 }
 
 // SshArgs specifies the arguments to log in to the remote server.
@@ -214,14 +220,43 @@ type sshClientSession struct {
 
 func (s *sshClientSession) Close() {
 	if s.serverIn != nil {
-		s.serverIn.Close()
+		_ = s.serverIn.Close()
 	}
 	if s.session != nil {
-		s.session.Close()
+		_ = s.session.Close()
 	}
 	if s.client != nil {
-		s.client.Close()
+		_ = s.client.Close()
 	}
+}
+
+type sshSessionWrapper struct {
+	ssh.Session
+	height int
+	width  int
+}
+
+func (s *sshSessionWrapper) RequestPty(term string, height, width int, termmodes ssh.TerminalModes) error {
+	s.height, s.width = height, width
+	return s.Session.RequestPty(term, height, width, termmodes)
+}
+
+func (s *sshSessionWrapper) WindowChange(height, width int) error {
+	s.height, s.width = height, width
+	return s.Session.WindowChange(height, width)
+}
+
+func (s *sshSessionWrapper) RedrawScreen() {
+	if s.height <= 0 || s.width <= 0 {
+		return
+	}
+	height, width := s.height, s.width
+	_ = s.WindowChange(height, width+1)
+	_ = s.WindowChange(height, width)
+}
+
+func (s *sshSessionWrapper) GetTerminalWidth() int {
+	return s.width
 }
 
 type sshClientWrapper struct {
@@ -233,11 +268,27 @@ func (c *sshClientWrapper) Wait() error {
 }
 
 func (c *sshClientWrapper) Close() error {
-	return c.client.Close()
+	done := make(chan error, 1)
+	go func() {
+		defer close(done)
+		err := c.client.Close()
+		done <- err
+	}()
+
+	select {
+	case <-time.After(300 * time.Millisecond):
+		return fmt.Errorf("close timeout")
+	case err := <-done:
+		return err
+	}
 }
 
 func (c *sshClientWrapper) NewSession() (SshSession, error) {
-	return c.client.NewSession()
+	session, err := c.client.NewSession()
+	if err != nil {
+		return nil, err
+	}
+	return &sshSessionWrapper{*session, 0, 0}, nil
 }
 
 func (c *sshClientWrapper) DialTimeout(network, addr string, timeout time.Duration) (conn net.Conn, err error) {

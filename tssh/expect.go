@@ -533,7 +533,7 @@ func execExpectInteractions(args *sshArgs, ss *sshClientSession) {
 
 	if ctx.Err() == context.DeadlineExceeded {
 		warning("expect timeout after %d seconds", expectTimeout)
-		_, _ = ss.serverIn.Write([]byte("\r")) // enter for shell prompt if timeout
+		ss.session.RedrawScreen()
 	}
 
 	ss.serverOut = outReader

@@ -231,7 +231,10 @@ func getTerminalSize() (int, int, error) {
 
 func onTerminalResize(setTerminalSize func(int, int)) {
 	go func() {
-		columns, rows, _ := getTerminalSize()
+		columns, rows, err := getTerminalSize()
+		if err == nil {
+			setTerminalSize(columns, rows)
+		}
 		for {
 			time.Sleep(time.Second)
 			width, height, err := getTerminalSize()
@@ -239,8 +242,7 @@ func onTerminalResize(setTerminalSize func(int, int)) {
 				continue
 			}
 			if columns != width || rows != height {
-				columns = width
-				rows = height
+				columns, rows = width, height
 				setTerminalSize(width, height)
 			}
 		}

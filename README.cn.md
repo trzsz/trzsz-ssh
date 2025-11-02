@@ -1,4 +1,4 @@
-# trzsz-ssh ( tssh ) - 支持 trzsz ( trz / tsz ) 的 ssh 客户端
+# trzsz-ssh ( tssh ) - 满足您所需的 ssh 客户端
 
 [![MIT License](https://img.shields.io/badge/license-MIT-green.svg?style=flat)](https://choosealicense.com/licenses/mit/)
 [![GitHub Release](https://img.shields.io/github/v/release/trzsz/trzsz-ssh)](https://github.com/trzsz/trzsz-ssh/releases)
@@ -6,6 +6,8 @@
 [![中文文档](https://img.shields.io/badge/%E4%B8%AD%E6%96%87%E6%96%87%E6%A1%A3-https%3A%2F%2Ftrzsz.github.io%2Fcn%2Fssh-blue?style=flat)](https://trzsz.github.io/cn/ssh)
 
 trzsz-ssh ( tssh ) 设计为 ssh 客户端的直接替代品，提供与 openssh 完全兼容的基础功能，同时实现其他有用的扩展功能。
+
+trzsz-ssh ( tssh ) 与 [tsshd](https://github.com/trzsz/tsshd) 一起，适用于高延迟的弱网连接，切换网络、休眠与唤醒都不会掉线，让 ssh 会话永远保持。
 
 ## 为什么做
 
@@ -19,11 +21,13 @@ trzsz-ssh ( tssh ) 设计为 ssh 客户端的直接替代品，提供与 openssh
 
 - 在 Windows 中使用 `tssh` 代替 `trzsz ssh`，可以解决 `trz` 上传速度很慢的问题。
 
+- `tssh` 与 [tsshd](https://github.com/trzsz/tsshd) 类似于 mosh，解决了部分 mosh 的问题，例如 SSH 转发和 ProxyJump 等。
+
 ## 安装方法
 
 **_客户端安装 `trzsz-ssh ( tssh )` 的方法如下（ 任选其一 ）：_**
 
-- Windows 可用 [scoop](https://scoop.sh/) / [winget](https://learn.microsoft.com/zh-cn/windows/package-manager/winget/) / [choco](https://community.chocolatey.org/) 安装
+- Windows 可用 scoop / winget / choco 安装
 
   <details><summary><code>scoop install tssh</code> / <code>winget install tssh</code> / <code>choco install tssh</code></summary>
 
@@ -41,7 +45,7 @@ trzsz-ssh ( tssh ) 设计为 ssh 客户端的直接替代品，提供与 openssh
 
   </details>
 
-- MacOS 可用 [homebrew](https://brew.sh/) 安装
+- MacOS 可用 Homebrew 安装
 
   <details><summary><code>brew install trzsz-ssh</code></summary>
 
@@ -108,13 +112,23 @@ trzsz-ssh ( tssh ) 设计为 ssh 客户端的直接替代品，提供与 openssh
 
   </details>
 
-- ArchLinux 可用 [yay](https://github.com/Jguer/yay) 安装
+- ArchLinux 可用 yay 安装
 
   <details><summary><code>yay -S tssh</code></summary>
 
   ```sh
   yay -Syu
   yay -S tssh
+  ```
+
+  </details>
+
+- ChromeOS 可用 Chromebrew 安装
+
+  <details><summary><code>crew install tssh</code></summary>
+
+  ```sh
+  crew install tssh
   ```
 
   </details>
@@ -354,11 +368,7 @@ trzsz-ssh ( tssh ) 设计为 ssh 客户端的直接替代品，提供与 openssh
 - 除了服务器，本地电脑也要安装 `lrzsz`，Windows 可以从 [lrzsz-win32](https://github.com/trzsz/lrzsz-win32/releases) 下载，解压并加到 `PATH` 环境变量中，也可以如下安装：
 
   ```
-  scoop install lrzsz
-  ```
-
-  ```
-  choco install lrzsz
+  scoop install lrzsz / choco install lrzsz / winget install lrzsz
   ```
 
 - 如果只是想临时启用 `rz / sz` 传文件功能，可以在命令行中使用 `tssh --zmodem` 登录服务器。
@@ -654,7 +664,7 @@ trzsz-ssh ( tssh ) 设计为 ssh 客户端的直接替代品，提供与 openssh
   PromptDefaultMode = search
 
   # tssh 搜索和选择服务器时，详情中显示的配置列表，默认如下：
-  PromptDetailItems = Alias Host Port User GroupLabels IdentityFile ProxyCommand ProxyJump RemoteCommand
+  PromptDetailItems = Alias Host Port User GroupLabels IdentityFile ProxyCommand ProxyJump RemoteCommand UdpMode TsshdPath
 
   # tssh 搜索和选择服务器时，可以自定义光标和选中的图标：
   PromptCursorIcon = 🧨
@@ -746,30 +756,48 @@ trzsz-ssh ( tssh ) 设计为 ssh 客户端的直接替代品，提供与 openssh
 
 ## UDP 模式
 
-- 在服务器上安装 [tsshd](https://github.com/trzsz/tsshd)，使用 `tssh --udp xxx` 登录服务器，或者如下配置以省略 `--udp` 参数：
+- 在服务器上安装 [tsshd](https://github.com/trzsz/tsshd)，使用 `tssh --udp xxx` 登录服务器，或者在 `~/.ssh/config` 中如下配置以省略 `--udp` 参数：
 
   ```
   Host xxx
       #!! UdpMode yes
-      #!! TsshdPath ~/go/bin/tsshd
-      #!! UdpPort 61000-62000
-      #!! UdpAliveTimeout 86400
   ```
 
 - `tssh` 在客户端扮演 `ssh` 的角色，`tsshd` 在服务端扮演 `sshd` 的角色。
 
 - `tssh` 会先作为一个 ssh 客户端正常登录到服务器上，然后在服务器上启动一个新的 `tsshd` 进程。
 
-- `tsshd` 进程会随机侦听一个 61000 到 62000 之间的 UDP 端口（可通过 `UdpPort` 配置自定义），并将其端口和密钥通过 ssh 通道发回给 `tssh` 进程。登录的 ssh 连接会被关闭，然后 `tssh` 进程通过 UDP 与 `tsshd` 进程通讯。
+- `tsshd` 进程会随机侦听一个 61001 到 61999 之间的 UDP 端口（可通过 `UdpPort` 配置自定义），并将其端口和密钥通过 ssh 通道发回给 `tssh` 进程。登录的 ssh 连接会被关闭，然后 `tssh` 进程通过 UDP 与 `tsshd` 进程通讯。
 
-- `tsshd` 进程会在网络断开超过 24 小时后退出（默认情况下），可以通过修改 `UdpAliveTimeout` 配置来调整（单位：秒）。
+## UDP 配置
 
-- `tsshd` 支持 `QUIC` 协议和 `KCP` 协议（默认是 `QUIC` 协议），可以命令行指定（如 `-oUdpMode=KCP`），或如下配置：
+```
+Host xxx
+    #!! UdpMode KCP
+    #!! UdpPort 61001-61999
+    #!! TsshdPath ~/go/bin/tsshd
+    #!! UdpAliveTimeout 86400
+    #!! UdpHeartbeatTimeout 3
+    #!! UdpReconnectTimeout 15
+    #!! ShowNotificationOnTop yes
+    #!! ShowFullNotifications yes
+```
 
-  ```
-  Host xxx
-      #!! UdpMode KCP
-  ```
+- `UdpMode`: `No` (默认为`No`: tssh 工作在 TCP 模式), `Yes` (默认协议: `KCP`), `QUIC` ([QUIC](https://github.com/quic-go/quic-go) 协议), `KCP` ([KCP](https://github.com/xtaci/kcp-go) 协议).
+
+- `UdpPort`: 指定 tsshd 监听的 UDP 端口范围，默认值为 [61001, 61999]。
+
+- `TsshdPath`: 指定服务器上 tsshd 二进制程序的路径，如果未配置，则在 $PATH 中查找。
+
+- `UdpAliveTimeout`: 如果断开连接的时间超过 `UdpAliveTimeout` 秒，tssh 和 tsshd 都会退出，不再支持重连。默认值为 86400 秒。
+
+- `UdpHeartbeatTimeout`: 如果断开连接的时间超过 `UdpHeartbeatTimeout` 秒，tssh 将会尝试换条路重新连到服务器。默认值为 3 秒。
+
+- `UdpReconnectTimeout`: 如果断开连接的时间超过 `UdpReconnectTimeout` 秒，tssh 将会显示失去连接的通知公告。默认值为 15 秒。
+
+- `ShowNotificationOnTop`: 是否在屏幕顶部显示失去连接的通知。默认为 yes，这可能会覆盖之前的一些输出。设置为 `No` 在光标当前行显示通知。
+
+- `ShowFullNotifications`: 是显示完整的通知，还是显示简短的通知。默认为 yes，这可能会输出几行通知到屏幕上。设置为 `No` 只输出一行通知。
 
 ## 故障排除
 

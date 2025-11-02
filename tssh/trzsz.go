@@ -141,6 +141,10 @@ func enableTrzsz(args *sshArgs, ss *sshClientSession) error {
 		trzszRelay := trzsz.NewTrzszRelay(os.Stdin, os.Stdout, ss.serverIn, ss.serverOut, trzsz.TrzszOptions{
 			DetectTraceLog: args.TraceLog,
 		})
+		// close on exit
+		onExitFuncs = append(onExitFuncs, func() {
+			trzszRelay.Close()
+		})
 		// reset terminal size on resize
 		onTerminalResize(func(width, height int) { _ = ss.session.WindowChange(height, width) })
 		// setup tunnel connect
@@ -190,9 +194,10 @@ func enableTrzsz(args *sshArgs, ss *sshClientSession) error {
 		EnableOSC52:     enableOSC52,
 	})
 
-	// reset terminal on exit
+	// reset terminal and close on exit
 	onExitFuncs = append(onExitFuncs, func() {
 		trzszFilter.ResetTerminal()
+		trzszFilter.Close()
 	})
 
 	// reset terminal size on resize
@@ -212,6 +217,9 @@ func enableTrzsz(args *sshArgs, ss *sshClientSession) error {
 		conn, _ := ss.client.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second)
 		return conn
 	})
+
+	// setup redraw screen
+	trzszFilter.SetRedrawScreenFunc(ss.session.RedrawScreen)
 
 	return nil
 }
