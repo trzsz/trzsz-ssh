@@ -691,6 +691,33 @@ trzsz-ssh ( tssh ) with [tsshd](https://github.com/trzsz/tsshd) also supports in
 
 - `Key=Value # Comment` configuration (with `=` sign), `openssh` considers the content after `#` to be a comment in some cases, and considers it not to be a comment in some other cases; `tssh` always considers the content after `#` not to be a comment.
 
+### Wayland Integration
+
+- In the `~/.ssh/config` or `ExConfigPath` configuration file, configure `EnableWaypipe` to `Yes` to enable the Wayland (waypipe) integration feature.
+
+  ```
+  Host xxx
+    # If configured in ~/.ssh/config, add `#!!` prefix to be compatible with openssh.
+    EnableWaypipe Yes
+  ```
+
+- Once Wayland (waypipe) integration is enabled, there is no need to explicitly use the waypipe program any more, tssh will automatically run the waypipe program in the background.
+
+- If the waypipe program cannot be found in the PATH on the client-side, you can specify the path to the waypipe program using the `WaypipeClientPath` configuration.
+
+- If the waypipe program cannot be found in the PATH on the server-side, you can specify the path to the waypipe program using the `WaypipeServerPath` configuration.
+
+- You can configure certain options for the waypipe program using `WaypipeClientOption` and `WaypipeServerOption` as needed. Note that you should not specify the options `-s`, `--socket`, `--login-shell`, `--display`, `client`, or `server`. Configuration example:
+
+  ```
+  Host xxx
+    #!! EnableWaypipe Yes
+    #!! WaypipeClientPath /usr/bin/waypipe
+    #!! WaypipeServerPath /usr/bin/waypipe
+    #!! WaypipeClientOption -c lz4
+    #!! WaypipeServerOption -c lz4
+  ```
+
 ### Clipboard Integration
 
 - In the `~/.ssh/config` or `ExConfigPath` configuration file, configure `EnableOSC52` to `Yes` to enable the clipboard integration feature.
@@ -758,7 +785,7 @@ trzsz-ssh ( tssh ) with [tsshd](https://github.com/trzsz/tsshd) also supports in
 
 ### UDP Mode
 
-- Install [tsshd](https://github.com/trzsz/tsshd) on the server, use `tssh --udp xxx` to login to the server, or configure as follows in `~/.ssh/config` to omit `--udp`:
+- Install [tsshd](https://github.com/trzsz/tsshd?tab=readme-ov-file#installation) on the server, use `tssh --udp xxx` to login to the server, or configure as follows in `~/.ssh/config` to omit `--udp`:
 
   ```
   Host xxx

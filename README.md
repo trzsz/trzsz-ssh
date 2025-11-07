@@ -44,6 +44,7 @@ trzsz-ssh ( tssh ) offers additional useful features:
 |     [Remember Password](README.en.md#remember-password)     |      [记住密码](README.cn.md#%E8%AE%B0%E4%BD%8F%E5%AF%86%E7%A0%81)       |
 |  [Custom Configuration](README.en.md#custom-configuration)  |      [个性配置](README.cn.md#%E4%B8%AA%E6%80%A7%E9%85%8D%E7%BD%AE)       |
 |    [Comments of Config](README.en.md#comments-of-config)    |      [配置注释](README.cn.md#%E9%85%8D%E7%BD%AE%E6%B3%A8%E9%87%8A)       |
+|   [Wayland Integration](README.en.md#wayland-integration)   |         [Wayland 集成](README.cn.md#wayland-%E9%9B%86%E6%88%90)          |
 | [Clipboard Integration](README.en.md#clipboard-integration) | [剪贴板集成](README.cn.md#%E5%89%AA%E8%B4%B4%E6%9D%BF%E9%9B%86%E6%88%90) |
 |        [Other Features](README.en.md#other-features)        |      [其他功能](README.cn.md#%E5%85%B6%E4%BB%96%E5%8A%9F%E8%83%BD)       |
 |         [UDP Mode ( mosh )](README.en.md#udp-mode)          |         [UDP 模式 ( mosh )](README.cn.md#udp-%E6%A8%A1%E5%BC%8F)         |

@@ -689,6 +689,33 @@ trzsz-ssh ( tssh ) 与 [tsshd](https://github.com/trzsz/tsshd) 一起，适用�
 - `Key Value # Comment` 配置（没有 `=` 号），`openssh` 有些情况认为 `#` 后的内容是注释，有些情况认为不是注释；`tssh` 一律认为 `#` 后的内容是注释。
 - `Key=Value # Comment` 配置（有 `=` 号），`openssh` 有些情况认为 `#` 后的内容是注释，有些情况认为不是注释；`tssh` 一律认为 `#` 后的内容不是注释。
 
+## Wayland 集成
+
+- 在 `~/.ssh/config` 或 `ExConfigPath` 配置文件中，配置 `EnableWaypipe` 为 `Yes` 启用 Wayland (waypipe) 集成功能。
+
+  ```
+  Host xxx
+    # 如果配置在 ~/.ssh/config 中，可以加上 `#!!` 前缀，以兼容标准 ssh
+    EnableWaypipe Yes
+  ```
+
+- 启用 Wayland (waypipe) 集成功能后，无需再显式使用 waypipe 程序，tssh 将在后台自动运行 waypipe 程序。
+
+- 如果客户端 waypipe 程序在 PATH 路径下找不到，可以通过 `WaypipeClientPath` 配置指定 waypipe 程序的路径。
+
+- 如果服务端 waypipe 程序在 PATH 路径下找不到，可以通过 `WaypipeServerPath` 配置指定 waypipe 程序的路径。
+
+- 可以根据需要，通过 `WaypipeClientOption` 和 `WaypipeServerOption` 配置指定 waypipe 程序的一些参数，注意不要指定 `-s`、`--socket`、`--login-shell`、`--display`、`client`、`server` 这些参数，配置举例：
+
+  ```
+  Host xxx
+    #!! EnableWaypipe Yes
+    #!! WaypipeClientPath /usr/bin/waypipe
+    #!! WaypipeServerPath /usr/bin/waypipe
+    #!! WaypipeClientOption -c lz4
+    #!! WaypipeServerOption -c lz4
+  ```
+
 ## 剪贴板集成
 
 - 在 `~/.ssh/config` 或 `ExConfigPath` 配置文件中，配置 `EnableOSC52` 为 `Yes` 启用剪贴板集成功能。
@@ -756,7 +783,7 @@ trzsz-ssh ( tssh ) 与 [tsshd](https://github.com/trzsz/tsshd) 一起，适用�
 
 ## UDP 模式
 
-- 在服务器上安装 [tsshd](https://github.com/trzsz/tsshd)，使用 `tssh --udp xxx` 登录服务器，或者在 `~/.ssh/config` 中如下配置以省略 `--udp` 参数：
+- 在服务器上安装 [tsshd](https://github.com/trzsz/tsshd?tab=readme-ov-file#installation)，使用 `tssh --udp xxx` 登录服务器，或者在 `~/.ssh/config` 中如下配置以省略 `--udp` 参数：
 
   ```
   Host xxx

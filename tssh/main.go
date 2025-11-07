@@ -254,6 +254,11 @@ func sshStart(args *sshArgs) (int, error) {
 		return code, nil
 	}
 
+	// enable waypipe
+	if err := enableWaypipe(args, ss); err != nil {
+		warning("waypipe may not be working properly: %v", err)
+	}
+
 	// run command or start shell
 	if ss.cmd != "" {
 		if err := ss.session.Start(ss.cmd); err != nil {
