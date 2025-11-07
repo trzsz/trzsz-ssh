@@ -305,7 +305,7 @@ func addHostKey(path, host string, remote net.Addr, key ssh.PublicKey, ask bool)
 	return nil
 }
 
-func getHostKeyCallback(args *sshArgs, param *sshParam) (ssh.HostKeyCallback, knownhosts.HostKeyCallback, error) {
+func getHostKeyCallback(args *sshArgs, param *sshParam) (ssh.HostKeyCallback, []string, error) {
 	primaryPath := ""
 	var files []string
 	addKnownHostsFiles := func(key string, user bool) error {
@@ -356,13 +356,13 @@ func getHostKeyCallback(args *sshArgs, param *sshParam) (ssh.HostKeyCallback, kn
 		return nil, nil, err
 	}
 
-	kh, err := knownhosts.New(files...)
+	khdb, err := knownhosts.NewDB(files...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("new knownhosts failed: %v", err)
 	}
 
-	cb := func(host string, remote net.Addr, key ssh.PublicKey) error {
-		err := kh(host, remote, key)
+	hostKeyCallback := func(host string, remote net.Addr, key ssh.PublicKey) error {
+		err := khdb.HostKeyCallback()(host, remote, key)
 		if err == nil {
 			return nil
 		}
@@ -401,7 +401,7 @@ func getHostKeyCallback(args *sshArgs, param *sshParam) (ssh.HostKeyCallback, kn
 		}
 	}
 
-	return cb, kh, err
+	return hostKeyCallback, khdb.HostKeyAlgorithms(param.addr), err
 }
 
 type sshSigner struct {
@@ -1091,7 +1091,7 @@ func sshConnect(args *sshArgs, client SshClient, proxy string, asProxy bool) (Ss
 	}
 
 	authMethods := getAuthMethods(args, param)
-	cb, kh, err := getHostKeyCallback(args, param)
+	hostKeyCallback, hostKeyAlgorithms, err := getHostKeyCallback(args, param)
 	if err != nil {
 		return nil, param, false, err
 	}
@@ -1099,8 +1099,8 @@ func sshConnect(args *sshArgs, client SshClient, proxy string, asProxy bool) (Ss
 		User:              param.user,
 		Auth:              authMethods,
 		Timeout:           getConnectTimeout(args),
-		HostKeyCallback:   cb,
-		HostKeyAlgorithms: kh.HostKeyAlgorithms(param.addr),
+		HostKeyCallback:   hostKeyCallback,
+		HostKeyAlgorithms: hostKeyAlgorithms,
 		BannerCallback: func(banner string) error {
 			_, err := fmt.Fprint(os.Stderr, strings.ReplaceAll(banner, "\n", "\r\n"))
 			return err
