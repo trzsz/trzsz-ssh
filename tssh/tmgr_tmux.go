@@ -120,13 +120,13 @@ func (m *tmuxMgr) openPanes(hosts []*sshHost) {
 	for i := len(matrix) - 1; i > 0; i-- {
 		matrix[i][0].paneId = m.splitWindow(matrix[i][0].alias, "-v", matrix[0][0].paneId, strconv.Itoa(100/(i+1)))
 	}
-	for i := 0; i < len(matrix); i++ {
+	for i := range matrix {
 		for j := len(matrix[i]) - 1; j > 0; j-- {
 			matrix[i][j].paneId = m.splitWindow(matrix[i][j].alias, "-h", matrix[i][0].paneId, strconv.Itoa(100/(j+1)))
 		}
 	}
 	// change panes title
-	for i := 0; i < len(matrix); i++ {
+	for i := range matrix {
 		for j := 0; j < len(matrix[i]); j++ {
 			if matrix[i][j].paneId != "" {
 				_ = exec.Command("tmux", "selectp", "-t", matrix[i][j].paneId, "-T", matrix[i][j].alias).Run()
@@ -140,7 +140,7 @@ func (m *tmuxMgr) openPanes(hosts []*sshHost) {
 		})
 	}
 	// reset panes order
-	for i := 0; i < len(matrix); i++ {
+	for i := range matrix {
 		for j := 0; j < len(matrix[i]); j++ {
 			if matrix[i][j].paneId != "" {
 				_ = exec.Command("tmux", "selectp", "-t", matrix[i][j].paneId).Run()

@@ -36,6 +36,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -136,7 +137,7 @@ func parseTsshConfig() {
 		warning("open %s failed: %v", path, err)
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	debug("open %s success", path)
 
 	scanner := bufio.NewScanner(file)
@@ -297,7 +298,7 @@ func loadConfig(path string, system bool) *ssh_config.Config {
 		warning("open config [%s] failed: %v", path, err)
 		return nil
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	debug("open config [%s] success", path)
 
 	var config *ssh_config.Config
@@ -558,7 +559,7 @@ func appendPromptHosts(hosts []*sshHost, cfgHosts ...*ssh_config.Host) []*sshHos
 				}
 				continue
 			}
-			if strings.ToLower(getExConfig(alias, "HideHost")) == "yes" {
+			if strings.ToLower(getConfig(alias, "HideHost")) == "yes" { // treat as not extended config
 				continue
 			}
 			hosts = append(hosts, &sshHost{
@@ -580,15 +581,13 @@ func appendPromptHosts(hosts []*sshHost, cfgHosts ...*ssh_config.Host) []*sshHos
 func getGroupLabels(alias string) string {
 	var groupLabels []string
 	addGroupLabel := func(groupLabel string) {
-		for _, label := range groupLabels {
-			if label == groupLabel {
-				return
-			}
+		if slices.Contains(groupLabels, groupLabel) {
+			return
 		}
 		groupLabels = append(groupLabels, groupLabel)
 	}
 	for _, groupLabel := range getAllExConfig(alias, "GroupLabels") {
-		for _, label := range strings.Fields(groupLabel) {
+		for label := range strings.FieldsSeq(groupLabel) {
 			addGroupLabel(label)
 		}
 	}

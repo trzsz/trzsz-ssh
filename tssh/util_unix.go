@@ -34,7 +34,7 @@ import (
 )
 
 func isRemoteSshEnv(pid int) bool {
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		stat, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
 		if err != nil {
 			return false

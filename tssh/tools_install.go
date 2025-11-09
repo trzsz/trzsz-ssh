@@ -55,7 +55,7 @@ func getLatestVersion(url string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("http response status code %d", resp.StatusCode)
 	}
@@ -75,7 +75,7 @@ func checkVersion(client SshClient, cmd, version string) bool {
 	if err != nil {
 		return false
 	}
-	defer session.Close()
+	defer func() { _ = session.Close() }()
 	output, err := session.CombinedOutput(cmd)
 	if err != nil {
 		return false
@@ -113,7 +113,7 @@ func getRemoteUserHome(client SshClient) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer session.Close()
+	defer func() { _ = session.Close() }()
 	output, err := session.Output("env")
 	if err != nil {
 		return "", err
@@ -140,7 +140,7 @@ func getRemoteServerOS(client SshClient) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer session.Close()
+	defer func() { _ = session.Close() }()
 	output, err := session.Output("uname -s")
 	if err != nil {
 		return "", err
@@ -161,7 +161,7 @@ func getRemoteServerArch(client SshClient) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer session.Close()
+	defer func() { _ = session.Close() }()
 	output, err := session.Output("uname -m")
 	if err != nil {
 		return "", err
@@ -188,7 +188,7 @@ func mkdirInstallPath(client SshClient, path string) error {
 	if err != nil {
 		return err
 	}
-	defer session.Close()
+	defer func() { _ = session.Close() }()
 	output, err := session.CombinedOutput(fmt.Sprintf("mkdir -p -m 755 %s", path))
 	if err != nil {
 		errMsg := string(bytes.TrimSpace(output))
@@ -298,7 +298,7 @@ func (h *binaryHelper) downloadBinary(version, svrOS, arch string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("http response status code %d", resp.StatusCode)
 	}
@@ -310,10 +310,7 @@ func (h *binaryHelper) downloadBinary(version, svrOS, arch string) error {
 	buffer := make([]byte, contentLength)
 	currentStep := 0
 	for currentStep < contentLength {
-		maxBufferIdx := currentStep + kMaxBufferSize
-		if maxBufferIdx > contentLength {
-			maxBufferIdx = contentLength
-		}
+		maxBufferIdx := min(currentStep+kMaxBufferSize, contentLength)
 		n, err := resp.Body.Read(buffer[currentStep:maxBufferIdx])
 		if err != nil {
 			return err
@@ -326,7 +323,7 @@ func (h *binaryHelper) downloadBinary(version, svrOS, arch string) error {
 	if err != nil {
 		return err
 	}
-	defer gzr.Close()
+	defer func() { _ = gzr.Close() }()
 
 	return h.extractBinary(gzr, version, svrOS, arch)
 }
@@ -336,13 +333,13 @@ func (h *binaryHelper) readBinary(path, version, svrOS, arch string) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	gzr, err := gzip.NewReader(file)
 	if err != nil {
 		return err
 	}
-	defer gzr.Close()
+	defer func() { _ = gzr.Close() }()
 
 	return h.extractBinary(gzr, version, svrOS, arch)
 }
@@ -352,7 +349,7 @@ func (h *binaryHelper) uploadBinary(client SshClient, path string) error {
 	if err != nil {
 		return err
 	}
-	defer session.Close()
+	defer func() { _ = session.Close() }()
 
 	writer, err := session.StdinPipe()
 	if err != nil {
@@ -396,10 +393,7 @@ func (h *binaryHelper) uploadBinary(client SshClient, path string) error {
 	writeBinaryContent := func(buf []byte) bool {
 		currentStep := 0
 		for currentStep < len(buf) {
-			maxBufferIdx := currentStep + kMaxBufferSize
-			if maxBufferIdx > len(buf) {
-				maxBufferIdx = len(buf)
-			}
+			maxBufferIdx := min(currentStep+kMaxBufferSize, len(buf))
 			n, err := writer.Write(buf[currentStep:maxBufferIdx])
 			if err != nil {
 				return false

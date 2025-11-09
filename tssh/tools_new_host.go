@@ -69,7 +69,7 @@ func (n *newHostTool) promptConfigPath() {
 			if err != nil {
 				return fmt.Errorf("open config file failed: %v", err)
 			}
-			defer file.Close()
+			defer func() { _ = file.Close() }()
 			n.existingConfig, err = ssh_config.Decode(file)
 			if err != nil {
 				return fmt.Errorf("decode existing config failed: %v", err)
@@ -129,7 +129,7 @@ func (n *newHostTool) promptHostPort() {
 			if err != nil {
 				return fmt.Errorf("connect to server failed: %v", err)
 			}
-			defer conn.Close()
+			defer func() { _ = conn.Close() }()
 			return nil
 		}}), 10, 16)
 	n.hostPort = uint16(port)
@@ -157,7 +157,7 @@ func (n *newHostTool) writeHost() {
 	if err != nil {
 		toolsErrorExit("open config file failed: %v", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	if _, err := fmt.Fprintf(file, `
 Host %s
     HostName %s

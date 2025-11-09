@@ -54,7 +54,7 @@ func getXauthAndProto(display string, trusted bool, timeout int) (string, string
 			return genFakeXauth(trusted)
 		}
 		path := file.Name()
-		defer os.Remove(path)
+		defer func() { _ = os.Remove(path) }()
 		genArgs := []string{"-f", path, "generate", display, kSshX11Proto, "untrusted"}
 		if timeout > 0 {
 			genArgs = append(genArgs, "timeout", strconv.Itoa(timeout))

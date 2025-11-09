@@ -70,8 +70,8 @@ type mux struct {
 
 	incomingChannels chan ssh.NewChannel
 
-	globalSentMu     sync.Mutex       // nolint:all
-	globalResponses  chan interface{} // nolint:all
+	globalSentMu     sync.Mutex // nolint:all
+	globalResponses  chan any   // nolint:all
 	incomingRequests chan *ssh.Request
 
 	errCond *sync.Cond // nolint:all
@@ -166,7 +166,7 @@ func NewControlClientConn(c net.Conn) (ssh.Conn, <-chan ssh.NewChannel, <-chan *
 		return nil, nil, nil, fmt.Errorf("ssh: control proxy handshake failed; %v", err)
 	}
 	conn.mux = newMux(conn.transport)
-	return conn, conn.mux.incomingChannels, conn.mux.incomingRequests, nil
+	return conn, conn.incomingChannels, conn.incomingRequests, nil
 }
 
 const (

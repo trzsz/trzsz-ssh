@@ -32,7 +32,7 @@ import (
 )
 
 func isRemoteSshEnv(pid int) bool {
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		kinfo, err := unix.SysctlKinfoProc("kern.proc.pid", pid)
 		if err != nil {
 			return false

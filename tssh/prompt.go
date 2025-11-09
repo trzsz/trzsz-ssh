@@ -470,8 +470,10 @@ func (p *sshPrompt) userConfirm(buf []byte) bool {
 }
 
 func (p *sshPrompt) wrapStdin() {
-	defer p.selector.Stdin.Close()
-	defer p.pipeOut.Close()
+	defer func() {
+		_ = p.pipeOut.Close()
+		_ = p.selector.Stdin.Close()
+	}()
 	buffer := make([]byte, 100)
 	if strings.ToLower(userConfig.promptDefaultMode) == "search" {
 		p.search = true
@@ -626,19 +628,10 @@ func chooseAlias(keywords string) (string, bool, error) {
 }
 
 func fastLookupHost(host string) bool {
-	errch := make(chan error, 1)
-	go func() {
-		defer close(errch)
-		_, err := net.LookupHost(host)
-		errch <- err
-	}()
-
-	select {
-	case <-time.After(200 * time.Millisecond):
-		return false
-	case err := <-errch:
-		return err == nil
-	}
+	_, err := doWithTimeout(func() ([]string, error) {
+		return net.LookupHost(host)
+	}, 200*time.Millisecond)
+	return err == nil
 }
 
 func predictDestination(dest string) (string, bool, error) {

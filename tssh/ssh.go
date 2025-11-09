@@ -268,19 +268,8 @@ func (c *sshClientWrapper) Wait() error {
 }
 
 func (c *sshClientWrapper) Close() error {
-	done := make(chan error, 1)
-	go func() {
-		defer close(done)
-		err := c.client.Close()
-		done <- err
-	}()
-
-	select {
-	case <-time.After(300 * time.Millisecond):
-		return fmt.Errorf("close timeout")
-	case err := <-done:
-		return err
-	}
+	_, err := doWithTimeout(func() (int, error) { return 0, c.client.Close() }, 300*time.Millisecond)
+	return err
 }
 
 func (c *sshClientWrapper) NewSession() (SshSession, error) {
@@ -292,22 +281,14 @@ func (c *sshClientWrapper) NewSession() (SshSession, error) {
 }
 
 func (c *sshClientWrapper) DialTimeout(network, addr string, timeout time.Duration) (conn net.Conn, err error) {
-	done := make(chan struct{}, 1)
-	go func() {
-		defer close(done)
-		conn, err = c.client.Dial(network, addr)
-		done <- struct{}{}
-	}()
 	if timeout > 0 {
-		select {
-		case <-time.After(timeout):
-			err = fmt.Errorf("dial [%s] timeout", addr)
-		case <-done:
-		}
+		conn, err = doWithTimeout(func() (net.Conn, error) {
+			return c.client.Dial(network, addr)
+		}, timeout)
+		return
 	} else {
-		<-done
+		return c.client.Dial(network, addr)
 	}
-	return
 }
 
 func (c *sshClientWrapper) Listen(network, addr string) (net.Listener, error) {

@@ -121,13 +121,13 @@ func expandTokens(str string, args *sshArgs, param *sshParam, tokens string) (st
 			}
 			buf.WriteString(hostname)
 		case 'j':
-			if len(param.proxy) > 0 {
-				buf.WriteString(param.proxy[len(param.proxy)-1])
+			if len(param.proxies) > 0 {
+				buf.WriteString(param.proxies[len(param.proxies)-1])
 			}
 		case 'C':
 			hashStr := fmt.Sprintf("%s%s%s%s", getHostname(), param.host, param.port, param.user)
-			if len(param.proxy) > 0 && strings.ContainsRune(tokens, 'j') {
-				hashStr += param.proxy[len(param.proxy)-1]
+			if len(param.proxies) > 0 && strings.ContainsRune(tokens, 'j') {
+				hashStr += param.proxies[len(param.proxies)-1]
 			}
 			buf.WriteString(fmt.Sprintf("%x", sha1.Sum([]byte(hashStr))))
 		case 'k':

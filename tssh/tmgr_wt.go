@@ -124,7 +124,7 @@ func (m *wtMgr) openPanes(hosts []*sshHost) {
 		}
 		time.Sleep(100 * time.Millisecond) // wait for new pane focus
 	}
-	for i := 0; i < len(matrix); i++ {
+	for i := range matrix {
 		if i > 0 {
 			if err := exec.Command("cmd", "/c", "wt", "-w", "0", "mf", "down").Run(); err != nil {
 				warning("Failed to move wt focus: %v", err)
@@ -145,7 +145,7 @@ func (m *wtMgr) openPanes(hosts []*sshHost) {
 
 func commandExists(exe string) bool {
 	path := os.Getenv("Path")
-	for _, p := range strings.Split(path, ";") {
+	for p := range strings.SplitSeq(path, ";") {
 		if isFileExist(filepath.Join(p, exe)) {
 			return true
 		}

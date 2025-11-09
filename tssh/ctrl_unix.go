@@ -60,7 +60,7 @@ type controlMaster struct {
 
 func (c *controlMaster) handleStderr() {
 	go func() {
-		defer c.stderr.Close()
+		defer func() { _ = c.stderr.Close() }()
 		var output []string
 		scanner := bufio.NewScanner(c.stderr)
 		for scanner.Scan() {
@@ -85,7 +85,7 @@ func (c *controlMaster) handleStderr() {
 func (c *controlMaster) handleStdout() <-chan error {
 	doneCh := make(chan error, 1)
 	go func() {
-		defer c.stdout.Close()
+		defer func() { _ = c.stdout.Close() }()
 		defer close(doneCh)
 		buf := make([]byte, 1000)
 		n, err := c.stdout.Read(buf)
@@ -135,7 +135,7 @@ func (c *controlMaster) checkExit() <-chan struct{} {
 		_ = c.cmd.Wait()
 		c.exited.Store(true)
 		if c.ptmx != nil {
-			c.ptmx.Close()
+			_ = c.ptmx.Close()
 		}
 		exitCh <- struct{}{}
 	}()
@@ -155,7 +155,7 @@ func (c *controlMaster) start(args *sshArgs, param *sshParam) error {
 		if err != nil {
 			return fmt.Errorf("open pty failed: %v", err)
 		}
-		defer tty.Close()
+		defer func() { _ = tty.Close() }()
 		c.cmd.Stdin = tty
 		c.ptmx = pty
 		cancel := c.fillPassword(args, param, expectCount)
@@ -289,9 +289,7 @@ func startControlMaster(args *sshArgs, param *sshParam, sshPath string) error {
 	for key, values := range args.Option.options {
 		switch key {
 		case "remotecommand":
-			break
-		case "enabletrzsz", "enabledragfile":
-			break
+			continue
 		default:
 			for _, value := range values {
 				cmdArgs = append(cmdArgs, fmt.Sprintf("-o%s=%s", key, value))
@@ -362,20 +360,20 @@ func connectViaControl(args *sshArgs, param *sshParam) SshClient {
 		}
 	}
 
-	debug("login to [%s], socket: %s", args.Destination, socket)
+	debug("login to [%s] via control path: %s", args.Destination, socket)
 
 	conn, err := net.DialTimeout("unix", socket, time.Second)
 	if err != nil {
-		warning("dial control socket [%s] failed: %v", socket, err)
+		warning("login to [%s] dial control path [%s] failed: %v", args.Destination, socket, err)
 		return nil
 	}
 
 	ncc, chans, reqs, err := NewControlClientConn(conn)
 	if err != nil {
-		warning("new conn from control socket [%s] failed: %v", socket, err)
+		warning("login to [%s] new conn from control path [%s] failed: %v", args.Destination, socket, err)
 		return nil
 	}
 
-	debug("login to [%s] success", args.Destination)
+	debug("login to [%s] via control path [%s] success", args.Destination, socket)
 	return sshNewClient(ncc, chans, reqs)
 }

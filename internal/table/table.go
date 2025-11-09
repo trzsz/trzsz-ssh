@@ -25,6 +25,7 @@ SOFTWARE.
 package table
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -274,7 +275,7 @@ func (t *Table) Offset(o int) *Table {
 
 // String returns the table as a string.
 func (t *Table) String() string {
-	hasHeaders := t.headers != nil && len(t.headers) > 0
+	hasHeaders := len(t.headers) > 0
 	hasRows := t.data != nil && t.data.Rows() > 0
 
 	if !hasHeaders && !hasRows {
@@ -447,14 +448,7 @@ func (t *Table) FixedColumns(columns ...int) *Table {
 func (t *Table) getExpandableColumns() []int {
 	var idx []int
 	for i := 0; i < len(t.widths); i++ {
-		fixed := false
-		for _, j := range t.fixedColumns {
-			if i == j {
-				fixed = true
-				break
-			}
-		}
-		if !fixed {
+		if !slices.Contains(t.fixedColumns, i) {
 			idx = append(idx, i)
 		}
 	}
@@ -472,7 +466,7 @@ func (t *Table) computeWidth() int {
 
 // computeHeight computes the height of the table in it's current configuration.
 func (t *Table) computeHeight() int {
-	hasHeaders := t.headers != nil && len(t.headers) > 0
+	hasHeaders := len(t.headers) > 0
 	return sum(t.heights) - 1 + btoi(hasHeaders) +
 		btoi(t.borderTop) + btoi(t.borderBottom) +
 		btoi(t.borderHeader) + t.data.Rows()*btoi(t.borderRow)
@@ -567,7 +561,7 @@ func (t *Table) constructHeaders() string {
 func (t *Table) constructRow(index int) string {
 	var s strings.Builder
 
-	hasHeaders := t.headers != nil && len(t.headers) > 0
+	hasHeaders := len(t.headers) > 0
 	height := t.heights[index+btoi(hasHeaders)]
 
 	var cells []string

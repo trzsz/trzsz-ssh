@@ -61,7 +61,7 @@ func wrapStdIO(serverIn io.WriteCloser, serverOut io.Reader, serverErr io.Reader
 			done = false
 			outputWaitGroup.Add(1)
 		}
-		defer writer.Close()
+		defer func() { _ = writer.Close() }()
 		buffer := make([]byte, 32*1024)
 		for {
 			n, err := reader.Read(buffer)

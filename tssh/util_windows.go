@@ -34,7 +34,7 @@ import (
 
 func isNoGUI() bool {
 	pid := os.Getppid()
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, uint32(pid))
 		if err != nil {
 			return false

@@ -292,7 +292,7 @@ func stdioForward(args *sshArgs, client SshClient, addr string) (*sync.WaitGroup
 	if err != nil {
 		return nil, fmt.Errorf("stdio forward failed: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -334,7 +334,7 @@ func dynamicForward(client SshClient, b *bindCfg, args *sshArgs) {
 
 	for _, listener := range listenOnLocal(args, b.addr, strconv.Itoa(b.port)) {
 		go func(listener net.Listener) {
-			defer listener.Close()
+			defer func() { _ = listener.Close() }()
 			for {
 				conn, err := listener.Accept()
 				if err == io.EOF {
@@ -355,8 +355,10 @@ func dynamicForward(client SshClient, b *bindCfg, args *sshArgs) {
 }
 
 func netForward(local, remote net.Conn) {
-	defer local.Close()
-	defer remote.Close()
+	defer func() {
+		_ = local.Close()
+		_ = remote.Close()
+	}()
 
 	done := make(chan struct{}, 2)
 	go func() {
@@ -382,7 +384,7 @@ func localForward(client SshClient, f *forwardCfg, args *sshArgs) {
 	timeout := getConnectTimeout(args)
 	for _, listener := range listenOnLocal(args, f.bindAddr, strconv.Itoa(f.bindPort)) {
 		go func(listener net.Listener) {
-			defer listener.Close()
+			defer func() { _ = listener.Close() }()
 			for {
 				local, err := listener.Accept()
 				if err == io.EOF {
@@ -395,7 +397,7 @@ func localForward(client SshClient, f *forwardCfg, args *sshArgs) {
 				remote, err := client.DialTimeout(network, remoteAddr, timeout)
 				if err != nil {
 					debug("local forward dial [%s][%s] failed: %v", network, remoteAddr, err)
-					local.Close()
+					_ = local.Close()
 					continue
 				}
 				go netForward(local, remote)
@@ -416,7 +418,7 @@ func remoteForward(client SshClient, f *forwardCfg, args *sshArgs) {
 	timeout := getConnectTimeout(args)
 	for _, listener := range listenOnRemote(args, client, f.bindAddr, strconv.Itoa(f.bindPort)) {
 		go func(listener net.Listener) {
-			defer listener.Close()
+			defer func() { _ = listener.Close() }()
 			for {
 				remote, err := listener.Accept()
 				if err == io.EOF {
@@ -429,7 +431,7 @@ func remoteForward(client SshClient, f *forwardCfg, args *sshArgs) {
 				local, err := net.DialTimeout(network, localAddr, timeout)
 				if err != nil {
 					debug("remote forward dial [%s][%s] failed: %v", network, localAddr, err)
-					remote.Close()
+					_ = remote.Close()
 					continue
 				}
 				go netForward(local, remote)
@@ -515,7 +517,7 @@ func sshX11Forward(args *sshArgs, client SshClient, session SshSession) {
 	}
 	hostname, displayNumber := resolveDisplayEnv(display)
 
-	trusted := false
+	var trusted bool
 	if !args.X11Untrusted && (args.X11Trusted || strings.ToLower(getOptionConfig(args, "ForwardX11Trusted")) == "yes") {
 		trusted = true
 	}
@@ -569,7 +571,7 @@ func sshX11Forward(args *sshArgs, client SshClient, session SshSession) {
 			go ssh.DiscardRequests(reqs)
 			go func() {
 				serveX11(display, hostname, displayNumber, channel)
-				channel.Close()
+				_ = channel.Close()
 			}()
 		}
 	}()
@@ -661,6 +663,6 @@ func forwardChannel(channel ssh.Channel, conn net.Conn) {
 	}()
 
 	wg.Wait()
-	conn.Close()
-	channel.Close()
+	_ = conn.Close()
+	_ = channel.Close()
 }

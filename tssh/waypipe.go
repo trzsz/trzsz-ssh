@@ -214,7 +214,7 @@ func remoteForwardSocket(client SshClient, clientSocket, serverSocket string) er
 		return err
 	}
 	go func() {
-		defer listener.Close()
+		defer func() { _ = listener.Close() }()
 		for {
 			remote, err := listener.Accept()
 			if err == io.EOF {

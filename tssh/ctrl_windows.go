@@ -29,6 +29,7 @@ import (
 )
 
 func connectViaControl(args *sshArgs, param *sshParam) SshClient {
+	_ = param
 	ctrlMaster := getOptionConfig(args, "ControlMaster")
 	ctrlPath := getOptionConfig(args, "ControlPath")
 

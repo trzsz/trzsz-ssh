@@ -29,33 +29,24 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/trzsz/ssh_config"
 	"golang.org/x/crypto/ssh"
 )
 
-func debugCiphersConfig(config *ssh.ClientConfig) {
-	if !enableDebugLogging {
-		return
-	}
-	debug("user declared ciphers: %v", config.Ciphers)
-	config.SetDefaults()
-	debug("client supported ciphers: %v", config.Ciphers)
-}
-
 func appendCiphersConfig(config *ssh.ClientConfig, cipherSpec string) error {
 	config.SetDefaults()
-	for _, cipher := range strings.Split(cipherSpec, ",") {
+	for cipher := range strings.SplitSeq(cipherSpec, ",") {
 		cipher = strings.TrimSpace(cipher)
 		if cipher != "" {
 			config.Ciphers = append(config.Ciphers, cipher)
 		}
 	}
-	debugCiphersConfig(config)
 	return nil
 }
 
 func removeCiphersConfig(config *ssh.ClientConfig, cipherSpec string) error {
 	var buf strings.Builder
-	for _, cipher := range strings.Split(cipherSpec, ",") {
+	for cipher := range strings.SplitSeq(cipherSpec, ",") {
 		if buf.Len() > 0 {
 			buf.WriteRune('|')
 		}
@@ -76,10 +67,9 @@ func removeCiphersConfig(config *ssh.ClientConfig, cipherSpec string) error {
 		buf.WriteString("$)")
 	}
 	expr := buf.String()
-	debug("ciphers regexp: %s", expr)
 	re, err := regexp.Compile(expr)
 	if err != nil {
-		return fmt.Errorf("compile ciphers regexp failed: %v", err)
+		return fmt.Errorf("compile ciphers regexp [%s] failed: %v", expr, err)
 	}
 
 	config.SetDefaults()
@@ -91,13 +81,12 @@ func removeCiphersConfig(config *ssh.ClientConfig, cipherSpec string) error {
 		ciphers = append(ciphers, cipher)
 	}
 	config.Ciphers = ciphers
-	debugCiphersConfig(config)
 	return nil
 }
 
 func insertCiphersConfig(config *ssh.ClientConfig, cipherSpec string) error {
 	var ciphers []string
-	for _, cipher := range strings.Split(cipherSpec, ",") {
+	for cipher := range strings.SplitSeq(cipherSpec, ",") {
 		cipher = strings.TrimSpace(cipher)
 		if cipher != "" {
 			ciphers = append(ciphers, cipher)
@@ -105,19 +94,17 @@ func insertCiphersConfig(config *ssh.ClientConfig, cipherSpec string) error {
 	}
 	config.SetDefaults()
 	config.Ciphers = append(ciphers, config.Ciphers...)
-	debugCiphersConfig(config)
 	return nil
 }
 
 func replaceCiphersConfig(config *ssh.ClientConfig, cipherSpec string) error {
 	config.Ciphers = nil
-	for _, cipher := range strings.Split(cipherSpec, ",") {
+	for cipher := range strings.SplitSeq(cipherSpec, ",") {
 		cipher = strings.TrimSpace(cipher)
 		if cipher != "" {
 			config.Ciphers = append(config.Ciphers, cipher)
 		}
 	}
-	debugCiphersConfig(config)
 	return nil
 }
 
@@ -125,22 +112,33 @@ func getCiphersConfig(args *sshArgs) string {
 	if args.CipherSpec != "" {
 		return args.CipherSpec
 	}
+	ssh_config.SetDefault("Ciphers", "")
 	return getOptionConfig(args, "Ciphers")
 }
 
-func setupCiphersConfig(args *sshArgs, config *ssh.ClientConfig) error {
+func setupCiphersConfig(args *sshArgs, config *ssh.ClientConfig) (err error) {
 	cipherSpec := getCiphersConfig(args)
 	if cipherSpec == "" {
 		return nil
 	}
+	if enableDebugLogging {
+		config.SetDefaults()
+		debug("default ciphers for [%s]: %s", args.Destination, strings.Join(config.Ciphers, " "))
+		debug("customs ciphers for [%s]: %s", args.Destination, cipherSpec)
+	}
 	switch cipherSpec[0] {
 	case '+':
-		return appendCiphersConfig(config, cipherSpec[1:])
+		err = appendCiphersConfig(config, cipherSpec[1:])
 	case '-':
-		return removeCiphersConfig(config, cipherSpec[1:])
+		err = removeCiphersConfig(config, cipherSpec[1:])
 	case '^':
-		return insertCiphersConfig(config, cipherSpec[1:])
+		err = insertCiphersConfig(config, cipherSpec[1:])
 	default:
-		return replaceCiphersConfig(config, cipherSpec)
+		err = replaceCiphersConfig(config, cipherSpec)
 	}
+	if enableDebugLogging {
+		config.SetDefaults()
+		debug("current ciphers for [%s]: %s", args.Destination, strings.Join(config.Ciphers, " "))
+	}
+	return
 }

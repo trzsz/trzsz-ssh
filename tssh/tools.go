@@ -408,7 +408,7 @@ func (m *listModel) View() string {
 	}
 	for i, item := range m.items {
 		if i == m.cursor {
-			builder.WriteString(lipgloss.NewStyle().Foreground(magentaColor).
+			builder.WriteString(lipgloss.NewStyle().Foreground(yellowColor).
 				Render(fmt.Sprintf("> %s", item)) + "\n")
 		} else {
 			builder.WriteString(lipgloss.NewStyle().Render(fmt.Sprintf("  %s", item)) + "\n")
@@ -450,14 +450,14 @@ func isFileNotExistOrEmpty(path string) bool {
 //
 // return true to quit with return code
 // return false to continue ssh login
-func execLocalTools(argv []string, args *sshArgs) (int, bool) {
+func execLocalTools(args *sshArgs) (int, bool) {
 	switch {
 	case args.Ver:
 		fmt.Println(args.Version())
 		return 0, true
 	case args.EncSecret:
 		return execEncodeSecret()
-	case args.NewHost || len(argv) == 0 && isFileNotExistOrEmpty(userConfig.configPath):
+	case args.NewHost || args.Destination == "" && isFileNotExistOrEmpty(userConfig.configPath):
 		return execNewHost(args)
 	case args.ListHosts:
 		return execListHosts()

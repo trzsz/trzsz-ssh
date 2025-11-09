@@ -62,7 +62,7 @@ func (m *iterm2Mgr) openTerminals(keywords string, openType int, hosts []*sshHos
 }
 
 func (m *iterm2Mgr) setTitle(session iterm2.Session, alias string) {
-	_ = session.Inject([]byte(fmt.Sprintf("\033]0;%s\007", alias)))
+	_ = session.Inject(fmt.Appendf(nil, "\033]0;%s\007", alias))
 }
 
 func (m *iterm2Mgr) execCmd(session iterm2.Session, alias string) error {
@@ -198,7 +198,7 @@ func (m *iterm2Mgr) openPanes(hosts []*sshHost) {
 			return
 		}
 	}
-	for i := 0; i < len(matrix); i++ {
+	for i := range matrix {
 		session := sessions[i]
 		if session == nil {
 			continue
@@ -229,7 +229,7 @@ func getIterm2Manager() terminalManager {
 		return nil
 	}
 	afterLoginFuncs = append(afterLoginFuncs, func() {
-		app.Close()
+		_ = app.Close()
 	})
 	debug("running in iTerm2")
 	return &iterm2Mgr{app: app}

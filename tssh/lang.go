@@ -102,9 +102,9 @@ func writeLanguage(path, language string) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	if err := ensureNewline(file); err != nil {
 		return err
 	}
-	return writeAll(file, []byte(fmt.Sprintf("Language = %s\n", language)))
+	return writeAll(file, fmt.Appendf(nil, "Language = %s\n", language))
 }
