@@ -796,13 +796,13 @@ trzsz-ssh ( tssh ) with [tsshd](https://github.com/trzsz/tsshd) also supports in
 
 - The `tssh` will first login to the server normally as an ssh client, and then run a new `tsshd` process on the server.
 
-- The `tsshd` process listens on a random udp port between 61001 and 61999 (can be customized by `UdpPort`), and sends its port number and a secret key back to the `tssh` process over the ssh channel. The ssh connection is then shut down, and the `tssh` process communicates with the `tsshd` process over udp.
+- The `tsshd` process listens on a random udp port between 61001 and 61999 (can be customized by `UdpPort`), and sends its port number and some secret keys back to the `tssh` process over the ssh channel. The ssh connection is then shut down, and the `tssh` process communicates with the `tsshd` process over udp.
 
 ### UDP Configurations
 
 ```
 Host xxx
-    #!! UdpMode KCP
+    #!! UdpMode Yes
     #!! UdpPort 61001-61999
     #!! TsshdPath ~/go/bin/tsshd
     #!! UdpAliveTimeout 86400
@@ -812,7 +812,7 @@ Host xxx
     #!! ShowFullNotifications yes
 ```
 
-- `UdpMode`: `No` (the default: tssh works in TCP mode), `Yes` (default protocol: `KCP`), `QUIC` ([QUIC](https://github.com/quic-go/quic-go) protocol), `KCP` ([KCP](https://github.com/xtaci/kcp-go) protocol).
+- `UdpMode`: `No` (the default: tssh works in TCP mode), `Yes` (default protocol: `QUIC`), `QUIC` ([QUIC](https://github.com/quic-go/quic-go) protocol: faster speed), `KCP` ([KCP](https://github.com/xtaci/kcp-go) protocol: lower latency).
 
 - `UdpPort`: Specifies the range of UDP ports that tsshd listens on, the default value is [61001, 61999].
 

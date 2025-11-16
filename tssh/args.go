@@ -82,7 +82,7 @@ type sshArgs struct {
 	Debug          bool        `arg:"--debug" help:"verbose mode for debugging, same as ssh's -vvv"`
 	Zmodem         bool        `arg:"--zmodem" help:"enable zmodem lrzsz ( rz / sz ) feature"`
 	Dns            string      `arg:"--dns" placeholder:"[udp://|tcp://]host[:port]" help:"custom DNS server"`
-	Udp            bool        `arg:"--udp" help:"ssh over UDP like mosh (default mode: KCP)"`
+	Udp            bool        `arg:"--udp" help:"ssh over UDP like mosh (default mode: QUIC)"`
 	TsshdPath      string      `arg:"--tsshd-path" placeholder:"path" help:"[udp] tsshd absolute path on the server"`
 	NewHost        bool        `arg:"--new-host" help:"[tools] add new host to configuration"`
 	EncSecret      bool        `arg:"--enc-secret" help:"[tools] encode secret for configuration"`

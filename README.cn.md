@@ -794,13 +794,13 @@ trzsz-ssh ( tssh ) 与 [tsshd](https://github.com/trzsz/tsshd) 一起，适用�
 
 - `tssh` 会先作为一个 ssh 客户端正常登录到服务器上，然后在服务器上启动一个新的 `tsshd` 进程。
 
-- `tsshd` 进程会随机侦听一个 61001 到 61999 之间的 UDP 端口（可通过 `UdpPort` 配置自定义），并将其端口和密钥通过 ssh 通道发回给 `tssh` 进程。登录的 ssh 连接会被关闭，然后 `tssh` 进程通过 UDP 与 `tsshd` 进程通讯。
+- `tsshd` 进程会随机侦听一个 61001 到 61999 之间的 UDP 端口（可通过 `UdpPort` 配置自定义），并将其端口和几个密钥通过 ssh 通道发回给 `tssh` 进程。登录的 ssh 连接会被关闭，然后 `tssh` 进程通过 UDP 与 `tsshd` 进程通讯。
 
 ## UDP 配置
 
 ```
 Host xxx
-    #!! UdpMode KCP
+    #!! UdpMode Yes
     #!! UdpPort 61001-61999
     #!! TsshdPath ~/go/bin/tsshd
     #!! UdpAliveTimeout 86400
@@ -810,7 +810,7 @@ Host xxx
     #!! ShowFullNotifications yes
 ```
 
-- `UdpMode`: `No` (默认为`No`: tssh 工作在 TCP 模式), `Yes` (默认协议: `KCP`), `QUIC` ([QUIC](https://github.com/quic-go/quic-go) 协议), `KCP` ([KCP](https://github.com/xtaci/kcp-go) 协议).
+- `UdpMode`: `No` (默认为`No`: tssh 工作在 TCP 模式), `Yes` (默认协议: `QUIC`), `QUIC` ([QUIC](https://github.com/quic-go/quic-go) 协议：速度更快), `KCP` ([KCP](https://github.com/xtaci/kcp-go) 协议：延迟更低).
 
 - `UdpPort`: 指定 tsshd 监听的 UDP 端口范围，默认值为 [61001, 61999]。
 

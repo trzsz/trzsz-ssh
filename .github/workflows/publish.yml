@@ -19,6 +19,9 @@ jobs:
           distribution: goreleaser
           version: "~> v1"
           args: release --clean --skip=publish
+      - name: Show Checksum
+        run: |
+          sha256sum dist/*.tar.gz dist/*.zip dist/*.rpm dist/*_checksums.txt
       - name: Upload Release Assets
         uses: softprops/action-gh-release@v2
         with:
@@ -56,6 +59,8 @@ jobs:
           zip -r tssh_${version}_win7_i386.zip tssh_${version}_win7_i386
           GOOS=windows GOARCH=amd64 go build -ldflags "-s -w" -o tssh_${version}_win7_x86_64/ ./cmd/tssh/
           zip -r tssh_${version}_win7_x86_64.zip tssh_${version}_win7_x86_64
+      - name: Show Checksum
+        run: |
           sha256sum ./*.zip
       - name: Upload Release Assets
         uses: softprops/action-gh-release@v2

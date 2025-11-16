@@ -55,6 +55,7 @@ type udpModeType int
 
 const (
 	kUdpModeNo udpModeType = iota
+	kUdpModeYes
 	kUdpModeKcp
 	kUdpModeQuic
 )
@@ -62,6 +63,7 @@ const (
 func (t udpModeType) String() string {
 	return [...]string{
 		"No",
+		"Yes",
 		"KCP",
 		"QUIC",
 	}[t]
@@ -846,7 +848,9 @@ func getUdpMode(args *sshArgs) udpModeType {
 				warning("disable UDP since -oUdpMode=No")
 			}
 			return kUdpModeNo
-		case "yes", "kcp":
+		case "yes":
+			return kUdpModeYes
+		case "kcp":
 			return kUdpModeKcp
 		case "quic":
 			return kUdpModeQuic
@@ -859,7 +863,9 @@ func getUdpMode(args *sshArgs) udpModeType {
 	switch strings.ToLower(udpMode) {
 	case "", "no":
 		break
-	case "yes", "kcp":
+	case "yes":
+		return kUdpModeYes
+	case "kcp":
 		return kUdpModeKcp
 	case "quic":
 		return kUdpModeQuic
@@ -868,7 +874,7 @@ func getUdpMode(args *sshArgs) udpModeType {
 	}
 
 	if args.Udp {
-		return kUdpModeKcp
+		return kUdpModeYes
 	}
 	return kUdpModeNo
 }
