@@ -31,13 +31,16 @@ import (
 	"net"
 	"os"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/trzsz/trzsz-go/trzsz"
 )
 
+var pauseOutput atomic.Bool
 var outputWaitGroup sync.WaitGroup
 
 func writeAll(dst io.Writer, data []byte) error {
@@ -53,69 +56,105 @@ func writeAll(dst io.Writer, data []byte) error {
 	return nil
 }
 
-func wrapStdIO(serverIn io.WriteCloser, serverOut io.Reader, serverErr io.Reader, tty bool) {
-	win := runtime.GOOS == "windows"
-	forwardIO := func(reader io.Reader, writer io.WriteCloser, input bool) {
-		done := true
-		if !input {
-			done = false
-			outputWaitGroup.Add(1)
-		}
-		defer func() { _ = writer.Close() }()
-		buffer := make([]byte, 32*1024)
-		for {
-			n, err := reader.Read(buffer)
-			if n > 0 {
-				buf := buffer[:n]
-				if win && !tty {
-					if input {
-						buf = bytes.ReplaceAll(buf, []byte("\r\n"), []byte("\n"))
-					} else {
-						buf = bytes.ReplaceAll(buf, []byte("\n"), []byte("\r\n"))
-					}
-				}
-				if err := writeAll(writer, buf); err != nil {
-					warning("wrap stdio write failed: %v", err)
-					return
-				}
-			}
-			if err == io.EOF {
-				if win && isTerminal && tty && input {
-					_, _ = writer.Write([]byte{0x1A}) // ctrl + z
+func forwardInput(reader io.Reader, writer io.WriteCloser, win bool, consoleEscapeTime time.Duration, ss *sshClientSession) {
+	defer func() { _ = writer.Close() }()
+	var enterPressedFlag bool
+	var enterPressedTime time.Time
+	buffer := make([]byte, 32*1024)
+	for {
+		n, err := reader.Read(buffer)
+		if n > 0 {
+			if consoleEscapeTime > 0 { // enter tssh console ?
+				if n == 1 && buffer[0] == '\r' {
+					enterPressedFlag = true
+					enterPressedTime = time.Now()
+				} else if enterPressedFlag && n == 1 && buffer[0] == '~' && time.Since(enterPressedTime) <= consoleEscapeTime {
+					pauseOutput.Store(true)
+					runConsole(reader, writer, ss)
+					pauseOutput.Store(false)
 					continue
+				} else {
+					enterPressedFlag = false
 				}
-				if input {
-					return // input EOF
-				}
-				// ignore output EOF
-				if !done {
-					outputWaitGroup.Done()
-					done = true
-				}
-				time.Sleep(100 * time.Millisecond)
-				continue
 			}
-			if err != nil {
+
+			buf := buffer[:n]
+			if win && !ss.tty {
+				buf = bytes.ReplaceAll(buf, []byte("\r\n"), []byte("\n"))
+			}
+			if err := writeAll(writer, buf); err != nil {
+				warning("wrap input write failed: %v", err)
 				return
 			}
 		}
+		if err == io.EOF {
+			if win && isTerminal && ss.tty {
+				_, _ = writer.Write([]byte{0x1A}) // ctrl + z
+				continue
+			}
+			return
+		}
+		if err != nil {
+			return
+		}
 	}
+}
+
+func forwardOutput(reader io.Reader, writer io.WriteCloser, win, tty bool) {
+	// Don't close os.Stdout and os.Stderr here.
+	// There may be some debugging message that needs to be output.
+	// The process is about to exit, so let the operating system close os.Stdout and os.Stderr.
+	buffer := make([]byte, 32*1024)
+	for {
+		n, err := reader.Read(buffer)
+		for pauseOutput.Load() {
+			time.Sleep(10 * time.Millisecond)
+		}
+		if n > 0 {
+			buf := buffer[:n]
+			if win && !tty {
+				buf = bytes.ReplaceAll(buf, []byte("\n"), []byte("\r\n"))
+			}
+			if err := writeAll(writer, buf); err != nil {
+				warning("wrap output write failed: %v", err)
+				return
+			}
+		}
+		if err != nil {
+			return
+		}
+	}
+}
+
+func wrapStdIO(serverIn io.WriteCloser, serverOut, serverErr io.Reader, consoleEscapeTime time.Duration, ss *sshClientSession) {
+	win := runtime.GOOS == "windows"
 	if serverIn != nil {
-		go forwardIO(os.Stdin, serverIn, true)
+		go forwardInput(os.Stdin, serverIn, win, consoleEscapeTime, ss)
 	}
+
 	if serverOut != nil {
-		go forwardIO(serverOut, os.Stdout, false)
+		outputWaitGroup.Go(func() { forwardOutput(serverOut, os.Stdout, win, ss.tty) })
 	}
 	if serverErr != nil {
-		go forwardIO(serverErr, os.Stderr, false)
+		outputWaitGroup.Go(func() { forwardOutput(serverErr, os.Stderr, win, ss.tty) })
 	}
 }
 
 func enableTrzsz(args *sshArgs, ss *sshClientSession) error {
 	// not terminal or not tty
 	if !isTerminal || !ss.tty {
-		wrapStdIO(ss.serverIn, ss.serverOut, ss.serverErr, ss.tty)
+		wrapStdIO(ss.serverIn, ss.serverOut, ss.serverErr, 0, ss)
 		return nil
+	}
+
+	consoleEscapeTime := time.Second
+	if t := getExOptionConfig(args, "ConsoleEscapeTime"); t != "" {
+		v, err := strconv.ParseUint(t, 10, 32)
+		if err != nil {
+			warning("ConsoleEscapeTime [%s] is invalid: %v", t, err)
+		} else {
+			consoleEscapeTime = time.Duration(v) * time.Second
+		}
 	}
 
 	disableTrzsz := strings.ToLower(getExOptionConfig(args, "EnableTrzsz")) == "no"
@@ -125,28 +164,41 @@ func enableTrzsz(args *sshArgs, ss *sshClientSession) error {
 
 	// disable trzsz ( trz / tsz )
 	if disableTrzsz && !enableZmodem && !enableDragFile && !enableOSC52 {
-		wrapStdIO(ss.serverIn, ss.serverOut, ss.serverErr, ss.tty)
-		onTerminalResize(func(width, height int) { _ = ss.session.WindowChange(height, width) })
+		wrapStdIO(ss.serverIn, ss.serverOut, ss.serverErr, consoleEscapeTime, ss)
+		onTerminalResize(func(width, height int) {
+			currentTerminalWidth.Store(int32(width))
+			_ = ss.session.WindowChange(height, width)
+		})
 		return nil
 	}
 
 	// support trzsz ( trz / tsz )
-
-	wrapStdIO(nil, nil, ss.serverErr, ss.tty)
+	var clientIn io.Reader
+	var clientOut io.WriteCloser
+	if consoleEscapeTime > 0 {
+		readerIn, writerIn := io.Pipe()
+		readerOut, writerOut := io.Pipe()
+		clientIn, clientOut = readerIn, writerOut
+		wrapStdIO(writerIn, readerOut, ss.serverErr, consoleEscapeTime, ss)
+	} else {
+		clientIn, clientOut = os.Stdin, os.Stdout
+		wrapStdIO(nil, nil, ss.serverErr, 0, ss)
+	}
 
 	trzsz.SetAffectedByWindows(false)
 
 	if args.Relay || !args.Client && isNoGUI() {
 		// run as a relay
-		trzszRelay := trzsz.NewTrzszRelay(os.Stdin, os.Stdout, ss.serverIn, ss.serverOut, trzsz.TrzszOptions{
+		trzszRelay := trzsz.NewTrzszRelay(clientIn, clientOut, ss.serverIn, ss.serverOut, trzsz.TrzszOptions{
 			DetectTraceLog: args.TraceLog,
 		})
 		// close on exit
-		onExitFuncs = append(onExitFuncs, func() {
-			trzszRelay.Close()
-		})
+		addOnExitFunc(func() { trzszRelay.Close() })
 		// reset terminal size on resize
-		onTerminalResize(func(width, height int) { _ = ss.session.WindowChange(height, width) })
+		onTerminalResize(func(width, height int) {
+			currentTerminalWidth.Store(int32(width))
+			_ = ss.session.WindowChange(height, width)
+		})
 		// setup tunnel connect
 		trzszRelay.SetTunnelConnector(func(port int) net.Conn {
 			conn, _ := ss.client.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second)
@@ -186,7 +238,7 @@ func enableTrzsz(args *sshArgs, ss *sshClientSession) error {
 	//   os.Stdout │        │   os.Stdout  └─────────────┘   ServerOut  │        │
 	// ◄───────────│        │◄──────────────────────────────────────────┤        │
 	//   os.Stderr └────────┘                  stderr                   └────────┘
-	trzszFilter := trzsz.NewTrzszFilter(os.Stdin, os.Stdout, ss.serverIn, ss.serverOut, trzsz.TrzszOptions{
+	trzszFilter := trzsz.NewTrzszFilter(clientIn, clientOut, ss.serverIn, ss.serverOut, trzsz.TrzszOptions{
 		TerminalColumns: int32(width),
 		DetectDragFile:  enableDragFile,
 		DetectTraceLog:  args.TraceLog,
@@ -195,13 +247,11 @@ func enableTrzsz(args *sshArgs, ss *sshClientSession) error {
 	})
 
 	// reset terminal and close on exit
-	onExitFuncs = append(onExitFuncs, func() {
-		trzszFilter.ResetTerminal()
-		trzszFilter.Close()
-	})
+	addOnExitFunc(func() { trzszFilter.ResetTerminal(); trzszFilter.Close() })
 
 	// reset terminal size on resize
 	onTerminalResize(func(width, height int) {
+		currentTerminalWidth.Store(int32(width))
 		trzszFilter.SetTerminalColumns(int32(width))
 		_ = ss.session.WindowChange(height, width)
 	})

@@ -519,9 +519,7 @@ func connectViaProxyJump(args *sshArgs, param *sshParam, config *ssh.ClientConfi
 		return nil, fmt.Errorf("proxy jump [%s] new conn [%s] failed: %v", param.proxy.name, param.addr, err)
 	}
 	debug("login to [%s] via proxy jump [%s] success", args.Destination, param.proxy.name)
-	onExitFuncs = append(onExitFuncs, func() {
-		_ = param.proxy.client.Close()
-	})
+	addOnExitFunc(func() { _ = param.proxy.client.Close() })
 	return sshNewClient(ncc, chans, reqs), nil
 }
 
@@ -720,7 +718,7 @@ func sshTcpLogin(args *sshArgs) (ss *sshClientSession, udpMode udpModeType, err 
 	}
 
 	// ssh port forwarding
-	if !ss.param.control && udpMode == kUdpModeNo {
+	if !args.Subsystem && !ss.param.control && udpMode == kUdpModeNo {
 		if err = sshForward(ss.client, args, ss.param); err != nil {
 			return
 		}
@@ -735,7 +733,7 @@ func sshTcpLogin(args *sshArgs) (ss *sshClientSession, udpMode udpModeType, err 
 	// new session
 	ss.session, err = ss.client.NewSession()
 	if err != nil {
-		err = fmt.Errorf("ssh new session failed: %v", err)
+		err = fmt.Errorf("login to [%s] new session failed: %v", args.Destination, err)
 		return
 	}
 
@@ -747,25 +745,25 @@ func sshTcpLogin(args *sshArgs) (ss *sshClientSession, udpMode udpModeType, err 
 	// session input and output
 	ss.serverIn, err = ss.session.StdinPipe()
 	if err != nil {
-		err = fmt.Errorf("stdin pipe failed: %v", err)
+		err = fmt.Errorf("login to [%s] stdin pipe failed: %v", args.Destination, err)
 		return
 	}
 	ss.serverOut, err = ss.session.StdoutPipe()
 	if err != nil {
-		err = fmt.Errorf("stdout pipe failed: %v", err)
+		err = fmt.Errorf("login to [%s] stdout pipe failed: %v", args.Destination, err)
 		return
 	}
 	ss.serverErr, err = ss.session.StderrPipe()
 	if err != nil {
-		err = fmt.Errorf("stderr pipe failed: %v", err)
+		err = fmt.Errorf("login to [%s] stderr pipe failed: %v", args.Destination, err)
 		return
 	}
 
-	if !ss.param.control && udpMode == kUdpModeNo {
+	if !args.Subsystem && !ss.param.control && udpMode == kUdpModeNo {
 		// ssh agent forward
-		sshAgentForward(args, ss.param, ss.client, ss.session)
+		sshAgentForward(args, ss.param, ss.client, ss.session, udpMode)
 		// x11 forward
-		sshX11Forward(args, ss.client, ss.session)
+		sshX11Forward(args, ss.client, ss.session, udpMode)
 	}
 
 	return
@@ -783,7 +781,7 @@ func sshLogin(args *sshArgs) (*sshClientSession, error) {
 			return nil, err
 		}
 
-		if !ss.param.control && args.StdioForward == "" { // not ControlPath and not -W
+		if !args.Subsystem && !ss.param.control && args.StdioForward == "" { // not -s, not ControlPath and not -W
 			// ssh port forwarding
 			if err := sshForward(ss.client, args, ss.param); err != nil {
 				ss.Close()
@@ -793,16 +791,17 @@ func sshLogin(args *sshArgs) (*sshClientSession, error) {
 			// ssh agent forward and x11 forward
 			if !args.NoCommand { // not -N
 				// ssh agent forward
-				sshAgentForward(args, ss.param, ss.client, ss.session)
+				sshAgentForward(args, ss.param, ss.client, ss.session, udpMode)
 				// x11 forward
-				sshX11Forward(args, ss.client, ss.session)
+				sshX11Forward(args, ss.client, ss.session, udpMode)
 			}
 		}
 	}
 
 	// if running as a proxy ( aka: stdio forward ), or if not executing remote command,
+	// or request invocation of a subsystem on the remote system,
 	// then there is no need to initialize the session, so we return early here.
-	if args.StdioForward != "" || args.NoCommand {
+	if args.StdioForward != "" || args.NoCommand || args.Subsystem {
 		return ss, nil
 	}
 

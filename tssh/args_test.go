@@ -58,6 +58,7 @@ func TestSshArgs(t *testing.T) {
 	assertArgsEqual("-6", sshArgs{IPv6Only: true})
 	assertArgsEqual("-g", sshArgs{Gateway: true})
 	assertArgsEqual("-f", sshArgs{Background: true})
+	assertArgsEqual("-s", sshArgs{Subsystem: true})
 	assertArgsEqual("-N", sshArgs{NoCommand: true})
 	assertArgsEqual("-gfN -T", sshArgs{Gateway: true, Background: true, NoCommand: true, DisableTTY: true})
 

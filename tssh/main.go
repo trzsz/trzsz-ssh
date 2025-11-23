@@ -97,27 +97,63 @@ func background(args *sshArgs, dest string) (bool, error) {
 }
 
 var onExitFuncs []func()
+var onExitMutex sync.Mutex
 
 func cleanupOnExit() {
+	onExitMutex.Lock()
+	defer onExitMutex.Unlock()
+	var wg sync.WaitGroup
 	for i := len(onExitFuncs) - 1; i >= 0; i-- {
-		onExitFuncs[i]()
+		wg.Go(onExitFuncs[i])
 	}
+	wg.Wait()
+	onExitFuncs = nil
+}
+
+func addOnExitFunc(f func()) {
+	onExitMutex.Lock()
+	defer onExitMutex.Unlock()
+	onExitFuncs = append(onExitFuncs, f)
 }
 
 var onCloseFuncs []func()
+var onCloseMutex sync.Mutex
 
 func cleanupOnClose() {
+	onCloseMutex.Lock()
+	defer onCloseMutex.Unlock()
+	var wg sync.WaitGroup
 	for i := len(onCloseFuncs) - 1; i >= 0; i-- {
-		onCloseFuncs[i]()
+		wg.Go(onCloseFuncs[i])
 	}
+	wg.Wait()
+	onCloseFuncs = nil
+}
+
+func addOnCloseFunc(f func()) {
+	onCloseMutex.Lock()
+	defer onCloseMutex.Unlock()
+	onCloseFuncs = append(onCloseFuncs, f)
 }
 
 var afterLoginFuncs []func()
+var afterLoginMutex sync.Mutex
 
 func cleanupAfterLogin() {
+	afterLoginMutex.Lock()
+	defer afterLoginMutex.Unlock()
+	var wg sync.WaitGroup
 	for i := len(afterLoginFuncs) - 1; i >= 0; i-- {
-		afterLoginFuncs[i]()
+		wg.Go(afterLoginFuncs[i])
 	}
+	wg.Wait()
+	afterLoginFuncs = nil
+}
+
+func addAfterLoginFunc(f func()) {
+	afterLoginMutex.Lock()
+	defer afterLoginMutex.Unlock()
+	afterLoginFuncs = append(afterLoginFuncs, f)
 }
 
 var isTerminal bool = isatty.IsTerminal(os.Stdin.Fd()) || isatty.IsCygwinTerminal(os.Stdin.Fd())
@@ -129,7 +165,7 @@ func TsshMain(argv []string) int {
 	parser, err := arg.NewParser(arg.Config{HideLongOptions: true, Out: os.Stderr, Exit: os.Exit}, &args)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		return -1
+		return kExitCodeArgsInvalid
 	}
 	parser.MustParse(argv)
 
@@ -138,9 +174,6 @@ func TsshMain(argv []string) int {
 		enableDebugLogging = true
 	}
 
-	// cleanup on exit
-	defer cleanupOnExit()
-
 	// print message after stdin reset
 	defer func() {
 		if err != nil {
@@ -148,15 +181,18 @@ func TsshMain(argv []string) int {
 		}
 	}()
 
+	// cleanup on exit
+	defer cleanupOnExit()
+
 	// init user config
 	if err = initUserConfig(args.ConfigFile); err != nil {
-		return 1
+		return kExitCodeUserConfig
 	}
 
 	// setup virtual terminal on Windows
 	if isTerminal {
 		if err = setupVirtualTerminal(); err != nil {
-			return 2
+			return kExitCodeSetupWinVT
 		}
 	}
 
@@ -171,7 +207,7 @@ func TsshMain(argv []string) int {
 	if args.Destination == "" || args.Destination == "FAKE_DEST_IN_WARP" {
 		if !isTerminal {
 			parser.WriteHelp(os.Stderr)
-			return 3
+			return kExitCodeNoDestHost
 		}
 		dest, quit, err = chooseAlias("")
 	} else {
@@ -182,7 +218,7 @@ func TsshMain(argv []string) int {
 		return 0
 	}
 	if err != nil {
-		return 4
+		return kExitCodeNoDestHost
 	}
 
 	// run as background
@@ -190,7 +226,7 @@ func TsshMain(argv []string) int {
 		var parent bool
 		parent, err = background(&args, dest)
 		if err != nil {
-			return 5
+			return kExitCodeBackground
 		}
 		if parent {
 			return 0
@@ -213,7 +249,7 @@ func sshStart(args *sshArgs) (int, error) {
 	// ssh login
 	ss, err := sshLogin(args)
 	if err != nil {
-		return 10, err
+		return kExitCodeLoginFailed, err
 	}
 	defer ss.Close()
 
@@ -222,13 +258,19 @@ func sshStart(args *sshArgs) (int, error) {
 
 	// stdio forward
 	if args.StdioForward != "" {
-		var wg *sync.WaitGroup
-		wg, err = stdioForward(args, ss.client, args.StdioForward)
-		if err != nil {
-			return 11, err
-		}
 		cleanupAfterLogin()
-		wg.Wait()
+		if err = stdioForward(args, ss.client, args.StdioForward); err != nil {
+			return kExitCodeIoFwFailed, err
+		}
+		return 0, nil
+	}
+
+	// request subsystem
+	if args.Subsystem {
+		cleanupAfterLogin()
+		if err = subsystemForward(ss); err != nil {
+			return kExitCodeSubFwFailed, err
+		}
 		return 0, nil
 	}
 
@@ -260,11 +302,11 @@ func sshStart(args *sshArgs) (int, error) {
 	// run command or start shell
 	if ss.cmd != "" {
 		if err := ss.session.Start(ss.cmd); err != nil {
-			return 12, fmt.Errorf("start command [%s] failed: %v", ss.cmd, err)
+			return kExitCodeStartFailed, fmt.Errorf("start command [%s] failed: %v", ss.cmd, err)
 		}
 	} else {
 		if err := ss.session.Shell(); err != nil {
-			return 13, fmt.Errorf("start shell failed: %v", err)
+			return kExitCodeShellFailed, fmt.Errorf("start shell failed: %v", err)
 		}
 	}
 
@@ -275,26 +317,27 @@ func sshStart(args *sshArgs) (int, error) {
 	if isTerminal && ss.tty {
 		state, err := makeStdinRaw()
 		if err != nil {
-			return 14, err
+			return kExitCodeStdinFailed, err
 		}
+		addOnExitFunc(func() { resetStdin(state) })
 		defer resetStdin(state)
 	}
 
 	// enable trzsz
 	if err := enableTrzsz(args, ss); err != nil {
-		return 15, err
+		return kExitCodeTrzszFailed, err
 	}
 
 	// cleanup and wait for exit
 	cleanupAfterLogin()
 	_ = ss.session.Wait()
+	debug("session wait completed")
 	if args.Background {
 		_ = ss.client.Wait()
 	}
 
-	// wait for the output to be read by the parent process
-	if !isTerminal {
-		outputWaitGroup.Wait()
-	}
-	return 0, nil
+	// wait for the output
+	outputWaitGroup.Wait()
+	debug("output wait completed")
+	return ss.session.GetExitCode(), nil
 }

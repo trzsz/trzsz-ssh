@@ -210,7 +210,7 @@ func execNewHost(args *sshArgs) (int, bool) {
 			args.ConfigFile = n.configPath
 			if err := initUserConfig(args.ConfigFile); err != nil {
 				warning("init user config [%s] failed: %v", args.ConfigFile, err)
-				return 1, true
+				return kExitCodeUserConfig, true
 			}
 		}
 		args.Destination = n.hostAlias

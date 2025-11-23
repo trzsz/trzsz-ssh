@@ -77,7 +77,7 @@ type sshUdpClient struct {
 	connectTimeout   time.Duration
 	heartbeatTimeout time.Duration
 	reconnectTimeout time.Duration
-	lastAliveTime    atomic.Pointer[time.Time]
+	lastAliveTime    atomic.Int64
 	udpMainSession   *sshUdpMainSession
 	reconnectMutex   sync.Mutex
 	reconnectError   atomic.Pointer[error]
@@ -143,11 +143,11 @@ func (c *sshUdpClient) setMainSession(args *sshArgs, mainSession SshSession) Ssh
 }
 
 func (c *sshUdpClient) isHeartbeatTimeout() bool {
-	offline := time.Since(*c.lastAliveTime.Load()) > c.heartbeatTimeout
+	offline := time.Since(time.UnixMilli(c.lastAliveTime.Load())) > c.heartbeatTimeout
 	if enableDebugLogging {
 		if offline {
 			if c.offlineFlag.CompareAndSwap(false, true) {
-				c.debug("offline for %d seconds", time.Since(*c.lastAliveTime.Load())/time.Second)
+				c.debug("offline for %d milliseconds", time.Since(time.UnixMilli(c.lastAliveTime.Load()))/time.Millisecond)
 			}
 		} else {
 			if c.offlineFlag.CompareAndSwap(true, false) {
@@ -159,19 +159,65 @@ func (c *sshUdpClient) isHeartbeatTimeout() bool {
 }
 
 func (c *sshUdpClient) isReconnectTimeout() bool {
-	return time.Since(*c.lastAliveTime.Load()) > c.reconnectTimeout
+	return time.Since(time.UnixMilli(c.lastAliveTime.Load())) > c.reconnectTimeout
 }
 
 func (c *sshUdpClient) udpKeepAlive(udpProxy bool) {
-	c.KeepAlive(c.intervalTime, func() {
-		now := time.Now()
-		c.lastAliveTime.Store(&now)
-	})
+	ackChan := make(chan int64, 2)
+	defer close(ackChan)
+
+	aliveCallback := func(aliveTime int64) {
+		if c.IsClosed() {
+			return
+		}
+
+		if aliveTime == 0 {
+			if enableDebugLogging && c.isHeartbeatTimeout() {
+				c.debug("received ping response from the server")
+			}
+			c.lastAliveTime.Store(time.Now().UnixMilli())
+			select {
+			case ackChan <- 0:
+			default:
+			}
+			return
+		}
+
+		if enableDebugLogging && c.isHeartbeatTimeout() {
+			c.debug("keep alive response [%d]: %v", aliveTime, time.UnixMilli(aliveTime).Format("15:04:05.000"))
+		}
+		c.lastAliveTime.Store(aliveTime)
+		ackChan <- aliveTime
+	}
+
+	ticker := time.NewTicker(c.intervalTime)
+	defer ticker.Stop()
+	go func() {
+		for range ticker.C {
+			aliveTime := time.Now().UnixMilli()
+			if enableDebugLogging && c.isHeartbeatTimeout() {
+				c.debug("begin to send keep alive [%d]", aliveTime)
+			}
+			err := c.KeepAlive(aliveTime, aliveCallback)
+			if err != nil {
+				warning("udp [%s] keep alive failed: %v", c.sshDestName, err)
+			}
+			if enableDebugLogging && c.isHeartbeatTimeout() {
+				c.debug("send keep alive [%d] complete: %v", aliveTime, err)
+			}
+			for {
+				ackAliveTime := <-ackChan
+				if ackAliveTime == aliveTime || ackAliveTime == 0 {
+					break
+				}
+			}
+		}
+	}()
 
 	for !c.IsClosed() {
-		if time.Since(*c.lastAliveTime.Load()) > c.aliveTimeout {
+		if time.Since(time.UnixMilli(c.lastAliveTime.Load())) > c.aliveTimeout {
 			c.debug("alive timeout for %v", c.aliveTimeout)
-			c.exit(125, fmt.Sprintf("Exit due to connection was lost and timeout for %v", c.aliveTimeout))
+			c.exit(kExitCodeUdpTimeout, fmt.Sprintf("Exit due to connection was lost and timeout for %v", c.aliveTimeout))
 			return
 		}
 
@@ -261,7 +307,7 @@ func (c *sshUdpClient) showNotifications(udpProxy bool) {
 				case '\x01': // ctrl + a
 					c.showFullNotif.Store(!c.showFullNotif.Load())
 				case '\x03': // ctrl + c
-					c.exit(126, "Exit due to connection was lost and Ctrl+C was pressed")
+					c.exit(kExitCodeUdpCtrlC, "Exit due to connection was lost and Ctrl+C was pressed")
 					return
 				}
 			case <-time.After(200 * time.Millisecond):
@@ -361,7 +407,7 @@ func (m *noticeModel) getView(redrawing bool) string {
 		} else {
 			format = "Oops, looks like the connection to the server was lost, automatically exit countdown %d/%d seconds."
 		}
-		statusMsg = fmt.Sprintf(format, time.Since(*m.client.lastAliveTime.Load())/time.Second, m.client.aliveTimeout/time.Second)
+		statusMsg = fmt.Sprintf(format, time.Since(time.UnixMilli(m.client.lastAliveTime.Load()))/time.Second, m.client.aliveTimeout/time.Second)
 	}
 
 	var buf strings.Builder
@@ -409,6 +455,7 @@ func (m *noticeModel) getReconnectError() error {
 
 type sshUdpMainSession struct {
 	SshSession
+	waitGroup sync.WaitGroup
 	udpClient *sshUdpClient
 	intMutex  sync.Mutex
 	intFlag   atomic.Bool
@@ -438,6 +485,7 @@ func (s *sshUdpMainSession) forwardInput(reader io.Reader, writer io.WriteCloser
 	bufChan := make(chan []byte, 128)
 	defer close(bufChan)
 	go func() {
+		defer func() { _ = writer.Close() }()
 		for buf := range bufChan {
 			_ = writeAll(writer, buf)
 		}
@@ -518,7 +566,7 @@ func (s *sshUdpMainSession) StdoutPipe() (io.Reader, error) {
 		return nil, err
 	}
 	reader, writer := io.Pipe()
-	go s.forwardOutput(serverOut, writer)
+	s.waitGroup.Go(func() { s.forwardOutput(serverOut, writer) })
 	return reader, nil
 }
 
@@ -528,7 +576,7 @@ func (s *sshUdpMainSession) StderrPipe() (io.Reader, error) {
 		return nil, err
 	}
 	reader, writer := io.Pipe()
-	go s.forwardOutput(serverErr, writer)
+	s.waitGroup.Go(func() { s.forwardOutput(serverErr, writer) })
 	return reader, nil
 }
 
@@ -537,7 +585,11 @@ func (s *sshUdpMainSession) Close() error {
 }
 
 func (s *sshUdpMainSession) Wait() error {
-	return s.doUntilExit(func() error { return s.SshSession.Wait() })
+	return s.doUntilExit(func() error {
+		err := s.SshSession.Wait()
+		s.waitGroup.Wait()
+		return err
+	})
 }
 
 func (s *sshUdpMainSession) doUntilExit(task func() error) error {
@@ -554,6 +606,14 @@ func (s *sshUdpMainSession) doUntilExit(task func() error) error {
 	case err := <-done:
 		return err
 	}
+}
+
+func (s *sshUdpMainSession) GetExitCode() int {
+	code := s.SshSession.GetExitCode()
+	if code != 0 {
+		return code
+	}
+	return s.udpClient.GetExitCode()
 }
 
 var lastJumpUdpClient *sshUdpClient
@@ -641,8 +701,7 @@ func sshUdpLogin(args *sshArgs, ss *sshClientSession, udpMode udpModeType, asPro
 	}
 
 	// keep alive
-	now := time.Now()
-	udpClient.lastAliveTime.Store(&now)
+	udpClient.lastAliveTime.Store(time.Now().UnixMilli())
 	go udpClient.udpKeepAlive(udpProxy)
 
 	if asProxy {
@@ -672,14 +731,24 @@ func sshUdpLogin(args *sshArgs, ss *sshClientSession, udpMode udpModeType, asPro
 	}
 	udpSession = udpClient.setMainSession(args, udpSession)
 
-	serverIn, _ := udpSession.StdinPipe()
-	serverOut, _ := udpSession.StdoutPipe()
+	serverIn, err := udpSession.StdinPipe()
+	if err != nil {
+		return nil, fmt.Errorf("udp login to [%s] stdin pipe failed: %v", args.Destination, err)
+	}
+	serverOut, err := udpSession.StdoutPipe()
+	if err != nil {
+		return nil, fmt.Errorf("udp login to [%s] stdout pipe failed: %v", args.Destination, err)
+	}
+	serverErr, err := udpSession.StderrPipe()
+	if err != nil {
+		return nil, fmt.Errorf("udp login to [%s] stderr pipe failed: %v", args.Destination, err)
+	}
 	return &sshClientSession{
 		client:    &udpClient,
 		session:   udpSession,
 		serverIn:  serverIn,
 		serverOut: serverOut,
-		serverErr: nil,
+		serverErr: serverErr,
 		param:     ss.param,
 		cmd:       ss.cmd,
 		tty:       ss.tty,

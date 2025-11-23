@@ -133,9 +133,7 @@ func runWaypipeClient(args *sshArgs, token string) (string, error) {
 			warning("waypipe client output error: %s", output)
 		}
 	}()
-	onExitFuncs = append(onExitFuncs, func() {
-		_ = cmd.Process.Signal(syscall.SIGINT)
-	})
+	addOnExitFunc(func() { _ = cmd.Process.Signal(syscall.SIGINT) })
 
 	return clientSocket, nil
 }

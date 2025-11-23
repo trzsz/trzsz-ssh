@@ -387,6 +387,21 @@ trzsz-ssh ( tssh ) 与 [tsshd](https://github.com/trzsz/tsshd) 一起，适用�
   tssh -t --client --zmodem --download-path /tmp/ xxx_server 'sz /path/to/file1 /path/to/file2'
   ```
 
+## 支持 scp sftp
+
+- 使用了 `tssh` 记住密码的功能，登录时不用手工输入密码了，`scp` 和 `sftp` 也一样可以不用手工输入密码。
+
+- 使用了 `tssh` 的 UDP 模式，SSH 通讯走加密的 UDP 通道了，`scp` 和 `sftp` 也一样可以走加密的 UDP 通道。
+
+- 只要 `scp` 和 `sftp` 使用 `-S` 选项指定 `tssh`，或者配置个 alias 即可使用 `tssh` 提供的一些功能，如：
+
+  ```sh
+  sftp -S tssh xxx
+  scp -S tssh xxx @xxx:/tmp/
+  alias tscp='scp -S tssh'
+  alias tsftp='sftp -S tssh'
+  ```
+
 ## 批量登录
 
 - 支持在 `iTerm2`（ 要开启 [Python API](https://iterm2.com/python-api-auth.html)，但不需要`Allow all apps to connect` ），`tmux` 和 `Windows Terminal` 中一次选择多台服务器，批量登录，并支持批量执行预先指定的命令。
@@ -729,6 +744,21 @@ trzsz-ssh ( tssh ) 与 [tsshd](https://github.com/trzsz/tsshd) 一起，适用�
 - 启用剪贴板集成功能后，支持远程服务器通过 OSC52 序列写入本地剪贴板。
 
 - 在 Linux 系统，剪贴板集成功能需要安装 `xclip` 或 `xsel` 命令。
+
+## SSH 控制台
+
+- `tssh` 控制台是类似 OpenSSH escape sequences 的功能，计划提供更友好、更强大的 SSH 控制功能。目前已支持的功能有：
+
+  - 发送转义字符 '~' ( 相当于输入 `~`，可作为控制台误触发后的补救措施 )。
+  - 暂停当前 SSH 进程 ( 相当于 `Ctrl + Z`，不是作用于远程服务器上的进程，而是作用于 `tssh` 自身 )。
+  - 退出当前 SSH 会话 ( 相当于 Exit / Kill，当因为网络等原因导致 `tssh` 卡死时，可通过此功能退出 )。
+
+- 可通过 `ConsoleEscapeTime` 选项配置按下 `回车` 键后多少秒内按下 `~` 键即进入 SSH 控制台，默认值是 `1` 秒，可以配置为 `0` 禁用控制台功能：
+
+  ```
+  Host xxx
+    #!! ConsoleEscapeTime 1
+  ```
 
 ## 其他功能
 

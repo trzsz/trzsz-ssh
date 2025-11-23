@@ -28,11 +28,42 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
+	"sync/atomic"
 	"time"
+
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 var enableDebugLogging bool = false
 var envbleWarningLogging bool = true
+var currentTerminalWidth atomic.Int32
+
+const (
+	kExitCodeArgsInvalid = 11
+	kExitCodeUserConfig  = 12
+	kExitCodeSetupWinVT  = 13
+	kExitCodeNoDestHost  = 14
+	kExitCodeBackground  = 15
+	kExitCodeLoginFailed = 16
+	kExitCodeIoFwFailed  = 17
+	kExitCodeSubFwFailed = 18
+	kExitCodeStartFailed = 19
+	kExitCodeShellFailed = 20
+	kExitCodeStdinFailed = 21
+	kExitCodeTrzszFailed = 22
+
+	kExitCodeToolsError  = 101
+	kExitCodeTrzPreError = 102
+	kExitCodeTrzRunError = 103
+	kExitCodeTrzRetError = 104
+	kExitCodeJsonMarshal = 105
+
+	kExitCodeUdpCtrlC    = 201
+	kExitCodeUdpTimeout  = 202
+	kExitCodeConsoleKill = 203
+)
 
 var debug = func(format string, a ...any) {
 	if !enableDebugLogging {
@@ -45,7 +76,31 @@ var warning = func(format string, a ...any) {
 	if !envbleWarningLogging {
 		return
 	}
-	fmt.Fprintf(os.Stderr, fmt.Sprintf("\033[0;33mWarning: %s\033[0m\r\n", format), a...)
+
+	terminalWidth := int(currentTerminalWidth.Load())
+	if terminalWidth <= 0 {
+		fmt.Fprintf(os.Stderr, fmt.Sprintf("\033[0;33mWarning: %s\033[0m\r\n", format), a...)
+		return
+	}
+
+	if enableDebugLogging {
+		debug("warning: "+format, a...)
+	}
+
+	msg := fmt.Sprintf("Warning: "+format, a...)
+	msgWidth := ansi.StringWidth(msg)
+	if msgWidth > terminalWidth {
+		msg = lipgloss.NewStyle().Foreground(blackColor).Background(yellowColor).Render(ansi.Truncate(msg, terminalWidth, ""))
+	} else {
+		msg = lipgloss.NewStyle().Foreground(blackColor).Width(terminalWidth).Background(yellowColor).Render(msg)
+	}
+	var buf strings.Builder
+	buf.WriteString(ansi.SaveCurrentCursorPosition)
+	buf.WriteString(ansi.CursorHomePosition)
+	buf.WriteString(msg)
+	buf.WriteString(ansi.EraseLineRight)
+	buf.WriteString(ansi.RestoreCurrentCursorPosition)
+	fmt.Fprint(os.Stderr, buf.String())
 }
 
 func isFileExist(path string) bool {

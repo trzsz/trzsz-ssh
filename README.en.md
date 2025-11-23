@@ -387,6 +387,21 @@ trzsz-ssh ( tssh ) with [tsshd](https://github.com/trzsz/tsshd) also supports in
   tssh -t --client --zmodem --download-path /tmp/ xxx_server 'sz /path/to/file1 /path/to/file2'
   ```
 
+### Support scp sftp
+
+- Using the `Remember Password` feature of `tssh`, you no longer need to manually enter your password. The same applies to `scp` and `sftp`.
+
+- Using the `UDP Mode` feature of `tssh`, the SSH session uses an encrypted UDP channel for communication. The same applies to `scp` and `sftp`.
+
+- As long as `scp` and `sftp` use the `-S` option to specify `tssh`, or configure an alias, you can use some of the features provided by `tssh`, such as:
+
+  ```sh
+  sftp -S tssh xxx
+  scp -S tssh xxx @xxx:/tmp/
+  alias tscp='scp -S tssh'
+  alias tsftp='sftp -S tssh'
+  ```
+
 ### Batch Login
 
 - tssh supports selecting multiple servers in `iTerm2`( Requires [Python API](https://iterm2.com/python-api-auth.html), no need to `Allow all apps to connect` ),`tmux` and `Windows Terminal`, logging in to them in batches, and executing pre-specified commands in batches.
@@ -731,6 +746,21 @@ trzsz-ssh ( tssh ) with [tsshd](https://github.com/trzsz/tsshd) also supports in
 - Clipboard integration allows remote servers to write to the local clipboard via OSC52 sequences.
 
 - On Linux, clipboard integration requires `xclip` or `xsel` command to be installed.
+
+### SSH Console
+
+- The `tssh` console is similar to OpenSSH escape sequences, and is planned to provide more user-friendly and powerful SSH control features. Currently supported features include:
+
+  - Send the escape character '~' (equivalent to typing `~`, can be used as a remedy after accidentally triggering the console).
+  - Suspend the current SSH process (equivalent to `Ctrl + Z`, but it applies to `tssh` itself, not the process on the remote server).
+  - Terminate the current SSH session (equivalent to Exit / Kill, can be used to kill the `tssh` process when it freezes due to network issues or other reasons).
+
+- The `ConsoleEscapeTime` option configures how many seconds after pressing the `Enter` key should the `~` key be pressed to enter the SSH console. The default value is `1` second, which can be configured to `0` to disable the console feature:
+
+  ```
+  Host xxx
+    #!! ConsoleEscapeTime 1
+  ```
 
 ### Other Features
 

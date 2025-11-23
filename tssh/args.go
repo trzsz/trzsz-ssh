@@ -59,6 +59,7 @@ type sshArgs struct {
 	IPv6Only       bool        `arg:"-6,--" help:"forces ssh to use IPv6 addresses only"`
 	Gateway        bool        `arg:"-g,--" help:"forwarding allows remote hosts to connect"`
 	Background     bool        `arg:"-f,--" help:"run as a background process, implies -n"`
+	Subsystem      bool        `arg:"-s,--" help:"request invocation of a subsystem"`
 	NoCommand      bool        `arg:"-N,--" help:"do not execute a remote command"`
 	Port           int         `arg:"-p,--" placeholder:"port" help:"port to connect to on the remote host"`
 	LoginName      string      `arg:"-l,--" placeholder:"login_name" help:"the user to log in as on the remote machine"`

@@ -40,7 +40,7 @@ func execListHosts() (int, bool) {
 	result, err := json.MarshalIndent(hosts, "", "  ")
 	if err != nil {
 		warning("json marshal indent failed: %v", err)
-		return 1, true
+		return kExitCodeJsonMarshal, true
 	}
 
 	hostsJson := string(result)

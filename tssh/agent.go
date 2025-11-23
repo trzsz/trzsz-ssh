@@ -77,10 +77,7 @@ func getAgentClient(args *sshArgs, param *sshParam) agent.ExtendedAgent {
 		agentClient = agent.NewClient(conn)
 		debug("new ssh agent client [%s] success", addr)
 
-		afterLoginFuncs = append(afterLoginFuncs, func() {
-			_ = conn.Close()
-			agentClient = nil
-		})
+		addAfterLoginFunc(func() { _ = conn.Close(); agentClient = nil })
 	})
 	return agentClient
 }
@@ -119,18 +116,7 @@ func forwardAgentRequest(channel ssh.Channel, addr string) {
 	forwardChannel(channel, conn)
 }
 
-func requestAgentForwarding(session SshSession) error {
-	ok, err := session.SendRequest(kAgentRequestName, true, nil)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return fmt.Errorf("forwarding request denied")
-	}
-	return nil
-}
-
-func sshAgentForward(args *sshArgs, param *sshParam, client SshClient, session SshSession) {
+func sshAgentForward(args *sshArgs, param *sshParam, client SshClient, session SshSession, udpMode udpModeType) {
 	if args.NoForwardAgent || !args.ForwardAgent && strings.ToLower(getOptionConfig(args, "ForwardAgent")) != "yes" {
 		return
 	}
@@ -147,9 +133,16 @@ func sshAgentForward(args *sshArgs, param *sshParam, client SshClient, session S
 		warning("forward to agent [%s] failed: %v", addr, err)
 		return
 	}
-	if err := requestAgentForwarding(session); err != nil {
+	ok, err := session.SendRequest(kAgentRequestName, true, nil)
+	if err != nil {
 		warning("request agent forwarding failed: %v", err)
 		return
 	}
-	debug("request ssh agent forwarding success")
+	if !ok {
+		warning("The agent forwarding request was denied. Check [AllowAgentForwarding, DisableForwarding] in [/etc/ssh/sshd_config] on the server.")
+		return
+	}
+	if udpMode == kUdpModeNo {
+		debug("request ssh agent forwarding success")
+	}
 }

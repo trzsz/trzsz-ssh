@@ -142,19 +142,19 @@ func TestParseForwardCfg(t *testing.T) {
 		assert.Contains(err.Error(), errMsg)
 	}
 
-	assertArgError("::1:8000 localhost:9000", "invalid forward config: ::1:8000 localhost:9000")
-	assertArgError("A[::1]:8000 localhost:9000", "invalid forward config: A[::1]:8000 localhost:9000")
-	assertArgError("[::1]:8000 localhost:9000B", "invalid forward config: [::1]:8000 localhost:9000B")
-	assertArgError("[[::1]:8000 localhost:9000", "invalid forward config: [[::1]:8000 localhost:9000")
-	assertArgError("[::1]]:8000 localhost:9000", "invalid forward config: [::1]]:8000 localhost:9000")
-	assertArgError("[:\t:1]:8000 localhost:9000", "invalid forward config: [:\t:1]:8000 localhost:9000")
+	assertArgError("::1:8000 localhost:9000", "invalid forwarding config: ::1:8000 localhost:9000")
+	assertArgError("A[::1]:8000 localhost:9000", "invalid forwarding config: A[::1]:8000 localhost:9000")
+	assertArgError("[::1]:8000 localhost:9000B", "invalid forwarding config: [::1]:8000 localhost:9000B")
+	assertArgError("[[::1]:8000 localhost:9000", "invalid forwarding config: [[::1]:8000 localhost:9000")
+	assertArgError("[::1]]:8000 localhost:9000", "invalid forwarding config: [::1]]:8000 localhost:9000")
+	assertArgError("[:\t:1]:8000 localhost:9000", "invalid forwarding config: [:\t:1]:8000 localhost:9000")
 
-	assertArgError("127.0.0.1:8000 ::1:9000", "invalid forward config: 127.0.0.1:8000 ::1:9000")
-	assertArgError("127.0.0.1:A8000 [::1]:9000", "invalid forward config: 127.0.0.1:A8000 [::1]:9000")
-	assertArgError("127.0.0.1:8000 [::1]:9000B", "invalid forward config: 127.0.0.1:8000 [::1]:9000B")
-	assertArgError("127.0.0.1:8000 [[::1]:9000", "invalid forward config: 127.0.0.1:8000 [[::1]:9000")
-	assertArgError("127.0.0.1:8000 [::1]]:9000", "invalid forward config: 127.0.0.1:8000 [::1]]:9000")
-	assertArgError("127.0.0.1:8000 [:\t:1]:9000", "invalid forward config: 127.0.0.1:8000 [:\t:1]:9000")
+	assertArgError("127.0.0.1:8000 ::1:9000", "invalid forwarding config: 127.0.0.1:8000 ::1:9000")
+	assertArgError("127.0.0.1:A8000 [::1]:9000", "invalid forwarding config: 127.0.0.1:A8000 [::1]:9000")
+	assertArgError("127.0.0.1:8000 [::1]:9000B", "invalid forwarding config: 127.0.0.1:8000 [::1]:9000B")
+	assertArgError("127.0.0.1:8000 [[::1]:9000", "invalid forwarding config: 127.0.0.1:8000 [[::1]:9000")
+	assertArgError("127.0.0.1:8000 [::1]]:9000", "invalid forwarding config: 127.0.0.1:8000 [::1]]:9000")
+	assertArgError("127.0.0.1:8000 [:\t:1]:9000", "invalid forwarding config: 127.0.0.1:8000 [:\t:1]:9000")
 }
 
 func TestParseForwardArg(t *testing.T) {
@@ -216,19 +216,19 @@ func TestParseForwardArg(t *testing.T) {
 		assert.Contains(err.Error(), errMsg)
 	}
 
-	assertArgError("::1:8000:localhost:9000", "invalid forward specification: ::1:8000:localhost:9000")
-	assertArgError("A[::1]:8000:localhost:9000", "invalid forward specification: A[::1]:8000:localhost:9000")
-	assertArgError("[::1]:8000:localhost:9000B", "invalid forward specification: [::1]:8000:localhost:9000B")
-	assertArgError("[[::1]:8000:localhost:9000", "invalid forward specification: [[::1]:8000:localhost:9000")
-	assertArgError("[::1]]:8000:localhost:9000", "invalid forward specification: [::1]]:8000:localhost:9000")
-	assertArgError("[:\t:1]:8000:localhost:9000", "invalid forward specification: [:\t:1]:8000:localhost:9000")
+	assertArgError("::1:8000:localhost:9000", "invalid forwarding specification: ::1:8000:localhost:9000")
+	assertArgError("A[::1]:8000:localhost:9000", "invalid forwarding specification: A[::1]:8000:localhost:9000")
+	assertArgError("[::1]:8000:localhost:9000B", "invalid forwarding specification: [::1]:8000:localhost:9000B")
+	assertArgError("[[::1]:8000:localhost:9000", "invalid forwarding specification: [[::1]:8000:localhost:9000")
+	assertArgError("[::1]]:8000:localhost:9000", "invalid forwarding specification: [::1]]:8000:localhost:9000")
+	assertArgError("[:\t:1]:8000:localhost:9000", "invalid forwarding specification: [:\t:1]:8000:localhost:9000")
 
-	assertArgError("127.0.0.1:8000:::1:9000", "invalid forward specification: 127.0.0.1:8000:::1:9000")
-	assertArgError("127.0.0.1:A8000:[::1]:9000", "invalid forward specification: 127.0.0.1:A8000:[::1]:9000")
-	assertArgError("127.0.0.1:8000:[::1]:9000B", "invalid forward specification: 127.0.0.1:8000:[::1]:9000B")
-	assertArgError("127.0.0.1:8000:[[::1]:9000", "invalid forward specification: 127.0.0.1:8000:[[::1]:9000")
-	assertArgError("127.0.0.1:8000:[::1]]:9000", "invalid forward specification: 127.0.0.1:8000:[::1]]:9000")
-	assertArgError("127.0.0.1:8000:[:\t:1]:9000", "invalid forward specification: 127.0.0.1:8000:[:\t:1]:9000")
+	assertArgError("127.0.0.1:8000:::1:9000", "invalid forwarding specification: 127.0.0.1:8000:::1:9000")
+	assertArgError("127.0.0.1:A8000:[::1]:9000", "invalid forwarding specification: 127.0.0.1:A8000:[::1]:9000")
+	assertArgError("127.0.0.1:8000:[::1]:9000B", "invalid forwarding specification: 127.0.0.1:8000:[::1]:9000B")
+	assertArgError("127.0.0.1:8000:[[::1]:9000", "invalid forwarding specification: 127.0.0.1:8000:[[::1]:9000")
+	assertArgError("127.0.0.1:8000:[::1]]:9000", "invalid forwarding specification: 127.0.0.1:8000:[::1]]:9000")
+	assertArgError("127.0.0.1:8000:[:\t:1]:9000", "invalid forwarding specification: 127.0.0.1:8000:[:\t:1]:9000")
 }
 
 func TestConvertSshTime(t *testing.T) {

@@ -26,6 +26,7 @@ package tssh
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -37,7 +38,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/trzsz/go-socks5"
+	"github.com/trzsz/tsshd/tsshd"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -47,12 +50,20 @@ type bindCfg struct {
 	port     int
 }
 
+func (b *bindCfg) String() string {
+	return b.argument
+}
+
 type forwardCfg struct {
 	argument string
 	bindAddr *string
 	bindPort int
 	destHost string
 	destPort int
+}
+
+func (f *forwardCfg) String() string {
+	return f.argument
 }
 
 type closeWriter interface {
@@ -114,18 +125,18 @@ func parseForwardCfg(s string) (*forwardCfg, error) {
 
 	tokens := strings.Fields(s)
 	if len(tokens) != 2 {
-		return nil, fmt.Errorf("invalid forward config: %s", s)
+		return nil, fmt.Errorf("invalid forwarding config: %s", s)
 	}
 
 	bindCfg, err := parseBindCfg(tokens[0])
 	if err != nil {
-		return nil, fmt.Errorf("invalid forward config: %s", s)
+		return nil, fmt.Errorf("invalid forwarding config: %s", s)
 	}
 
 	newForwardCfg := func(host string, port string) (*forwardCfg, error) {
 		dPort, err := strconv.Atoi(port)
 		if err != nil {
-			return nil, fmt.Errorf("invalid forward config [%s]: %v", s, err)
+			return nil, fmt.Errorf("invalid forwarding config [%s]: %v", s, err)
 		}
 		return &forwardCfg{s, bindCfg.addr, bindCfg.port, host, dPort}, nil
 	}
@@ -150,24 +161,24 @@ func parseForwardCfg(s string) (*forwardCfg, error) {
 		return newForwardCfg(dest, "-1")
 	}
 
-	return nil, fmt.Errorf("invalid forward config: %s", s)
+	return nil, fmt.Errorf("invalid forwarding config: %s", s)
 }
 
 func parseForwardArg(s string) (*forwardCfg, error) {
 	s = strings.TrimSpace(s)
 
 	if spaceRegexp.MatchString(s) {
-		return nil, fmt.Errorf("invalid forward specification: %s", s)
+		return nil, fmt.Errorf("invalid forwarding specification: %s", s)
 	}
 
 	newForwardCfg := func(bindAddr *string, bindPort string, destHost string, destPort string) (*forwardCfg, error) {
 		bPort, err := strconv.Atoi(bindPort)
 		if err != nil {
-			return nil, fmt.Errorf("invalid forward specification [%s]: %v", s, err)
+			return nil, fmt.Errorf("invalid forwarding specification [%s]: %v", s, err)
 		}
 		dPort, err := strconv.Atoi(destPort)
 		if err != nil {
-			return nil, fmt.Errorf("invalid forward specification [%s]: %v", s, err)
+			return nil, fmt.Errorf("invalid forwarding specification [%s]: %v", s, err)
 		}
 		return &forwardCfg{s, bindAddr, bPort, destHost, dPort}, nil
 	}
@@ -218,24 +229,63 @@ func parseForwardArg(s string) (*forwardCfg, error) {
 		return newForwardCfg(&tokens[0], "-1", tokens[1], "-1")
 	}
 
-	return nil, fmt.Errorf("invalid forward specification: %s", s)
+	return nil, fmt.Errorf("invalid forwarding specification: %s", s)
 }
 
 func isGatewayPorts(args *sshArgs) bool {
 	return args.Gateway || strings.ToLower(getConfig(args.Destination, "GatewayPorts")) == "yes"
 }
 
-func listenOnLocal(args *sshArgs, addr *string, port string) (listeners []net.Listener) {
+func isClosedError(err error) bool {
+	if errors.Is(err, io.EOF) {
+		return true
+	}
+	if errors.Is(err, net.ErrClosed) {
+		return true
+	}
+	if errors.Is(err, io.ErrClosedPipe) {
+		return true
+	}
+	if strings.Contains(err.Error(), "io: read/write on closed pipe") {
+		return true
+	}
+	return false
+}
+
+func forwardDeniedReason(err error, network string) string {
+	if e, ok := err.(*tsshd.Error); ok && e.Code == tsshd.ErrProhibited {
+		return e.Msg
+	}
+
+	buildDeniedMsg := func() string {
+		option := "AllowTcpForwarding"
+		if network == "unix" {
+			option += ", AllowStreamLocalForwarding"
+		}
+		return fmt.Sprintf("Check [%s, DisableForwarding] in [/etc/ssh/sshd_config] on the server.", option)
+	}
+
+	if e, ok := err.(*ssh.OpenChannelError); ok && e.Reason == ssh.Prohibited {
+		return buildDeniedMsg()
+	}
+
+	const kDeniedError = "request denied by peer"
+	if strings.Contains(err.Error(), kDeniedError) {
+		return buildDeniedMsg() + " And check if the bind address is already in use."
+	}
+
+	return ""
+}
+
+func listenOnLocal(args *sshArgs, addr *string, port, name string) (listeners []net.Listener) {
 	listen := func(network, address string) {
 		listener, err := net.Listen(network, address)
 		if err != nil {
-			debug("forward listen on local %s '%s' failed: %v", network, address, err)
+			warning("%s listen on local [%s] [%s] failed: %v", name, network, address, err)
 		} else {
-			debug("forward listen on local %s '%s' success", network, address)
+			debug("%s listen on local [%s] [%s] success", name, network, address)
 			listeners = append(listeners, listener)
-			onCloseFuncs = append(onCloseFuncs, func() {
-				_ = listener.Close()
-			})
+			addOnCloseFunc(func() { _ = listener.Close() })
 		}
 	}
 	if addr == nil && isGatewayPorts(args) || addr != nil && (*addr == "" || *addr == "*") {
@@ -256,17 +306,24 @@ func listenOnLocal(args *sshArgs, addr *string, port string) (listeners []net.Li
 	return
 }
 
-func listenOnRemote(args *sshArgs, client SshClient, addr *string, port string) (listeners []net.Listener) {
+func listenOnRemote(args *sshArgs, client SshClient, f *forwardCfg) (listeners []net.Listener) {
+	firstDenied := true
+	addr, port := f.bindAddr, strconv.Itoa(f.bindPort)
 	listen := func(network, address string) {
 		listener, err := client.Listen(network, address)
 		if err != nil {
-			debug("forward listen on remote %s '%s' failed: %v", network, address, err)
+			if reason := forwardDeniedReason(err, network); reason != "" {
+				if firstDenied {
+					firstDenied = false
+					warning("The remote forwarding [%v] was denied. %s", f, reason)
+				}
+			} else {
+				warning("remote forwarding [%v] listen on remote [%s] [%s] failed: %v", f, network, address, err)
+			}
 		} else {
-			debug("forward listen on remote %s '%s' success", network, address)
+			debug("remote forwarding [%v] listen on remote [%s] [%s] success", f, network, address)
 			listeners = append(listeners, listener)
-			onCloseFuncs = append(onCloseFuncs, func() {
-				_ = listener.Close()
-			})
+			addOnCloseFunc(func() { _ = listener.Close() })
 		}
 	}
 	if addr == nil && isGatewayPorts(args) || addr != nil && (*addr == "" || *addr == "*") {
@@ -287,30 +344,23 @@ func listenOnRemote(args *sshArgs, client SshClient, addr *string, port string) 
 	return
 }
 
-func stdioForward(args *sshArgs, client SshClient, addr string) (*sync.WaitGroup, error) {
+func stdioForward(args *sshArgs, client SshClient, addr string) error {
 	conn, err := client.DialTimeout("tcp", addr, getConnectTimeout(args))
 	if err != nil {
-		return nil, fmt.Errorf("stdio forward failed: %v", err)
+		return fmt.Errorf("stdio forwarding [%s] failed: %v", addr, err)
 	}
-	defer func() { _ = conn.Close() }()
 
 	var wg sync.WaitGroup
-	wg.Add(2)
-
-	done := make(chan struct{}, 2)
-	go func() {
+	wg.Go(func() {
 		_, _ = io.Copy(conn, os.Stdin)
-		done <- struct{}{}
-		wg.Done()
-	}()
-	go func() {
+		_ = conn.Close()
+	})
+	wg.Go(func() {
 		_, _ = io.Copy(os.Stdout, conn)
-		done <- struct{}{}
-		wg.Done()
-	}()
-	<-done
-
-	return &wg, nil
+		_ = os.Stdin.Close()
+	})
+	wg.Wait()
+	return nil
 }
 
 type sshResolver struct{}
@@ -320,33 +370,63 @@ func (d sshResolver) Resolve(ctx context.Context, name string) (context.Context,
 }
 
 func dynamicForward(client SshClient, b *bindCfg, args *sshArgs) {
+	var dialError = errors.New("DIAL_ERROR_" + uuid.NewString())
 	server, err := socks5.New(&socks5.Config{
 		Resolver: &sshResolver{},
 		Dial: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			return client.DialTimeout(network, addr, getConnectTimeout(args))
+			conn, err := client.DialTimeout(network, addr, getConnectTimeout(args))
+			if err != nil {
+				if reason := forwardDeniedReason(err, network); reason != "" {
+					warning("The dynamic forwarding [%v] was denied. %s", b, reason)
+				} else {
+					warning("dynamic forwarding [%v] dial [%s] [%s] failed: %v", b, network, addr, err)
+				}
+				err = dialError
+			}
+			return conn, err
 		},
 		Logger: log.New(io.Discard, "", log.LstdFlags),
 	})
 	if err != nil {
-		warning("dynamic forward failed: %v", err)
+		warning("dynamic forwarding [%v] failed: %v", b, err)
 		return
 	}
 
-	for _, listener := range listenOnLocal(args, b.addr, strconv.Itoa(b.port)) {
+	name := fmt.Sprintf("dynamic forwarding [%v]", b)
+	for _, listener := range listenOnLocal(args, b.addr, strconv.Itoa(b.port), name) {
 		go func(listener net.Listener) {
 			defer func() { _ = listener.Close() }()
 			for {
 				conn, err := listener.Accept()
-				if err == io.EOF {
-					break
-				}
 				if err != nil {
-					debug("dynamic forward accept failed: %v", err)
+					if isClosedError(err) {
+						debug("dynamic forwarding [%v] closed: %v", b, err)
+						break
+					}
+					warning("dynamic forwarding [%v] accept failed: %v", b, err)
 					continue
 				}
 				go func() {
 					if err := server.ServeConn(conn); err != nil {
-						debug("dynamic forward serve failed: %v", err)
+						if !enableDebugLogging {
+							return
+						}
+						if isClosedError(err) {
+							return
+						}
+						errMsg := err.Error()
+						if strings.HasPrefix(errMsg, "Failed to handle request: ") {
+							if strings.Contains(errMsg, dialError.Error()) {
+								return
+							}
+							if strings.HasSuffix(errMsg, " write: broken pipe") {
+								return
+							}
+							if strings.Contains(errMsg, " Application error 0x0 ") {
+								return
+							}
+						}
+						debug("dynamic forwarding [%v] serve failed: %v", b, err)
 					}
 				}()
 			}
@@ -382,21 +462,27 @@ func localForward(client SshClient, f *forwardCfg, args *sshArgs) {
 		remoteAddr = joinHostPort(f.destHost, strconv.Itoa(f.destPort))
 	}
 	timeout := getConnectTimeout(args)
-	for _, listener := range listenOnLocal(args, f.bindAddr, strconv.Itoa(f.bindPort)) {
+	name := fmt.Sprintf("local forwarding [%v]", f)
+	for _, listener := range listenOnLocal(args, f.bindAddr, strconv.Itoa(f.bindPort), name) {
 		go func(listener net.Listener) {
 			defer func() { _ = listener.Close() }()
 			for {
 				local, err := listener.Accept()
-				if err == io.EOF {
-					break
-				}
 				if err != nil {
-					debug("local forward accept failed: %v", err)
+					if isClosedError(err) {
+						debug("local forwarding [%v] closed: %v", f, err)
+						break
+					}
+					warning("local forwarding [%v] accept failed: %v", f, err)
 					continue
 				}
 				remote, err := client.DialTimeout(network, remoteAddr, timeout)
 				if err != nil {
-					debug("local forward dial [%s][%s] failed: %v", network, remoteAddr, err)
+					if reason := forwardDeniedReason(err, network); reason != "" {
+						warning("The local forwarding [%v] was denied. %s", f, reason)
+					} else {
+						warning("local forwarding [%v] dial [%s] [%s] failed: %v", f, network, remoteAddr, err)
+					}
 					_ = local.Close()
 					continue
 				}
@@ -416,21 +502,22 @@ func remoteForward(client SshClient, f *forwardCfg, args *sshArgs) {
 		localAddr = joinHostPort(f.destHost, strconv.Itoa(f.destPort))
 	}
 	timeout := getConnectTimeout(args)
-	for _, listener := range listenOnRemote(args, client, f.bindAddr, strconv.Itoa(f.bindPort)) {
+	for _, listener := range listenOnRemote(args, client, f) {
 		go func(listener net.Listener) {
 			defer func() { _ = listener.Close() }()
 			for {
 				remote, err := listener.Accept()
-				if err == io.EOF {
-					break
-				}
 				if err != nil {
-					debug("remote forward accept failed: %v", err)
+					if isClosedError(err) {
+						debug("remote forwarding [%v] closed: %v", f, err)
+						break
+					}
+					warning("remote forwarding [%v] accept failed: %v", f, err)
 					continue
 				}
 				local, err := net.DialTimeout(network, localAddr, timeout)
 				if err != nil {
-					debug("remote forward dial [%s][%s] failed: %v", network, localAddr, err)
+					warning("remote forwarding [%v] dial [%s] [%s] failed: %v", f, network, localAddr, err)
 					_ = remote.Close()
 					continue
 				}
@@ -443,6 +530,7 @@ func remoteForward(client SshClient, f *forwardCfg, args *sshArgs) {
 func sshForward(client SshClient, args *sshArgs, param *sshParam) error {
 	// clear all forwardings
 	if strings.ToLower(getOptionConfig(args, "ClearAllForwardings")) == "yes" {
+		debug("clear all forwardings")
 		return nil
 	}
 
@@ -453,7 +541,7 @@ func sshForward(client SshClient, args *sshArgs, param *sshParam) error {
 	for _, s := range getAllOptionConfig(args, "DynamicForward") {
 		b, err := parseBindCfg(s)
 		if err != nil {
-			warning("dynamic forward failed: %v", err)
+			warning("parse dynamic forwarding failed: %v", err)
 			continue
 		}
 		dynamicForward(client, b, args)
@@ -471,7 +559,7 @@ func sshForward(client SshClient, args *sshArgs, param *sshParam) error {
 		}
 		f, err := parseForwardCfg(es)
 		if err != nil {
-			warning("local forward failed: %v", err)
+			warning("parse local forwarding failed: %v", err)
 			continue
 		}
 		localForward(client, f, args)
@@ -489,7 +577,7 @@ func sshForward(client SshClient, args *sshArgs, param *sshParam) error {
 		}
 		f, err := parseForwardCfg(es)
 		if err != nil {
-			warning("remote forward failed: %v", err)
+			warning("parse remote forwarding failed: %v", err)
 			continue
 		}
 		remoteForward(client, f, args)
@@ -505,7 +593,7 @@ type x11Request struct {
 	ScreenNumber     uint32
 }
 
-func sshX11Forward(args *sshArgs, client SshClient, session SshSession) {
+func sshX11Forward(args *sshArgs, client SshClient, session SshSession, udpMode udpModeType) {
 	if args.NoX11Forward || !args.X11Untrusted && !args.X11Trusted && strings.ToLower(getOptionConfig(args, "ForwardX11")) != "yes" {
 		return
 	}
@@ -553,7 +641,7 @@ func sshX11Forward(args *sshArgs, client SshClient, session SshSession) {
 		return
 	}
 	if !ok {
-		warning("X11 forwarding request denied")
+		warning("The X11 forwarding request was denied. Check [X11Forwarding, X11DisplayOffset, DisableForwarding] in [/etc/ssh/sshd_config] on the server.")
 		return
 	}
 
@@ -562,6 +650,11 @@ func sshX11Forward(args *sshArgs, client SshClient, session SshSession) {
 		warning("already have handler for %s", kX11ChannelType)
 		return
 	}
+
+	if udpMode == kUdpModeNo {
+		debug("request ssh X11 forwarding success")
+	}
+
 	go func() {
 		for ch := range channels {
 			channel, reqs, err := ch.Accept()
@@ -635,7 +728,7 @@ func serveX11(display, hostname string, displayNumber int, channel ssh.Channel) 
 		conn, err = net.DialTimeout("unix", fmt.Sprintf("/tmp/.X11-unix/X%d", displayNumber), time.Second)
 	}
 	if err != nil {
-		debug("X11 forwarding dial [%s] failed: %v", display, err)
+		warning("X11 forwarding dial [%s] failed: %v", display, err)
 		return
 	}
 
@@ -644,8 +737,8 @@ func serveX11(display, hostname string, displayNumber int, channel ssh.Channel) 
 
 func forwardChannel(channel ssh.Channel, conn net.Conn) {
 	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
+
+	wg.Go(func() {
 		_, _ = io.Copy(conn, channel)
 		if cw, ok := conn.(closeWriter); ok {
 			_ = cw.CloseWrite()
@@ -654,15 +747,36 @@ func forwardChannel(channel ssh.Channel, conn net.Conn) {
 			time.Sleep(200 * time.Millisecond)
 			_ = conn.Close()
 		}
-		wg.Done()
-	}()
-	go func() {
+	})
+
+	wg.Go(func() {
 		_, _ = io.Copy(channel, conn)
 		_ = channel.CloseWrite()
-		wg.Done()
-	}()
+	})
 
 	wg.Wait()
 	_ = conn.Close()
 	_ = channel.Close()
+}
+
+func subsystemForward(ss *sshClientSession) error {
+	if err := ss.session.RequestSubsystem(ss.cmd); err != nil {
+		return fmt.Errorf("request subsystem [%s] failed: %v", ss.cmd, err)
+	}
+
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		_, _ = io.Copy(ss.serverIn, os.Stdin)
+		_ = ss.serverIn.Close()
+	})
+	wg.Go(func() {
+		_, _ = io.Copy(os.Stdout, ss.serverOut)
+		_ = os.Stdout.Close()
+	})
+	wg.Go(func() {
+		_, _ = io.Copy(os.Stderr, ss.serverErr)
+		_ = os.Stderr.Close()
+	})
+	wg.Wait()
+	return nil
 }

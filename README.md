@@ -20,7 +20,7 @@ trzsz-ssh ( tssh ) works exactly like the openssh client. The following common f
 |   SSH Proxy    |                                        `-J` `-W` `ProxyJump` `ProxyCommand`                                        |
 |    Network     |                                     `-4` `-6` `AddressFamily` `ConnectTimeout`                                     |
 |  Multiplexing  |                                   `ControlMaster` `ControlPath` `ControlPersist`                                   |
-|    Command     |                               `RemoteCommand`, `LocalCommand`, `PermitLocalCommand`                                |
+|    Command     |                              `-s` `RemoteCommand` `LocalCommand` `PermitLocalCommand`                              |
 |  X11 Forward   |                        `-x` `-X` `-Y` `ForwardX11` `ForwardX11Trusted` `ForwardX11Timeout`                         |
 |  Known Hosts   |                        `UserKnownHostsFile` `GlobalKnownHostsFile` `StrictHostKeyChecking`                         |
 |   SSH Agent    |                     `-a` `-A` `ForwardAgent` `IdentityAgent` `IdentitiesOnly` `SSH_AUTH_SOCK`                      |
@@ -36,8 +36,9 @@ trzsz-ssh ( tssh ) offers additional useful features:
 | :---------------------------------------------------------: | :----------------------------------------------------------------------: |
 |          [Login Prompt](README.en.md#login-prompt)          |      [登录界面](README.cn.md#%E7%99%BB%E5%BD%95%E7%95%8C%E9%9D%A2)       |
 |          [Custom Theme](README.en.md#custom-theme)          |      [主题风格](README.cn.md#%E4%B8%BB%E9%A2%98%E9%A3%8E%E6%A0%BC)       |
-|      [trzsz ( trz / tsz )](README.en.md#support-trzsz)      |       [trzsz ( trz / tsz )](README.cn.md#%E6%94%AF%E6%8C%81-trzsz)       |
-|      [zmodem ( rz / sz )](README.en.md#support-zmodem)      |       [zmodem ( rz / sz )](README.cn.md#%E6%94%AF%E6%8C%81-zmodem)       |
+|      [Trzsz ( trz / tsz )](README.en.md#support-trzsz)      |          [支持 trz tsz](README.cn.md#%E6%94%AF%E6%8C%81-trzsz)           |
+|      [Zmodem ( rz / sz )](README.en.md#support-zmodem)      |           [支持 rz sz](README.cn.md#%E6%94%AF%E6%8C%81-zmodem)           |
+|      [Support scp sftp](README.en.md#support-scp-sftp)      |        [支持 scp sftp](README.cn.md#%E6%94%AF%E6%8C%81-scp-sftp)         |
 |           [Batch Login](README.en.md#batch-login)           |      [批量登录](README.cn.md#%E6%89%B9%E9%87%8F%E7%99%BB%E5%BD%95)       |
 |          [Group Labels](README.en.md#group-labels)          |      [分组标签](README.cn.md#%E5%88%86%E7%BB%84%E6%A0%87%E7%AD%BE)       |
 | [Automated Interaction](README.en.md#automated-interaction) |      [自动交互](README.cn.md#%E8%87%AA%E5%8A%A8%E4%BA%A4%E4%BA%92)       |
@@ -46,6 +47,7 @@ trzsz-ssh ( tssh ) offers additional useful features:
 |    [Comments of Config](README.en.md#comments-of-config)    |      [配置注释](README.cn.md#%E9%85%8D%E7%BD%AE%E6%B3%A8%E9%87%8A)       |
 |   [Wayland Integration](README.en.md#wayland-integration)   |         [Wayland 集成](README.cn.md#wayland-%E9%9B%86%E6%88%90)          |
 | [Clipboard Integration](README.en.md#clipboard-integration) | [剪贴板集成](README.cn.md#%E5%89%AA%E8%B4%B4%E6%9D%BF%E9%9B%86%E6%88%90) |
+|           [SSH Console](README.en.md#ssh-console)           |        [SSH 控制台](README.cn.md#ssh-%E6%8E%A7%E5%88%B6%E5%8F%B0)        |
 |        [Other Features](README.en.md#other-features)        |      [其他功能](README.cn.md#%E5%85%B6%E4%BB%96%E5%8A%9F%E8%83%BD)       |
 |         [UDP Mode ( mosh )](README.en.md#udp-mode)          |         [UDP 模式 ( mosh )](README.cn.md#udp-%E6%A8%A1%E5%BC%8F)         |
 

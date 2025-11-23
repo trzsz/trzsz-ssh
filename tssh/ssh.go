@@ -121,11 +121,18 @@ type SshSession interface {
 	// underlying the session.
 	SendRequest(name string, wantReply bool, payload []byte) (bool, error)
 
+	// RequestSubsystem requests the association of a subsystem with the session on the remote host.
+	// A subsystem is a predefined command that runs in the background when the ssh session is initiated
+	RequestSubsystem(subsystem string) error
+
 	// RedrawScreen clear and redraw the screen right now.
 	RedrawScreen()
 
 	// GetTerminalWidth returns the width of the terminal
 	GetTerminalWidth() int
+
+	// GetExitCode returns exit code if exists
+	GetExitCode() int
 }
 
 // SshArgs specifies the arguments to log in to the remote server.
@@ -257,6 +264,10 @@ func (s *sshSessionWrapper) RedrawScreen() {
 
 func (s *sshSessionWrapper) GetTerminalWidth() int {
 	return s.width
+}
+
+func (s *sshSessionWrapper) GetExitCode() int {
+	return 0
 }
 
 type sshClientWrapper struct {

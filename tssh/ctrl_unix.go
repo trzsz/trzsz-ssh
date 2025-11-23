@@ -181,9 +181,7 @@ func (c *controlMaster) start(args *sshArgs, param *sshParam) error {
 
 	defer func() {
 		if !c.exited.Load() {
-			onExitFuncs = append(onExitFuncs, func() {
-				c.quit(exitCh)
-			})
+			addOnExitFunc(func() { c.quit(exitCh) })
 		}
 	}()
 

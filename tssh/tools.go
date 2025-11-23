@@ -44,6 +44,7 @@ const (
 	blueColor    = lipgloss.Color("4")
 	magentaColor = lipgloss.Color("5")
 	cyanColor    = lipgloss.Color("6")
+	blackColor   = lipgloss.Color("16")
 )
 
 func hideCursor(writer io.Writer) {
@@ -113,7 +114,7 @@ func toolsSucc(tool, format string, a ...any) {
 
 func toolsErrorExit(format string, a ...any) {
 	fmt.Fprintf(os.Stderr, fmt.Sprintf("\033[0;31m%s\033[0m\r\n", format), a...)
-	os.Exit(-1)
+	os.Exit(kExitCodeToolsError)
 }
 
 func printToolsHelp(title string) {

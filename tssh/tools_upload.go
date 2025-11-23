@@ -38,7 +38,7 @@ func execTrzUpload(args *sshArgs, ss *sshClientSession) int {
 		return 0
 	}
 
-	wrapStdIO(nil, nil, ss.serverErr, ss.tty)
+	wrapStdIO(nil, nil, ss.serverErr, 0, ss)
 	trzsz.SetAffectedByWindows(false)
 	width, _, err := getTerminalSize()
 	if err == nil {
@@ -64,7 +64,7 @@ func execTrzUpload(args *sshArgs, ss *sshClientSession) int {
 	errCh, err := trzszFilter.OneTimeUpload(files)
 	if err != nil {
 		warning("uplaod %v failed: %v", files, err)
-		return 1
+		return kExitCodeTrzPreError
 	}
 
 	cmd := ss.cmd
@@ -73,14 +73,14 @@ func execTrzUpload(args *sshArgs, ss *sshClientSession) int {
 	}
 	if err := ss.session.Start(cmd); err != nil {
 		warning("start command [%s] failed: %v", cmd, err)
-		return 2
+		return kExitCodeTrzRunError
 	}
 	cleanupAfterLogin()
 	_ = ss.session.Wait()
 
 	if err := <-errCh; err != nil {
 		warning("upload %v failed: %v", files, err)
-		return 3
+		return kExitCodeTrzRetError
 	}
 	return 0
 }
