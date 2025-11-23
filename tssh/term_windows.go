@@ -271,3 +271,6 @@ func getKeyboardInput() (*os.File, func(), error) {
 func splitCommandLine(command string) ([]string, error) {
 	return windows.DecomposeCommandLine(command)
 }
+
+func suspendProcess() {
+}

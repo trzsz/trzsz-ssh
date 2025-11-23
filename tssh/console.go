@@ -27,16 +27,13 @@ package tssh
 import (
 	"io"
 	"os"
-	"os/signal"
 	"runtime"
 	"strings"
-	"syscall"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/mattn/go-isatty"
 )
 
 type menuItem struct {
@@ -159,27 +156,6 @@ func (m *menuModel) renderBlankLine() string {
 
 func (m *menuModel) renderSeparator() string {
 	return m.separatorStyle.Render(strings.Repeat("─", m.menuWidth))
-}
-
-func suspendProcess() {
-	conCh := make(chan os.Signal, 1)
-	signal.Notify(conCh, syscall.SIGCONT)
-	defer func() { signal.Stop(conCh); close(conCh) }()
-
-	if err := syscall.Kill(syscall.Getpid(), syscall.SIGSTOP); err != nil {
-		warning("suspend current process failed: %v", err)
-		return
-	}
-
-	debug("current process is suspended")
-	for range conCh {
-		if isatty.IsTerminal(os.Stdin.Fd()) {
-			debug("current process is running in foreground")
-			_, _ = makeStdinRaw()
-			return
-		}
-		debug("current process is running in background")
-	}
 }
 
 func killProcess(ss *sshClientSession) {

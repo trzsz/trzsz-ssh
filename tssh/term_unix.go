@@ -36,6 +36,7 @@ import (
 	"syscall"
 
 	"github.com/google/shlex"
+	"github.com/mattn/go-isatty"
 	"golang.org/x/term"
 )
 
@@ -118,4 +119,25 @@ func isSshTmuxEnv() bool {
 
 func splitCommandLine(command string) ([]string, error) {
 	return shlex.Split(command)
+}
+
+func suspendProcess() {
+	conCh := make(chan os.Signal, 1)
+	signal.Notify(conCh, syscall.SIGCONT)
+	defer func() { signal.Stop(conCh); close(conCh) }()
+
+	if err := syscall.Kill(syscall.Getpid(), syscall.SIGSTOP); err != nil {
+		warning("suspend current process failed: %v", err)
+		return
+	}
+
+	debug("current process is suspended")
+	for range conCh {
+		if isatty.IsTerminal(os.Stdin.Fd()) {
+			debug("current process is running in foreground")
+			_, _ = makeStdinRaw()
+			return
+		}
+		debug("current process is running in background")
+	}
 }
