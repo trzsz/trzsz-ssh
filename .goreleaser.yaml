@@ -73,10 +73,11 @@ nfpms:
     homepage: https://trzsz.github.io/
     maintainer: Lonny Wong <lonnywong@qq.com>
     description: |-
-      tssh is a simple ssh client with trzsz ( trz / tsz ) support.
+      tssh is an alternative ssh client with additional features to meet your needs.
     license: MIT
     formats:
       - rpm
+      - deb
     bindir: /usr/bin
     rpm:
       group: Unspecified

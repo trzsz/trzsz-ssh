@@ -158,7 +158,21 @@ trzsz-ssh ( tssh ) with [tsshd](https://github.com/trzsz/tsshd) also supports in
 
   </details>
 
-- Download from the [GitHub Releases](https://github.com/trzsz/trzsz-ssh/releases), unzip and add to `PATH` environment.
+- Download from the [GitHub Releases](https://github.com/trzsz/trzsz-ssh/releases) and install locally
+
+  <details><summary><code>download and install locally</code></summary>
+
+  ```sh
+  sudo apt install /tmp/tssh_*.deb
+
+  sudo dnf install /tmp/tssh_*.rpm
+
+  sudo yum install /tmp/tssh_*.rpm
+
+  tar zxvf tssh_*.tar.gz && sudo cp tssh_*/tssh /usr/bin/
+  ```
+
+  </details>
 
 ### Login Prompt
 

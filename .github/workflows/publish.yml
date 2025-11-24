@@ -21,7 +21,7 @@ jobs:
           args: release --clean --skip=publish
       - name: Show Checksum
         run: |
-          sha256sum dist/*.tar.gz dist/*.zip dist/*.rpm dist/*_checksums.txt
+          sha256sum dist/*.tar.gz dist/*.zip dist/*.rpm dist/*.deb dist/*_checksums.txt
       - name: Upload Release Assets
         uses: softprops/action-gh-release@v2
         with:
@@ -29,6 +29,7 @@ jobs:
             dist/*.tar.gz
             dist/*.zip
             dist/*.rpm
+            dist/*.deb
             dist/*_checksums.txt
       - name: Publish rpm to Gemfury
         env:
