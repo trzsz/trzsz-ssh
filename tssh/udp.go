@@ -276,16 +276,21 @@ func (c *sshUdpClient) showNotifications(udpProxy bool) {
 	intCh := c.udpMainSession.interceptInput()
 	defer c.udpMainSession.cancelIntercept()
 
-	c.udpMainSession.curPos = ""
+	c.udpMainSession.curPos.Store(nil)
 	if c.noticeOnTop {
 		fmt.Fprint(os.Stderr, ansi.RequestCursorPositionReport)
-		time.Sleep(500 * time.Millisecond)
+		for range 50 {
+			time.Sleep(10 * time.Millisecond)
+			if c.udpMainSession.curPos.Load() != nil {
+				break
+			}
+		}
 	}
 
 	model := noticeModel{
 		client:      c,
 		udpProxy:    udpProxy,
-		cursorPos:   c.udpMainSession.curPos,
+		cursorPos:   c.udpMainSession.curPos.Load(),
 		borderStyle: lipgloss.NewStyle().BorderStyle(lipgloss.NormalBorder()).BorderForeground(cyanColor).Padding(0, 1, 0, 1),
 		statusStyle: lipgloss.NewStyle().Foreground(magentaColor),
 		extraStyle:  lipgloss.NewStyle().Foreground(yellowColor),
@@ -332,7 +337,7 @@ func (c *sshUdpClient) showNotifications(udpProxy bool) {
 type noticeModel struct {
 	client        *sshUdpClient
 	udpProxy      bool
-	cursorPos     string
+	cursorPos     *string
 	borderStyle   lipgloss.Style
 	statusStyle   lipgloss.Style
 	errorStyle    lipgloss.Style
@@ -352,7 +357,10 @@ func (m *noticeModel) renderView(exiting, redrawing bool) {
 	}
 	var buf strings.Builder
 	buf.WriteString(ansi.HideCursor)
-	if m.cursorPos != "" {
+	if m.client.noticeOnTop {
+		if m.cursorPos == nil {
+			buf.WriteString(ansi.SaveCurrentCursorPosition)
+		}
 		buf.WriteString(ansi.CursorHomePosition)
 	} else if m.renderedLines > 1 {
 		buf.WriteString(ansi.CursorUp(m.renderedLines - 1))
@@ -377,8 +385,12 @@ func (m *noticeModel) renderView(exiting, redrawing bool) {
 		}
 		buf.WriteString(ansi.CursorUp(m.renderedLines - len(lines)))
 	}
-	if m.cursorPos != "" {
-		buf.WriteString(fmt.Sprintf("\x1b[%sH", m.cursorPos))
+	if m.client.noticeOnTop {
+		if m.cursorPos != nil {
+			buf.WriteString(fmt.Sprintf("\x1b[%sH", *m.cursorPos))
+		} else {
+			buf.WriteString(ansi.RestoreCurrentCursorPosition)
+		}
 		buf.WriteString(ansi.ShowCursor)
 	} else if !m.client.isReconnectTimeout() || exiting {
 		buf.WriteString(ansi.ShowCursor)
@@ -460,7 +472,7 @@ type sshUdpMainSession struct {
 	intMutex  sync.Mutex
 	intFlag   atomic.Bool
 	intChan   chan byte
-	curPos    string
+	curPos    atomic.Pointer[string]
 }
 
 func (s *sshUdpMainSession) interceptInput() <-chan byte {
@@ -503,7 +515,8 @@ func (s *sshUdpMainSession) forwardInput(reader io.Reader, writer io.WriteCloser
 				continue
 			}
 			if n > 5 && buffer[0] == '\x1b' && buffer[1] == '[' && buffer[n-1] == 'R' { // cursor pos
-				s.curPos = string(buffer[2 : n-1])
+				curPos := string(buffer[2 : n-1])
+				s.curPos.Store(&curPos)
 				continue
 			}
 			continue
