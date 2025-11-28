@@ -37,7 +37,6 @@ import (
 	"time"
 
 	"github.com/alessio/shellescape"
-	"github.com/trzsz/ssh_config"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -629,53 +628,86 @@ func sshConnect(args *sshArgs, proxy *proxyJump, requireUdpMode udpModeType) (Ss
 	return client, param, err
 }
 
-func keepAlive(client SshClient, args *sshArgs) {
-	getOptionValue := func(option string) int {
-		config := getOptionConfig(args, option)
-		if config == "" {
-			return 0
-		}
-		value, err := strconv.Atoi(config)
+func keepAlive(ss *sshClientSession, args *sshArgs) {
+	serverAliveInterval := uint32(0)
+	if c := getOptionConfig(args, "ServerAliveInterval"); c != "" {
+		v, err := strconv.ParseUint(c, 10, 32)
 		if err != nil {
-			warning("%s [%s] invalid: %v", option, config, err)
-			return 0
+			warning("ServerAliveInterval [%s] is invalid: %v", c, err)
+		} else {
+			serverAliveInterval = uint32(v)
 		}
-		return value
 	}
-
-	ssh_config.SetDefault("ServerAliveInterval", "10")
-	serverAliveInterval := getOptionValue("ServerAliveInterval")
-	if serverAliveInterval <= 0 {
-		debug("no keep alive")
+	if serverAliveInterval == 0 {
+		debug("no keep alive for [%s]", args.Destination)
 		return
 	}
-	serverAliveCountMax := getOptionValue("ServerAliveCountMax")
-	if serverAliveCountMax <= 0 {
-		serverAliveCountMax = 3
+
+	serverAliveCountMax := uint32(3)
+	if c := getOptionConfig(args, "ServerAliveCountMax"); c != "" {
+		v, err := strconv.ParseUint(c, 10, 32)
+		if err != nil {
+			warning("ServerAliveCountMax [%s] is invalid: %v", c, err)
+		} else {
+			serverAliveCountMax = uint32(v)
+		}
+	}
+
+	sendKeepAlive := func(idx int) {
+		debug("keep alive [%d] sending", idx)
+		if _, _, err := ss.client.SendRequest("keepalive@openssh.com", true, nil); err != nil {
+			if !isClosedError(err) {
+				debug("keep alive [%d] failed: %v", idx, err)
+			}
+			return
+		}
+		debug("keep alive [%d] success", idx)
 	}
 
 	go func() {
-		intervalTime := time.Duration(serverAliveInterval) * time.Second
-		t := time.NewTicker(intervalTime)
-		defer t.Stop()
-		n := 0
-		for range t.C {
-			if lastTime := lastServerAliveTime.Load(); lastTime != nil && time.Since(*lastTime) < intervalTime {
-				n = 0
+		now := time.Now()
+		lastServerAliveTime.Store(&now)
+		concurrent := make(chan struct{}, 2) // do not close to prevent writing after closing
+		aliveTimeout := time.Duration(serverAliveInterval*serverAliveCountMax) * time.Second
+		intervalTime := time.Duration(serverAliveInterval)*time.Second - 300*time.Millisecond // send keep alive a little earlier
+
+		for {
+			sleepTime := time.Until(lastServerAliveTime.Load().Add(intervalTime))
+			if sleepTime > 0 {
+				time.Sleep(sleepTime)
 				continue
 			}
-			debug("sending keep alive %d", n+1)
-			if _, _, err := client.SendRequest("keepalive@openssh.com", true, nil); err != nil {
-				debug("keep alive failed: %v", err)
-				n++
-				if n >= serverAliveCountMax {
-					warning("The keep alive failures has reached ServerAliveCountMax [%s], terminating the session", serverAliveCountMax)
-					_ = client.Close()
+
+			n := 1
+			go sendKeepAlive(n)
+
+			ticker := time.NewTicker(intervalTime)
+			for range ticker.C {
+				sleepTime = time.Until(lastServerAliveTime.Load().Add(intervalTime))
+				if sleepTime > 0 {
+					ticker.Stop()
+					time.Sleep(sleepTime)
+					break
+				}
+
+				if aliveTimeout > 0 && time.Since(*lastServerAliveTime.Load()) > aliveTimeout {
+					ticker.Stop()
+					warning("Exit due to keep alive timeout [%v], ServerAliveInterval [%d], ServerAliveCountMax [%d]",
+						aliveTimeout, serverAliveInterval, serverAliveCountMax)
+					go killProcess(ss)
 					return
 				}
-			} else {
-				debug("keep alive successful")
-				n = 0
+
+				n++
+				select {
+				case concurrent <- struct{}{}:
+					go func() {
+						sendKeepAlive(n)
+						<-concurrent
+					}()
+				default:
+					debug("keep alive [%d] dropped (concurrent limit)", n)
+				}
 			}
 		}
 	}()
@@ -708,7 +740,7 @@ func sshTcpLogin(args *sshArgs) (ss *sshClientSession, udpMode udpModeType, err 
 
 	// keep alive
 	if !ss.param.control && udpMode == kUdpModeNo {
-		keepAlive(ss.client, args)
+		keepAlive(ss, args)
 	}
 
 	// stdio forward runs as a proxy without port forwarding.
