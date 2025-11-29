@@ -165,9 +165,13 @@ trzsz-ssh ( tssh ) with [tsshd](https://github.com/trzsz/tsshd) also supports in
   ```sh
   sudo apt install /tmp/tssh_*.deb
 
+  sudo dpkg -i /tmp/tssh_*.deb
+
   sudo dnf install /tmp/tssh_*.rpm
 
   sudo yum install /tmp/tssh_*.rpm
+
+  sudo rpm -i /tmp/tssh_*.rpm
 
   tar zxvf tssh_*.tar.gz && sudo cp tssh_*/tssh /usr/bin/
   ```
@@ -765,9 +769,13 @@ trzsz-ssh ( tssh ) with [tsshd](https://github.com/trzsz/tsshd) also supports in
 
 - The `tssh` console is similar to OpenSSH escape sequences, and is planned to provide more user-friendly and powerful SSH control features. Currently supported features include:
 
-  - Send the escape character '~' (equivalent to typing `~`, can be used as a remedy after accidentally triggering the console).
-  - Suspend the current SSH process (equivalent to `Ctrl + Z`, but it applies to `tssh` itself, not the process on the remote server).
-  - Terminate the current SSH session (equivalent to Exit / Kill, can be used to kill the `tssh` process when it freezes due to network issues or other reasons).
+  - Send the escape character '~' ( ~ : equivalent to typing `~`, can be used as a remedy after accidentally triggering the console).
+  - Suspend the current SSH process ( ^Z : equivalent to `Ctrl + Z`, but it applies to `tssh` itself, not the process on the remote server).
+  - Terminate the current SSH session ( . : equivalent to Exit / Kill, can be used to kill the `tssh` process when it freezes due to network issues or other reasons).
+
+- The character between `(` and `:` are shortcuts, compatible with OpenSSH escape sequences. For example, typing `~.` quickly after a newline will quickly terminate the current SSH session.
+
+- The escape character for entering the SSH console can be configured via the `EscapeChar` option (default is `~`). The argument should be a single character, ‘^’ followed by a letter, and it should not conflict with other shortcut keys.
 
 - The `ConsoleEscapeTime` option configures how many seconds after pressing the `Enter` key should the `~` key be pressed to enter the SSH console. The default value is `1` second, which can be configured to `0` to disable the console feature:
 

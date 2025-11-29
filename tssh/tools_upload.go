@@ -38,7 +38,7 @@ func execTrzUpload(args *sshArgs, ss *sshClientSession) int {
 		return 0
 	}
 
-	wrapStdIO(nil, nil, ss.serverErr, 0, ss)
+	wrapStdIO(nil, nil, ss.serverErr, 0, 0, ss)
 	trzsz.SetAffectedByWindows(false)
 	width, _, err := getTerminalSize()
 	if err == nil {

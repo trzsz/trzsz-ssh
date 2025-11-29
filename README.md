@@ -27,6 +27,7 @@ trzsz-ssh ( tssh ) works exactly like the openssh client. The following common f
 |  Basic Login   |                   `-l` `-p` `-i` `-F` `HostName` `Port` `User` `IdentityFile` `SendEnv` `SetEnv`                   |
 | Authentication |       `PubkeyAuthentication` `PasswordAuthentication` `KbdInteractiveAuthentication` `GSSAPIAuthentication`        |
 |  Port Forward  | `-g` `-f` `-N` `-L` `-R` `-D` `LocalForward` `RemoteForward` `DynamicForward` `GatewayPorts` `ClearAllForwardings` |
+|     Others     |                                                    `EscapeChar`                                                    |
 
 ### Extra Features
 
@@ -190,9 +191,13 @@ trzsz-ssh ( tssh ) offers additional useful features:
   ```sh
   sudo apt install /tmp/tssh_*.deb
 
+  sudo dpkg -i /tmp/tssh_*.deb
+
   sudo dnf install /tmp/tssh_*.rpm
 
   sudo yum install /tmp/tssh_*.rpm
+
+  sudo rpm -i /tmp/tssh_*.rpm
 
   tar zxvf tssh_*.tar.gz && sudo cp tssh_*/tssh /usr/bin/
   ```

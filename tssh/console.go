@@ -37,6 +37,7 @@ import (
 )
 
 type menuItem struct {
+	key    string
 	label  string
 	action func() (tea.Model, tea.Cmd)
 }
@@ -90,7 +91,7 @@ func (m *menuModel) Init() tea.Cmd {
 func (m *menuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.String() {
+		switch s := msg.String(); s {
 		case "ctrl+c", "esc", "q":
 			m.quitting = true
 			return m, tea.Quit
@@ -107,6 +108,13 @@ func (m *menuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.items[m.cursor].action()
 			}
 			return m, nil
+		default:
+			for i, item := range m.items {
+				if s == item.key {
+					m.cursor = i
+					return item.action()
+				}
+			}
 		}
 	}
 	return m, nil
@@ -136,7 +144,7 @@ func (m *menuModel) renderMenuItems(builder *strings.Builder) {
 		prefix := barStyle.Render("│")
 		blankLine := prefix + textStyle.Render(strings.Repeat(" ", m.menuWidth-1))
 		m.writeLine(builder, blankLine)
-		m.writeLine(builder, prefix+textStyle.Render(" "+getText(item.label)))
+		m.writeLine(builder, prefix+textStyle.Render(" "+item.label))
 		m.writeLine(builder, blankLine)
 		m.writeLine(builder, m.renderSeparator())
 	}
@@ -169,12 +177,21 @@ func killProcess(ss *sshClientSession) {
 	ss.Close()
 }
 
-func runConsole(reader io.Reader, writer io.WriteCloser, ss *sshClientSession) {
+func runConsole(escapeChar byte, reader io.Reader, writer io.WriteCloser, ss *sshClientSession) {
 	width := ss.session.GetTerminalWidth()
 	model := initMenuModel(min(width, 60), width)
+
+	var key, char string
+	if escapeChar <= 26 {
+		key = "ctrl+" + string([]byte{'a' - 1 + escapeChar})
+		char = "^" + string([]byte{'A' - 1 + escapeChar})
+	} else {
+		key = string(escapeChar)
+		char = string(escapeChar)
+	}
 	model.items = []*menuItem{
-		{"console/send~", func() (tea.Model, tea.Cmd) {
-			_, _ = writer.Write([]byte{'~'})
+		{key, strings.ReplaceAll(getText("console/send_char"), "{0}", char), func() (tea.Model, tea.Cmd) {
+			_, _ = writer.Write([]byte{escapeChar})
 			model.quitting = true
 			return model, tea.Quit
 		}},
@@ -187,20 +204,18 @@ func runConsole(reader io.Reader, writer io.WriteCloser, ss *sshClientSession) {
 				go suspendProcess()
 			}
 		}()
-		model.items = append(model.items, &menuItem{
-			"console/suspend", func() (tea.Model, tea.Cmd) {
-				suspend = true
-				model.quitting = true
-				return model, tea.Quit
-			}})
-	}
-
-	model.items = append(model.items, &menuItem{
-		"console/terminate", func() (tea.Model, tea.Cmd) {
-			go killProcess(ss)
+		model.items = append(model.items, &menuItem{"ctrl+z", getText("console/suspend"), func() (tea.Model, tea.Cmd) {
+			suspend = true
 			model.quitting = true
 			return model, tea.Quit
 		}})
+	}
+
+	model.items = append(model.items, &menuItem{".", getText("console/terminate"), func() (tea.Model, tea.Cmd) {
+		go killProcess(ss)
+		model.quitting = true
+		return model, tea.Quit
+	}})
 
 	p := tea.NewProgram(model, tea.WithInput(reader), tea.WithOutput(os.Stderr))
 	if _, err := p.Run(); err != nil {

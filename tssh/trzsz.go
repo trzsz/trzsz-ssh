@@ -56,7 +56,7 @@ func writeAll(dst io.Writer, data []byte) error {
 	return nil
 }
 
-func forwardInput(reader io.Reader, writer io.WriteCloser, win bool, consoleEscapeTime time.Duration, ss *sshClientSession) {
+func forwardInput(reader io.Reader, writer io.WriteCloser, win bool, escapeChar byte, escapeTime time.Duration, ss *sshClientSession) {
 	defer func() { _ = writer.Close() }()
 	var enterPressedFlag bool
 	var enterPressedTime time.Time
@@ -64,13 +64,13 @@ func forwardInput(reader io.Reader, writer io.WriteCloser, win bool, consoleEsca
 	for {
 		n, err := reader.Read(buffer)
 		if n > 0 {
-			if consoleEscapeTime > 0 { // enter tssh console ?
+			if escapeTime > 0 { // enter tssh console ?
 				if n == 1 && buffer[0] == '\r' {
 					enterPressedFlag = true
 					enterPressedTime = time.Now()
-				} else if enterPressedFlag && n == 1 && buffer[0] == '~' && time.Since(enterPressedTime) <= consoleEscapeTime {
+				} else if enterPressedFlag && n == 1 && buffer[0] == escapeChar && time.Since(enterPressedTime) <= escapeTime {
 					pauseOutput.Store(true)
-					runConsole(reader, writer, ss)
+					runConsole(escapeChar, reader, writer, ss)
 					pauseOutput.Store(false)
 					continue
 				} else {
@@ -126,10 +126,10 @@ func forwardOutput(reader io.Reader, writer io.WriteCloser, win, tty bool) {
 	}
 }
 
-func wrapStdIO(serverIn io.WriteCloser, serverOut, serverErr io.Reader, consoleEscapeTime time.Duration, ss *sshClientSession) {
+func wrapStdIO(serverIn io.WriteCloser, serverOut, serverErr io.Reader, escapeChar byte, escapeTime time.Duration, ss *sshClientSession) {
 	win := runtime.GOOS == "windows"
 	if serverIn != nil {
-		go forwardInput(os.Stdin, serverIn, win, consoleEscapeTime, ss)
+		go forwardInput(os.Stdin, serverIn, win, escapeChar, escapeTime, ss)
 	}
 
 	if serverOut != nil {
@@ -140,13 +140,7 @@ func wrapStdIO(serverIn io.WriteCloser, serverOut, serverErr io.Reader, consoleE
 	}
 }
 
-func enableTrzsz(args *sshArgs, ss *sshClientSession) error {
-	// not terminal or not tty
-	if !isTerminal || !ss.tty {
-		wrapStdIO(ss.serverIn, ss.serverOut, ss.serverErr, 0, ss)
-		return nil
-	}
-
+func getEscapeConfig(args *sshArgs) (byte, time.Duration) {
 	consoleEscapeTime := time.Second
 	if t := getExOptionConfig(args, "ConsoleEscapeTime"); t != "" {
 		v, err := strconv.ParseUint(t, 10, 32)
@@ -157,6 +151,53 @@ func enableTrzsz(args *sshArgs, ss *sshClientSession) error {
 		}
 	}
 
+	escapeChar := byte('~')
+	if escCh := getOptionConfig(args, "EscapeChar"); escCh != "" {
+		if strings.ToLower(escCh) == "none" {
+			consoleEscapeTime = 0
+		} else if len(escCh) == 2 && escCh[0] == '^' {
+			b := escCh[1]
+			switch b {
+			case 'z', 'Z', 'c', 'C':
+				warning("EscapeChar [%s] conflicts with other shortcuts", escCh)
+			default:
+				if b >= 'a' && b <= 'z' {
+					escapeChar = b - 'a' + 1
+				} else if b >= 'A' && b <= 'Z' {
+					escapeChar = b - 'A' + 1
+				} else {
+					warning("EscapeChar [%s] is not a valid letter following ^", escCh)
+				}
+			}
+		} else if len(escCh) == 1 {
+			b := escCh[0]
+			switch b {
+			case 'j', 'k', 'q', '.', 'B', 'C', 'R', 'V', 'v', '#', '&', '?':
+				warning("EscapeChar [%s] conflicts with other shortcuts", escCh)
+			default:
+				if b <= ' ' || b > '~' {
+					warning("EscapeChar [%s] is not a valid visible character", escCh)
+				} else {
+					escapeChar = b
+				}
+			}
+		} else {
+			warning("EscapeChar [%s] is not a single character or ‘^’ followed by a letter", escCh)
+		}
+	}
+
+	return escapeChar, consoleEscapeTime
+}
+
+func enableTrzsz(args *sshArgs, ss *sshClientSession) error {
+	// not terminal or not tty
+	if !isTerminal || !ss.tty {
+		wrapStdIO(ss.serverIn, ss.serverOut, ss.serverErr, 0, 0, ss)
+		return nil
+	}
+
+	escapeChar, consoleEscapeTime := getEscapeConfig(args)
+
 	disableTrzsz := strings.ToLower(getExOptionConfig(args, "EnableTrzsz")) == "no"
 	enableZmodem := args.Zmodem || strings.ToLower(getExOptionConfig(args, "EnableZmodem")) == "yes"
 	enableDragFile := args.DragFile || strings.ToLower(getExOptionConfig(args, "EnableDragFile")) == "yes"
@@ -164,7 +205,7 @@ func enableTrzsz(args *sshArgs, ss *sshClientSession) error {
 
 	// disable trzsz ( trz / tsz )
 	if disableTrzsz && !enableZmodem && !enableDragFile && !enableOSC52 {
-		wrapStdIO(ss.serverIn, ss.serverOut, ss.serverErr, consoleEscapeTime, ss)
+		wrapStdIO(ss.serverIn, ss.serverOut, ss.serverErr, escapeChar, consoleEscapeTime, ss)
 		onTerminalResize(func(width, height int) {
 			currentTerminalWidth.Store(int32(width))
 			_ = ss.session.WindowChange(height, width)
@@ -179,10 +220,10 @@ func enableTrzsz(args *sshArgs, ss *sshClientSession) error {
 		readerIn, writerIn := io.Pipe()
 		readerOut, writerOut := io.Pipe()
 		clientIn, clientOut = readerIn, writerOut
-		wrapStdIO(writerIn, readerOut, ss.serverErr, consoleEscapeTime, ss)
+		wrapStdIO(writerIn, readerOut, ss.serverErr, escapeChar, consoleEscapeTime, ss)
 	} else {
 		clientIn, clientOut = os.Stdin, os.Stdout
-		wrapStdIO(nil, nil, ss.serverErr, 0, ss)
+		wrapStdIO(nil, nil, ss.serverErr, 0, 0, ss)
 	}
 
 	trzsz.SetAffectedByWindows(false)

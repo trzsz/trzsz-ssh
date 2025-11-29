@@ -43,9 +43,9 @@ var english = map[string]string{
 	"newhost/login":  "-- Added successfully, enter Y or Yes (case insensitive) to log in immediately.",
 
 	"console/title":     "Tssh Console",
-	"console/send~":     "Send the escape character '~' ( Enter ~ )",
-	"console/suspend":   "Suspend the current SSH process ( Ctrl + Z )",
-	"console/terminate": "Terminate the current SSH session ( Exit / Kill )",
+	"console/send_char": "Send the escape character '{0}' ( {0} : Enter '{0}' )",
+	"console/suspend":   "Suspend the current SSH process ( ^Z : Ctrl + Z )",
+	"console/terminate": "Terminate the current SSH session ( . : Exit / Kill )",
 	"console/notes":     "↑/↓/j/k Move • Enter Select • q Quit",
 }
 
@@ -62,9 +62,9 @@ var chinese = map[string]string{
 	"newhost/login":  "-- 新服务器配置已成功写入，输入 Y 或 Yes（ 不区分大小写 ）可以立即登录。",
 
 	"console/title":     "Tssh 控制台",
-	"console/send~":     "发送转义字符 '~' ( 输入 ~ )",
-	"console/suspend":   "暂停当前 SSH 进程 ( Ctrl + Z )",
-	"console/terminate": "退出当前 SSH 会话 ( Exit / Kill )",
+	"console/send_char": "发送转义字符 '{0}' ( {0} : 输入 '{0}' )",
+	"console/suspend":   "暂停当前 SSH 进程 ( ^Z : Ctrl + Z )",
+	"console/terminate": "退出当前 SSH 会话 ( . : Exit / Kill )",
 	"console/notes":     "↑/↓/j/k 移动 • Enter 选择 • q 退出",
 }
 

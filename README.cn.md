@@ -165,9 +165,13 @@ trzsz-ssh ( tssh ) 与 [tsshd](https://github.com/trzsz/tsshd) 一起，适用�
   ```sh
   sudo apt install /tmp/tssh_*.deb
 
+  sudo dpkg -i /tmp/tssh_*.deb
+
   sudo dnf install /tmp/tssh_*.rpm
 
   sudo yum install /tmp/tssh_*.rpm
+
+  sudo rpm -i /tmp/tssh_*.rpm
 
   tar zxvf tssh_*.tar.gz && sudo cp tssh_*/tssh /usr/bin/
   ```
@@ -763,14 +767,19 @@ trzsz-ssh ( tssh ) 与 [tsshd](https://github.com/trzsz/tsshd) 一起，适用�
 
 - `tssh` 控制台是类似 OpenSSH escape sequences 的功能，计划提供更友好、更强大的 SSH 控制功能。目前已支持的功能有：
 
-  - 发送转义字符 '~' ( 相当于输入 `~`，可作为控制台误触发后的补救措施 )。
-  - 暂停当前 SSH 进程 ( 相当于 `Ctrl + Z`，不是作用于远程服务器上的进程，而是作用于 `tssh` 自身 )。
-  - 退出当前 SSH 会话 ( 相当于 Exit / Kill，当因为网络等原因导致 `tssh` 卡死时，可通过此功能退出 )。
+  - 发送转义字符 '~' ( ~ : 相当于输入 `~`，可作为控制台误触发后的补救措施 )。
+  - 暂停当前 SSH 进程 ( ^Z : 相当于 `Ctrl + Z`，不是作用于远程服务器上的进程，而是作用于 `tssh` 自身 )。
+  - 退出当前 SSH 会话 ( . : 相当于 Exit / Kill，当因为网络等原因导致 `tssh` 卡死时，可通过此功能退出 )。
+
+- 上面 `(` 与 ``:` 之间的字符是快捷键，兼容 OpenSSH escape sequences，例如回车后 `~.` 可以快速退出当前 SSH 会话。
+
+- 可通过 `EscapeChar` 选项配置进入 SSH 控制台的转义字符（ 默认是 `~` ），只支持一个字符，或者 ^ 带一个字母，并且不能与其他快捷键冲突。
 
 - 可通过 `ConsoleEscapeTime` 选项配置按下 `回车` 键后多少秒内按下 `~` 键即进入 SSH 控制台，默认值是 `1` 秒，可以配置为 `0` 禁用控制台功能：
 
   ```
   Host xxx
+    EscapeChar ~
     #!! ConsoleEscapeTime 1
   ```
 
