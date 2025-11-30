@@ -29,7 +29,6 @@ package tssh
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/alessio/shellescape"
 	"github.com/trzsz/iterm2"
@@ -92,33 +91,11 @@ func (m *iterm2Mgr) execCmd(session iterm2.Session, alias string) error {
 }
 
 func (m *iterm2Mgr) getCurrentWindowSession() (iterm2.Window, iterm2.Session) {
-	sessionID := os.Getenv("ITERM_SESSION_ID")
-	windows, err := m.app.ListWindows()
+	window, session, err := m.app.GetCurrentWindowSession()
 	if err != nil {
-		warning("Failed to create window: %v", err)
-		return nil, nil
+		warning("get iTerm2 current window session failed: %v", err)
 	}
-	for _, window := range windows {
-		tabs, err := window.ListTabs()
-		if err != nil {
-			warning("Failed to list tabs: %v", err)
-			return nil, nil
-		}
-		for _, tab := range tabs {
-			sessions, err := tab.ListSessions()
-			if err != nil {
-				warning("Failed to list sessions: %v", err)
-				return nil, nil
-			}
-			for _, session := range sessions {
-				if strings.Contains(sessionID, session.GetSessionID()) {
-					return window, session
-				}
-			}
-		}
-	}
-	warning("No current session: %s", sessionID)
-	return nil, nil
+	return window, session
 }
 
 func (m *iterm2Mgr) openWindows(hosts []*sshHost) {

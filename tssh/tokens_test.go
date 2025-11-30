@@ -40,10 +40,10 @@ func TestExpandTokens(t *testing.T) {
 	}()
 	getHostname = func() string { return "myhostname.mydomain.com" }
 
-	args := &sshArgs{
-		Destination: "dest",
-	}
 	param := &sshParam{
+		args: &sshArgs{
+			Destination: "dest",
+		},
 		host:    "127.0.0.1",
 		port:    "1337",
 		user:    "penny",
@@ -51,7 +51,7 @@ func TestExpandTokens(t *testing.T) {
 	}
 	assertProxyCommand := func(original, expanded, errMsg string) {
 		t.Helper()
-		result, err := expandTokens(original, args, param, "%hnpr")
+		result, err := expandTokens(original, param, "%hnpr")
 		if errMsg != "" {
 			require.NotNil(err)
 			assert.Equal(original, result)
@@ -74,7 +74,7 @@ func TestExpandTokens(t *testing.T) {
 
 	assertControlPath := func(original, expanded, errMsg string) {
 		t.Helper()
-		result, err := expandTokens(original, args, param, "%CdhikLlnpru")
+		result, err := expandTokens(original, param, "%CdhikLlnpru")
 		if errMsg != "" {
 			require.NotNil(err)
 			assert.Equal(errMsg, err.Error())
@@ -105,10 +105,10 @@ func TestProxyJumpToken(t *testing.T) {
 	}()
 	getHostname = func() string { return "myhostname.mydomain.com" }
 
-	args := &sshArgs{
-		Destination: "dest",
-	}
 	param := &sshParam{
+		args: &sshArgs{
+			Destination: "dest",
+		},
 		host: "127.0.0.1",
 		port: "1337",
 		user: "penny",
@@ -116,7 +116,7 @@ func TestProxyJumpToken(t *testing.T) {
 
 	assertProxyJumpToken := func(original, expanded string) {
 		t.Helper()
-		result, err := expandTokens(original, args, param, "%CdhijkLlnpru")
+		result, err := expandTokens(original, param, "%CdhijkLlnpru")
 		require.Nil(err)
 		assert.Equal(expanded, result)
 	}
@@ -142,7 +142,7 @@ func TestInvalidHost(t *testing.T) {
 
 	assertInvalidHost := func(host string) {
 		t.Helper()
-		_, err := expandTokens("%h", &sshArgs{}, &sshParam{host: host}, "%hnpr")
+		_, err := expandTokens("%h", &sshParam{args: &sshArgs{}, host: host}, "%hnpr")
 		require.NotNil(err)
 		assert.Equal("hostname contains invalid characters", err.Error())
 	}
@@ -181,7 +181,7 @@ func TestInvalidUser(t *testing.T) {
 
 	assertInvalidUser := func(user string) {
 		t.Helper()
-		_, err := expandTokens("%r", &sshArgs{}, &sshParam{user: user}, "%hnpr")
+		_, err := expandTokens("%r", &sshParam{args: &sshArgs{}, user: user}, "%hnpr")
 		require.NotNil(err)
 		assert.Equal("remote username contains invalid characters", err.Error())
 	}

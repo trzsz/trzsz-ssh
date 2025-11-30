@@ -561,7 +561,15 @@ trzsz-ssh ( tssh ) 与 [tsshd](https://github.com/trzsz/tsshd) 一起，适用�
       Password 111111  # 支持明文密码，但是推荐使用 tssh --enc-secret 简单加密一下。
   ```
 
-- 如果启用了 `ControlMaster` 多路复用，或者是在 `Warp` 终端，需要使用前面 `自动交互` 的方式实现记住密码的效果。配置方式请参考前面 `自动交互`，加上 `Ctrl` 前缀即可，如：
+- 如果记住密码后还是要求输入密码，可能是需要[记住答案](#%E8%AE%B0%E4%BD%8F%E7%AD%94%E6%A1%88)，可配置`encQuestionAnswer1`试试：
+
+  ```
+  Host test1
+      # 下面是运行 tssh --enc-secret 输入密码 123456 得到的密文串，每次运行结果不同。
+      #!! encQuestionAnswer1 756b17766f45bdc44c37f811db9990b0880318d5f00f6531b15e068ef1fde2666550
+  ```
+
+- 如果启用了 `ControlMaster` 多路复用，或者是在旧版本 `Warp` 终端，需要使用前面 `自动交互` 的方式实现记住密码的效果。配置方式请参考前面 `自动交互`，加上 `Ctrl` 前缀即可，如：
 
   ```
   Host ctrl
@@ -647,7 +655,7 @@ trzsz-ssh ( tssh ) 与 [tsshd](https://github.com/trzsz/tsshd) 一起，适用�
       #!! OtpCommand2 python C:\your_python_code.py %q
   ```
 
-- 如果启用了 `ControlMaster` 多路复用，或者是在 `Warp` 终端，请参考前面 `自动交互` 加 `Ctrl` 前缀来实现。
+- 如果启用了 `ControlMaster` 多路复用，或者是在旧版本 `Warp` 终端，请参考前面 `自动交互` 加 `Ctrl` 前缀来实现。
 
   ```
   Host ctrl_totp
@@ -809,6 +817,14 @@ trzsz-ssh ( tssh ) 与 [tsshd](https://github.com/trzsz/tsshd) 一起，适用�
   - 若下载 `trzsz` 的安装包失败，可以自行下载并通过 `--trzsz-bin-path /path/to/trzsz.tar.gz` 参数指定。
   - 注意：`--install-trzsz` 不支持 Windows 服务器，不支持跳板机（ 除非以 `ProxyJump` 跳过 ）。
 
+- 运行 `tssh --install-tsshd` 可以将 [tsshd](https://github.com/trzsz/tsshd) 安装到服务器上。
+
+  - 默认安装到 `~/.local/bin/` 目录，可以通过 `--install-path /path/to/install` 指定安装目录。
+  - 若 `--install-path` 安装目录含有 `~/`，则必须加上单引号，如`--install-path '~/path'`。
+  - 若获取 `tsshd` 的最新版本号失败，可以通过 `--tsshd-version x.x.x` 参数自行指定。
+  - 若下载 `tsshd` 的安装包失败，可以自行下载并通过 `--tsshd-bin-path /path/to/tsshd.tar.gz` 参数指定。
+  - 注意：`--install-tsshd` 不支持 Windows 服务器，不支持跳板机（ 除非以 `ProxyJump` 跳过 ）。
+
 - 关于修改终端标题，其实无需 `tssh` 就能实现，只要在服务器的 shell 配置文件中（如`~/.bashrc`）配置：
 
   ```sh
@@ -881,7 +897,7 @@ Host xxx
 
 ## 故障排除
 
-- 在 Warp 终端，分块 Blocks 的功能需要将 `tssh` 重命名为 `ssh`，推荐建个软链接（ 对更新友好 ）：
+- 在旧版本 Warp 终端，分块 Blocks 的功能需要将 `tssh` 重命名为 `ssh`，推荐建个软链接（ 对更新友好 ）：
 
   ```
   sudo ln -sv $(which tssh) /usr/local/bin/ssh
@@ -903,7 +919,7 @@ Host xxx
 
   - `--dragfile` 参数可能会让 Warp 分块功能失效，请参考前文配置 `EnableDragFile` 来启用拖拽功能。
 
-  - 拖拽文件或目录进入 Warp 终端后，可能不会立即触发上传，需要多按一次`回车`键，才会上传。
+- 在 Warp 终端，拖拽文件或目录进入 Warp 终端后，可能不会立即触发上传，需要多按一次`回车`键，才会上传。
 
 - 如果你在使用 Windows7 或者旧版本的 Windows10 等，遇到 `enable virtual terminal failed` 的错误。
 

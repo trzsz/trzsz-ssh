@@ -56,8 +56,11 @@ func writeAll(dst io.Writer, data []byte) error {
 	return nil
 }
 
-func forwardInput(reader io.Reader, writer io.WriteCloser, win bool, escapeChar byte, escapeTime time.Duration, ss *sshClientSession) {
-	defer func() { _ = writer.Close() }()
+func forwardInput(reader io.Reader, writer io.WriteCloser, win bool, escapeChar byte, escapeTime time.Duration, sshConn *sshConnection) {
+	defer func() {
+		_ = writer.Close()
+		debug("ssh session stdin forward completed")
+	}()
 	var enterPressedFlag bool
 	var enterPressedTime time.Time
 	buffer := make([]byte, 32*1024)
@@ -70,7 +73,7 @@ func forwardInput(reader io.Reader, writer io.WriteCloser, win bool, escapeChar 
 					enterPressedTime = time.Now()
 				} else if enterPressedFlag && n == 1 && buffer[0] == escapeChar && time.Since(enterPressedTime) <= escapeTime {
 					pauseOutput.Store(true)
-					runConsole(escapeChar, reader, writer, ss)
+					runConsole(escapeChar, reader, writer, sshConn)
 					pauseOutput.Store(false)
 					continue
 				} else {
@@ -79,7 +82,7 @@ func forwardInput(reader io.Reader, writer io.WriteCloser, win bool, escapeChar 
 			}
 
 			buf := buffer[:n]
-			if win && !ss.tty {
+			if win && !sshConn.tty {
 				buf = bytes.ReplaceAll(buf, []byte("\r\n"), []byte("\n"))
 			}
 			if err := writeAll(writer, buf); err != nil {
@@ -88,7 +91,7 @@ func forwardInput(reader io.Reader, writer io.WriteCloser, win bool, escapeChar 
 			}
 		}
 		if err == io.EOF {
-			if win && isTerminal && ss.tty {
+			if win && isTerminal && sshConn.tty {
 				_, _ = writer.Write([]byte{0x1A}) // ctrl + z
 				continue
 			}
@@ -126,17 +129,23 @@ func forwardOutput(reader io.Reader, writer io.WriteCloser, win, tty bool) {
 	}
 }
 
-func wrapStdIO(serverIn io.WriteCloser, serverOut, serverErr io.Reader, escapeChar byte, escapeTime time.Duration, ss *sshClientSession) {
+func wrapStdIO(serverIn io.WriteCloser, serverOut, serverErr io.Reader, escapeChar byte, escapeTime time.Duration, sshConn *sshConnection) {
 	win := runtime.GOOS == "windows"
 	if serverIn != nil {
-		go forwardInput(os.Stdin, serverIn, win, escapeChar, escapeTime, ss)
+		go forwardInput(os.Stdin, serverIn, win, escapeChar, escapeTime, sshConn)
 	}
 
 	if serverOut != nil {
-		outputWaitGroup.Go(func() { forwardOutput(serverOut, os.Stdout, win, ss.tty) })
+		outputWaitGroup.Go(func() {
+			forwardOutput(serverOut, os.Stdout, win, sshConn.tty)
+			debug("ssh session stdout forward completed")
+		})
 	}
 	if serverErr != nil {
-		outputWaitGroup.Go(func() { forwardOutput(serverErr, os.Stderr, win, ss.tty) })
+		outputWaitGroup.Go(func() {
+			forwardOutput(serverErr, os.Stderr, win, sshConn.tty)
+			debug("ssh session stderr forward completed")
+		})
 	}
 }
 
@@ -189,13 +198,14 @@ func getEscapeConfig(args *sshArgs) (byte, time.Duration) {
 	return escapeChar, consoleEscapeTime
 }
 
-func enableTrzsz(args *sshArgs, ss *sshClientSession) error {
+func enableTrzsz(sshConn *sshConnection) error {
 	// not terminal or not tty
-	if !isTerminal || !ss.tty {
-		wrapStdIO(ss.serverIn, ss.serverOut, ss.serverErr, 0, 0, ss)
+	if !isTerminal || !sshConn.tty {
+		wrapStdIO(sshConn.serverIn, sshConn.serverOut, sshConn.serverErr, 0, 0, sshConn)
 		return nil
 	}
 
+	args := sshConn.param.args
 	escapeChar, consoleEscapeTime := getEscapeConfig(args)
 
 	disableTrzsz := strings.ToLower(getExOptionConfig(args, "EnableTrzsz")) == "no"
@@ -205,10 +215,10 @@ func enableTrzsz(args *sshArgs, ss *sshClientSession) error {
 
 	// disable trzsz ( trz / tsz )
 	if disableTrzsz && !enableZmodem && !enableDragFile && !enableOSC52 {
-		wrapStdIO(ss.serverIn, ss.serverOut, ss.serverErr, escapeChar, consoleEscapeTime, ss)
+		wrapStdIO(sshConn.serverIn, sshConn.serverOut, sshConn.serverErr, escapeChar, consoleEscapeTime, sshConn)
 		onTerminalResize(func(width, height int) {
 			currentTerminalWidth.Store(int32(width))
-			_ = ss.session.WindowChange(height, width)
+			_ = sshConn.session.WindowChange(height, width)
 		})
 		return nil
 	}
@@ -220,17 +230,17 @@ func enableTrzsz(args *sshArgs, ss *sshClientSession) error {
 		readerIn, writerIn := io.Pipe()
 		readerOut, writerOut := io.Pipe()
 		clientIn, clientOut = readerIn, writerOut
-		wrapStdIO(writerIn, readerOut, ss.serverErr, escapeChar, consoleEscapeTime, ss)
+		wrapStdIO(writerIn, readerOut, sshConn.serverErr, escapeChar, consoleEscapeTime, sshConn)
 	} else {
 		clientIn, clientOut = os.Stdin, os.Stdout
-		wrapStdIO(nil, nil, ss.serverErr, 0, 0, ss)
+		wrapStdIO(nil, nil, sshConn.serverErr, 0, 0, sshConn)
 	}
 
 	trzsz.SetAffectedByWindows(false)
 
 	if args.Relay || !args.Client && isNoGUI() {
 		// run as a relay
-		trzszRelay := trzsz.NewTrzszRelay(clientIn, clientOut, ss.serverIn, ss.serverOut, trzsz.TrzszOptions{
+		trzszRelay := trzsz.NewTrzszRelay(clientIn, clientOut, sshConn.serverIn, sshConn.serverOut, trzsz.TrzszOptions{
 			DetectTraceLog: args.TraceLog,
 		})
 		// close on exit
@@ -238,11 +248,11 @@ func enableTrzsz(args *sshArgs, ss *sshClientSession) error {
 		// reset terminal size on resize
 		onTerminalResize(func(width, height int) {
 			currentTerminalWidth.Store(int32(width))
-			_ = ss.session.WindowChange(height, width)
+			_ = sshConn.session.WindowChange(height, width)
 		})
 		// setup tunnel connect
 		trzszRelay.SetTunnelConnector(func(port int) net.Conn {
-			conn, _ := ss.client.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second)
+			conn, _ := sshConn.client.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second)
 			return conn
 		})
 		return nil
@@ -279,7 +289,7 @@ func enableTrzsz(args *sshArgs, ss *sshClientSession) error {
 	//   os.Stdout │        │   os.Stdout  └─────────────┘   ServerOut  │        │
 	// ◄───────────│        │◄──────────────────────────────────────────┤        │
 	//   os.Stderr └────────┘                  stderr                   └────────┘
-	trzszFilter := trzsz.NewTrzszFilter(clientIn, clientOut, ss.serverIn, ss.serverOut, trzsz.TrzszOptions{
+	trzszFilter := trzsz.NewTrzszFilter(clientIn, clientOut, sshConn.serverIn, sshConn.serverOut, trzsz.TrzszOptions{
 		TerminalColumns: int32(width),
 		DetectDragFile:  enableDragFile,
 		DetectTraceLog:  args.TraceLog,
@@ -294,7 +304,7 @@ func enableTrzsz(args *sshArgs, ss *sshClientSession) error {
 	onTerminalResize(func(width, height int) {
 		currentTerminalWidth.Store(int32(width))
 		trzszFilter.SetTerminalColumns(int32(width))
-		_ = ss.session.WindowChange(height, width)
+		_ = sshConn.session.WindowChange(height, width)
 	})
 
 	// setup trzsz config
@@ -305,12 +315,12 @@ func enableTrzsz(args *sshArgs, ss *sshClientSession) error {
 
 	// setup tunnel connect
 	trzszFilter.SetTunnelConnector(func(port int) net.Conn {
-		conn, _ := ss.client.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second)
+		conn, _ := sshConn.client.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second)
 		return conn
 	})
 
 	// setup redraw screen
-	trzszFilter.SetRedrawScreenFunc(ss.session.RedrawScreen)
+	trzszFilter.SetRedrawScreenFunc(sshConn.session.RedrawScreen)
 
 	return nil
 }

@@ -37,7 +37,7 @@ import (
 )
 
 var enableDebugLogging bool = false
-var envbleWarningLogging bool = true
+var enableWarningLogging bool = true
 var currentTerminalWidth atomic.Int32
 
 const (
@@ -53,6 +53,7 @@ const (
 	kExitCodeShellFailed = 20
 	kExitCodeStdinFailed = 21
 	kExitCodeTrzszFailed = 22
+	kExitCodeOpenSession = 23
 
 	kExitCodeToolsError  = 101
 	kExitCodeTrzPreError = 102
@@ -63,23 +64,29 @@ const (
 	kExitCodeUdpCtrlC    = 201
 	kExitCodeUdpTimeout  = 202
 	kExitCodeConsoleKill = 203
+	kExitCodeForceExit   = 204
+	kExitCodeKeepAlive   = 205
+	kExitCodeSignalKill  = 206
 )
 
-var debug = func(format string, a ...any) {
+func debug(format string, a ...any) {
 	if !enableDebugLogging {
 		return
 	}
-	fmt.Fprintf(os.Stderr, fmt.Sprintf("\033[0;36mdebug:\033[0m %s\r\n", format), a...)
+	msg := fmt.Sprintf(format, a...)
+	fmt.Fprintf(os.Stderr, "\r\033[0;36mdebug:\033[0m %s\033[K\r\n", msg)
 }
 
-var warning = func(format string, a ...any) {
-	if !envbleWarningLogging {
+func warning(format string, a ...any) {
+	if !enableWarningLogging {
 		return
 	}
 
+	msg := "Warning: " + fmt.Sprintf(format, a...)
+
 	terminalWidth := int(currentTerminalWidth.Load())
 	if terminalWidth <= 0 {
-		fmt.Fprintf(os.Stderr, fmt.Sprintf("\033[0;33mWarning: %s\033[0m\r\n", format), a...)
+		fmt.Fprintf(os.Stderr, "\r\033[0;33m%s\033[0m\033[K\r\n", msg)
 		return
 	}
 
@@ -87,7 +94,6 @@ var warning = func(format string, a ...any) {
 		debug("warning: "+format, a...)
 	}
 
-	msg := fmt.Sprintf("Warning: "+format, a...)
 	msgWidth := ansi.StringWidth(msg)
 	if msgWidth > terminalWidth {
 		msg = lipgloss.NewStyle().Foreground(blackColor).Background(yellowColor).Render(ansi.Truncate(msg, terminalWidth, ""))

@@ -87,11 +87,11 @@ func parseBindCfg(s string) (*bindCfg, error) {
 	}
 
 	newBindArg := func(addr *string, port string) (*bindCfg, error) {
-		p, err := strconv.Atoi(port)
+		p, err := strconv.ParseUint(port, 10, 16)
 		if err != nil {
 			return nil, fmt.Errorf("invalid bind specification [%s]: %v", s, err)
 		}
-		return &bindCfg{s, addr, p}, nil
+		return &bindCfg{s, addr, int(p)}, nil
 	}
 
 	if portOnlyRegexp.MatchString(s) {
@@ -114,7 +114,7 @@ func parseBindCfg(s string) (*bindCfg, error) {
 	}
 
 	if unixSocketRegexp.MatchString(s) {
-		return newBindArg(&s, "-1")
+		return &bindCfg{s, &s, -1}, nil
 	}
 
 	return nil, fmt.Errorf("invalid bind specification: %s", s)
@@ -134,11 +134,11 @@ func parseForwardCfg(s string) (*forwardCfg, error) {
 	}
 
 	newForwardCfg := func(host string, port string) (*forwardCfg, error) {
-		dPort, err := strconv.Atoi(port)
+		dPort, err := strconv.ParseUint(port, 10, 16)
 		if err != nil {
 			return nil, fmt.Errorf("invalid forwarding config [%s]: %v", s, err)
 		}
-		return &forwardCfg{s, bindCfg.addr, bindCfg.port, host, dPort}, nil
+		return &forwardCfg{s, bindCfg.addr, bindCfg.port, host, int(dPort)}, nil
 	}
 
 	dest := tokens[1]
@@ -158,7 +158,7 @@ func parseForwardCfg(s string) (*forwardCfg, error) {
 	}
 
 	if unixSocketRegexp.MatchString(dest) {
-		return newForwardCfg(dest, "-1")
+		return &forwardCfg{s, bindCfg.addr, bindCfg.port, dest, -1}, nil
 	}
 
 	return nil, fmt.Errorf("invalid forwarding config: %s", s)
@@ -171,62 +171,69 @@ func parseForwardArg(s string) (*forwardCfg, error) {
 		return nil, fmt.Errorf("invalid forwarding specification: %s", s)
 	}
 
-	newForwardCfg := func(bindAddr *string, bindPort string, destHost string, destPort string) (*forwardCfg, error) {
-		bPort, err := strconv.Atoi(bindPort)
-		if err != nil {
-			return nil, fmt.Errorf("invalid forwarding specification [%s]: %v", s, err)
+	newForwardCfg := func(bindAddr *string, bindPort *string, destHost string, destPort *string) (*forwardCfg, error) {
+		bPort, dPort := -1, -1
+		if bindPort != nil {
+			v, err := strconv.ParseUint(*bindPort, 10, 16)
+			if err != nil {
+				return nil, fmt.Errorf("invalid forwarding specification [%s]: %v", s, err)
+			}
+			bPort = int(v)
 		}
-		dPort, err := strconv.Atoi(destPort)
-		if err != nil {
-			return nil, fmt.Errorf("invalid forwarding specification [%s]: %v", s, err)
+		if destPort != nil {
+			v, err := strconv.ParseUint(*destPort, 10, 16)
+			if err != nil {
+				return nil, fmt.Errorf("invalid forwarding specification [%s]: %v", s, err)
+			}
+			dPort = int(v)
 		}
-		return &forwardCfg{s, bindAddr, bPort, destHost, dPort}, nil
+		return &forwardCfg{s, bindAddr, int(bPort), destHost, int(dPort)}, nil
 	}
 
 	tokens := strings.Split(s, "/")
 	if len(tokens) == 3 && portOnlyRegexp.MatchString(tokens[0]) && portOnlyRegexp.MatchString(tokens[2]) {
-		return newForwardCfg(nil, tokens[0], tokens[1], tokens[2])
+		return newForwardCfg(nil, &tokens[0], tokens[1], &tokens[2])
 	}
 	if len(tokens) == 4 && portOnlyRegexp.MatchString(tokens[1]) && portOnlyRegexp.MatchString(tokens[3]) {
-		return newForwardCfg(&tokens[0], tokens[1], tokens[2], tokens[3])
+		return newForwardCfg(&tokens[0], &tokens[1], tokens[2], &tokens[3])
 	}
 
 	match := doubleIPv6Regexp.FindStringSubmatch(s)
 	if len(match) == 5 {
-		return newForwardCfg(&match[1], match[2], match[3], match[4])
+		return newForwardCfg(&match[1], &match[2], match[3], &match[4])
 	}
 	match = firstIPv6Regexp.FindStringSubmatch(s)
 	if len(match) == 5 {
-		return newForwardCfg(&match[1], match[2], match[3], match[4])
+		return newForwardCfg(&match[1], &match[2], match[3], &match[4])
 	}
 	match = secondIPv6Regexp.FindStringSubmatch(s)
 	if len(match) == 5 {
-		return newForwardCfg(&match[1], match[2], match[3], match[4])
+		return newForwardCfg(&match[1], &match[2], match[3], &match[4])
 	}
 	match = middleIPv6Regexp.FindStringSubmatch(s)
 	if len(match) == 4 {
-		return newForwardCfg(nil, match[1], match[2], match[3])
+		return newForwardCfg(nil, &match[1], match[2], &match[3])
 	}
 
 	tokens = strings.Split(s, ":")
 	if len(tokens) == 3 && portOnlyRegexp.MatchString(tokens[0]) && portOnlyRegexp.MatchString(tokens[2]) {
-		return newForwardCfg(nil, tokens[0], tokens[1], tokens[2])
+		return newForwardCfg(nil, &tokens[0], tokens[1], &tokens[2])
 	}
 	if len(tokens) == 4 && portOnlyRegexp.MatchString(tokens[1]) && portOnlyRegexp.MatchString(tokens[3]) {
-		return newForwardCfg(&tokens[0], tokens[1], tokens[2], tokens[3])
+		return newForwardCfg(&tokens[0], &tokens[1], tokens[2], &tokens[3])
 	}
 
 	if len(tokens) == 2 && portOnlyRegexp.MatchString(tokens[0]) && unixSocketRegexp.MatchString(tokens[1]) {
-		return newForwardCfg(nil, tokens[0], tokens[1], "-1")
+		return newForwardCfg(nil, &tokens[0], tokens[1], nil)
 	}
 	if len(tokens) == 3 && portOnlyRegexp.MatchString(tokens[1]) && unixSocketRegexp.MatchString(tokens[2]) {
-		return newForwardCfg(&tokens[0], tokens[1], tokens[2], "-1")
+		return newForwardCfg(&tokens[0], &tokens[1], tokens[2], nil)
 	}
 	if len(tokens) == 3 && portOnlyRegexp.MatchString(tokens[2]) && unixSocketRegexp.MatchString(tokens[0]) {
-		return newForwardCfg(&tokens[0], "-1", tokens[1], tokens[2])
+		return newForwardCfg(&tokens[0], nil, tokens[1], &tokens[2])
 	}
 	if len(tokens) == 2 && unixSocketRegexp.MatchString(tokens[0]) && unixSocketRegexp.MatchString(tokens[1]) {
-		return newForwardCfg(&tokens[0], "-1", tokens[1], "-1")
+		return newForwardCfg(&tokens[0], nil, tokens[1], nil)
 	}
 
 	return nil, fmt.Errorf("invalid forwarding specification: %s", s)
@@ -307,16 +314,14 @@ func listenOnLocal(args *sshArgs, addr *string, port, name string) (listeners []
 }
 
 func listenOnRemote(args *sshArgs, client SshClient, f *forwardCfg) (listeners []net.Listener) {
-	firstDenied := true
 	addr, port := f.bindAddr, strconv.Itoa(f.bindPort)
 	listen := func(network, address string) {
 		listener, err := client.Listen(network, address)
 		if err != nil {
-			if reason := forwardDeniedReason(err, network); reason != "" {
-				if firstDenied {
-					firstDenied = false
-					warning("The remote forwarding [%v] was denied. %s", f, reason)
-				}
+			if network == "tcp6" {
+				debug("remote forwarding [%v] listen on remote [%s] [%s] failed: %v", f, network, address, err)
+			} else if reason := forwardDeniedReason(err, network); reason != "" {
+				warning("The remote forwarding [%v] was denied. %s", f, reason)
 			} else {
 				warning("remote forwarding [%v] listen on remote [%s] [%s] failed: %v", f, network, address, err)
 			}
@@ -527,16 +532,17 @@ func remoteForward(client SshClient, f *forwardCfg, args *sshArgs) {
 	}
 }
 
-func sshForward(client SshClient, args *sshArgs, param *sshParam) error {
+func sshPortForward(sshConn *sshConnection) {
+	args := sshConn.param.args
 	// clear all forwardings
 	if strings.ToLower(getOptionConfig(args, "ClearAllForwardings")) == "yes" {
 		debug("clear all forwardings")
-		return nil
+		return
 	}
 
 	// dynamic forward
 	for _, b := range args.DynamicForward.binds {
-		dynamicForward(client, b, args)
+		dynamicForward(sshConn.client, b, args)
 	}
 	for _, s := range getAllOptionConfig(args, "DynamicForward") {
 		b, err := parseBindCfg(s)
@@ -544,15 +550,15 @@ func sshForward(client SshClient, args *sshArgs, param *sshParam) error {
 			warning("parse dynamic forwarding failed: %v", err)
 			continue
 		}
-		dynamicForward(client, b, args)
+		dynamicForward(sshConn.client, b, args)
 	}
 
 	// local forward
 	for _, f := range args.LocalForward.cfgs {
-		localForward(client, f, args)
+		localForward(sshConn.client, f, args)
 	}
 	for _, s := range getAllOptionConfig(args, "LocalForward") {
-		es, err := expandTokens(s, args, param, "%CdhijkLlnpru")
+		es, err := expandTokens(s, sshConn.param, "%CdhijkLlnpru")
 		if err != nil {
 			warning("expand LocalForward [%s] failed: %v", s, err)
 			continue
@@ -562,15 +568,15 @@ func sshForward(client SshClient, args *sshArgs, param *sshParam) error {
 			warning("parse local forwarding failed: %v", err)
 			continue
 		}
-		localForward(client, f, args)
+		localForward(sshConn.client, f, args)
 	}
 
 	// remote forward
 	for _, f := range args.RemoteForward.cfgs {
-		remoteForward(client, f, args)
+		remoteForward(sshConn.client, f, args)
 	}
 	for _, s := range getAllOptionConfig(args, "RemoteForward") {
-		es, err := expandTokens(s, args, param, "%CdhijkLlnpru")
+		es, err := expandTokens(s, sshConn.param, "%CdhijkLlnpru")
 		if err != nil {
 			warning("expand RemoteForward [%s] failed: %v", s, err)
 			continue
@@ -580,10 +586,8 @@ func sshForward(client SshClient, args *sshArgs, param *sshParam) error {
 			warning("parse remote forwarding failed: %v", err)
 			continue
 		}
-		remoteForward(client, f, args)
+		remoteForward(sshConn.client, f, args)
 	}
-
-	return nil
 }
 
 type x11Request struct {
@@ -593,7 +597,8 @@ type x11Request struct {
 	ScreenNumber     uint32
 }
 
-func sshX11Forward(args *sshArgs, client SshClient, session SshSession, udpMode udpModeType) {
+func sshX11Forward(sshConn *sshConnection) {
+	args := sshConn.param.args
 	if args.NoX11Forward || !args.X11Untrusted && !args.X11Trusted && strings.ToLower(getOptionConfig(args, "ForwardX11")) != "yes" {
 		return
 	}
@@ -603,7 +608,11 @@ func sshX11Forward(args *sshArgs, client SshClient, session SshSession, udpMode 
 		warning("X11 forwarding is not working since environment variable DISPLAY is not set")
 		return
 	}
-	hostname, displayNumber := resolveDisplayEnv(display)
+	hostname, displayNumber, err := resolveDisplayEnv(display)
+	if err != nil {
+		warning("X11 forwarding is not working due to: %v", err)
+		return
+	}
 
 	var trusted bool
 	if !args.X11Untrusted && (args.X11Trusted || strings.ToLower(getOptionConfig(args, "ForwardX11Trusted")) == "yes") {
@@ -635,7 +644,7 @@ func sshX11Forward(args *sshArgs, client SshClient, session SshSession, udpMode 
 		AuthCookie:       cookie,
 		ScreenNumber:     0,
 	}
-	ok, err := session.SendRequest(kX11RequestName, true, ssh.Marshal(payload))
+	ok, err := sshConn.session.SendRequest(kX11RequestName, true, ssh.Marshal(payload))
 	if err != nil {
 		warning("X11 forwarding request failed: %v", err)
 		return
@@ -645,13 +654,13 @@ func sshX11Forward(args *sshArgs, client SshClient, session SshSession, udpMode 
 		return
 	}
 
-	channels := client.HandleChannelOpen(kX11ChannelType)
+	channels := sshConn.client.HandleChannelOpen(kX11ChannelType)
 	if channels == nil {
 		warning("already have handler for %s", kX11ChannelType)
 		return
 	}
 
-	if udpMode == kUdpModeNo {
+	if sshConn.param.udpMode == kUdpModeNo {
 		debug("request ssh X11 forwarding success")
 	}
 
@@ -670,22 +679,22 @@ func sshX11Forward(args *sshArgs, client SshClient, session SshSession, udpMode 
 	}()
 }
 
-func resolveDisplayEnv(display string) (string, int) {
+func resolveDisplayEnv(display string) (string, int, error) {
 	colon := strings.LastIndex(display, ":")
 	if colon < 0 {
-		return "", 0
+		return "", 0, fmt.Errorf("no colon in env DISPLAY [%s]", display)
 	}
 	hostname := display[:colon]
-	display = display[colon+1:]
-	dot := strings.Index(display, ".")
+	number := display[colon+1:]
+	dot := strings.Index(number, ".")
 	if dot < 0 {
-		dot = len(display)
+		dot = len(number)
 	}
-	displayNumber, err := strconv.Atoi(display[:dot])
+	displayNumber, err := strconv.ParseUint(number[:dot], 10, 16)
 	if err != nil {
-		return "", 0
+		return "", 0, fmt.Errorf("display number [%s] in env DISPLAY [%s] invalid: %v", number[:dot], display, err)
 	}
-	return hostname, displayNumber
+	return hostname, int(displayNumber), nil
 }
 
 func convertSshTime(time string) (int, error) {
@@ -759,22 +768,40 @@ func forwardChannel(channel ssh.Channel, conn net.Conn) {
 	_ = channel.Close()
 }
 
-func subsystemForward(ss *sshClientSession) error {
-	if err := ss.session.RequestSubsystem(ss.cmd); err != nil {
-		return fmt.Errorf("request subsystem [%s] failed: %v", ss.cmd, err)
+func subsystemForward(client SshClient, name string) error {
+	session, err := client.NewSession()
+	if err != nil {
+		return fmt.Errorf("new session for subsystem [%s] failed: %v", name, err)
+	}
+	defer func() { _ = session.Close() }()
+	serverIn, err := session.StdinPipe()
+	if err != nil {
+		return fmt.Errorf("stdin pipe for subsystem [%s] failed: %v", name, err)
+	}
+	serverOut, err := session.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("stdout pipe for subsystem [%s] failed: %v", name, err)
+	}
+	serverErr, err := session.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("stderr pipe for subsystem [%s] failed: %v", name, err)
+	}
+
+	if err := session.RequestSubsystem(name); err != nil {
+		return fmt.Errorf("request subsystem [%s] failed: %v", name, err)
 	}
 
 	var wg sync.WaitGroup
 	wg.Go(func() {
-		_, _ = io.Copy(ss.serverIn, os.Stdin)
-		_ = ss.serverIn.Close()
+		_, _ = io.Copy(serverIn, os.Stdin)
+		_ = serverIn.Close()
 	})
 	wg.Go(func() {
-		_, _ = io.Copy(os.Stdout, ss.serverOut)
+		_, _ = io.Copy(os.Stdout, serverOut)
 		_ = os.Stdout.Close()
 	})
 	wg.Go(func() {
-		_, _ = io.Copy(os.Stderr, ss.serverErr)
+		_, _ = io.Copy(os.Stderr, serverErr)
 		_ = os.Stderr.Close()
 	})
 	wg.Wait()

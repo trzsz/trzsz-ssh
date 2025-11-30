@@ -33,20 +33,20 @@ import (
 	"github.com/trzsz/trzsz-go/trzsz"
 )
 
-func execTrzUpload(args *sshArgs, ss *sshClientSession) int {
-	if len(args.UploadFile.values) == 0 {
+func execTrzUpload(sshConn *sshConnection) int {
+	if len(sshConn.param.args.UploadFile.values) == 0 {
 		return 0
 	}
 
-	wrapStdIO(nil, nil, ss.serverErr, 0, 0, ss)
+	wrapStdIO(nil, nil, sshConn.serverErr, 0, 0, sshConn)
 	trzsz.SetAffectedByWindows(false)
 	width, _, err := getTerminalSize()
 	if err == nil {
 		width = 80
 	}
-	trzszFilter := trzsz.NewTrzszFilter(os.Stdin, os.Stdout, ss.serverIn, ss.serverOut, trzsz.TrzszOptions{
+	trzszFilter := trzsz.NewTrzszFilter(os.Stdin, os.Stdout, sshConn.serverIn, sshConn.serverOut, trzsz.TrzszOptions{
 		TerminalColumns: int32(width),
-		DetectTraceLog:  args.TraceLog,
+		DetectTraceLog:  sshConn.param.args.TraceLog,
 		EnableZmodem:    true,
 	})
 	defer trzszFilter.Close()
@@ -56,27 +56,26 @@ func execTrzUpload(args *sshArgs, ss *sshClientSession) int {
 	})
 	trzszFilter.SetProgressColorPair(userConfig.progressColorPair)
 	trzszFilter.SetTunnelConnector(func(port int) net.Conn {
-		conn, _ := ss.client.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second)
+		conn, _ := sshConn.client.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second)
 		return conn
 	})
 
-	files := args.UploadFile.values
+	files := sshConn.param.args.UploadFile.values
 	errCh, err := trzszFilter.OneTimeUpload(files)
 	if err != nil {
 		warning("uplaod %v failed: %v", files, err)
 		return kExitCodeTrzPreError
 	}
 
-	cmd := ss.cmd
+	cmd := sshConn.cmd
 	if cmd == "" {
 		cmd = "trz -d"
 	}
-	if err := ss.session.Start(cmd); err != nil {
+	if err := sshConn.session.Start(cmd); err != nil {
 		warning("start command [%s] failed: %v", cmd, err)
 		return kExitCodeTrzRunError
 	}
-	cleanupAfterLogin()
-	_ = ss.session.Wait()
+	_ = sshConn.session.Wait()
 
 	if err := <-errCh; err != nil {
 		warning("upload %v failed: %v", files, err)

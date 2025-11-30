@@ -75,7 +75,7 @@ var getHostname = func() string {
 	return hostname
 }
 
-func expandTokens(str string, args *sshArgs, param *sshParam, tokens string) (string, error) {
+func expandTokens(str string, param *sshParam, tokens string) (string, error) {
 	if !strings.ContainsRune(str, '%') {
 		return str, nil
 	}
@@ -111,7 +111,7 @@ func expandTokens(str string, args *sshArgs, param *sshParam, tokens string) (st
 			}
 			buf.WriteString(param.user)
 		case 'n':
-			buf.WriteString(args.Destination)
+			buf.WriteString(param.args.Destination)
 		case 'l':
 			buf.WriteString(getHostname())
 		case 'L':
@@ -131,10 +131,10 @@ func expandTokens(str string, args *sshArgs, param *sshParam, tokens string) (st
 			}
 			buf.WriteString(fmt.Sprintf("%x", sha1.Sum([]byte(hashStr))))
 		case 'k':
-			if hostKeyAlias := getOptionConfig(args, "HostKeyAlias"); hostKeyAlias != "" {
+			if hostKeyAlias := getOptionConfig(param.args, "HostKeyAlias"); hostKeyAlias != "" {
 				buf.WriteString(hostKeyAlias)
 			} else {
-				buf.WriteString(args.Destination)
+				buf.WriteString(param.args.Destination)
 			}
 		default:
 			return str, fmt.Errorf("token [%%%c] in [%s] is not supported yet", c, str)

@@ -32,11 +32,9 @@ import (
 )
 
 func TestDNS(t *testing.T) {
-	oriWarning := warning
-	warning = func(string, ...any) {}
-	defer func() {
-		warning = oriWarning
-	}()
+	envbleWarning := enableWarningLogging
+	enableWarningLogging = false
+	defer func() { enableWarningLogging = envbleWarning }()
 
 	assert := assert.New(t)
 	assertDestEqual := func(waitParseDns, expectedDns string) {

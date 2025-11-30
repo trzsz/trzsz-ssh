@@ -195,8 +195,8 @@ func (m *tmuxMgr) parseTmuxVersion(version string) {
 	if pos < 1 {
 		return
 	}
-	if ver, err := strconv.Atoi(version[:pos]); err == nil {
-		m.majorVersion = ver
+	if ver, err := strconv.ParseUint(version[:pos], 10, 32); err == nil {
+		m.majorVersion = int(ver)
 	}
 	subver := version[pos+1:]
 	pos = len(subver)
@@ -207,7 +207,7 @@ func (m *tmuxMgr) parseTmuxVersion(version string) {
 		pos = i
 		break
 	}
-	if ver, err := strconv.Atoi(subver[:pos]); err == nil {
-		m.minorVersion = ver
+	if ver, err := strconv.ParseUint(subver[:pos], 10, 32); err == nil {
+		m.minorVersion = int(ver)
 	}
 }

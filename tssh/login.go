@@ -33,6 +33,7 @@ import (
 	"os/user"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -48,6 +49,7 @@ type proxyJump struct {
 }
 
 type sshParam struct {
+	args    *sshArgs
 	host    string
 	port    string
 	user    string
@@ -56,6 +58,22 @@ type sshParam struct {
 	command string
 	control bool
 	proxy   *proxyJump
+	udpMode udpModeType
+	ipv4    bool
+	ipv6    bool
+}
+
+func (p *sshParam) setNetworkAddressFamily(conn net.Conn) {
+	remoteAddr := conn.RemoteAddr()
+	tcpAddr, ok := remoteAddr.(*net.TCPAddr)
+	if !ok {
+		return
+	}
+	if tcpAddr.IP.To4() != nil {
+		p.ipv4 = true
+	} else if tcpAddr.IP.To16() != nil {
+		p.ipv6 = true
+	}
 }
 
 func joinHostPort(host, port string) string {
@@ -91,7 +109,7 @@ func parseDestination(dest string) (user, host, port string) {
 }
 
 func getSshParam(args *sshArgs) (*sshParam, error) {
-	param := &sshParam{}
+	param := &sshParam{args: args}
 
 	// login dest
 	destUser, destHost, destPort := parseDestination(args.Destination)
@@ -101,7 +119,7 @@ func getSshParam(args *sshArgs) (*sshParam, error) {
 	param.host = destHost
 	if hostName := getConfig(destHost, "HostName"); hostName != "" {
 		var err error
-		param.host, err = expandTokens(hostName, args, param, "%h")
+		param.host, err = expandTokens(hostName, param, "%h")
 		if err != nil {
 			return nil, err
 		}
@@ -159,27 +177,31 @@ func getSshParam(args *sshArgs) (*sshParam, error) {
 	param.addr = joinHostPort(param.host, param.port)
 
 	// login proxy
-	getProxyParam(args, param)
+	getProxyParam(param)
 
 	// expand proxy
 	var err error
 	if param.command != "" {
-		param.command, err = expandTokens(param.command, args, param, "%hnpr")
+		param.command, err = expandTokens(param.command, param, "%hnpr")
 		if err != nil {
 			return nil, fmt.Errorf("expand ProxyCommand [%s] failed: %v", param.command, err)
 		}
 	}
 	for i := 0; i < len(param.proxies); i++ {
-		param.proxies[i], err = expandTokens(strings.TrimSpace(param.proxies[i]), args, param, "%hnpr")
+		param.proxies[i], err = expandTokens(strings.TrimSpace(param.proxies[i]), param, "%hnpr")
 		if err != nil {
 			return nil, fmt.Errorf("expand ProxyJump [%s] failed: %v", param.proxies[i], err)
 		}
 	}
 
+	// udp mode
+	param.udpMode = getUdpMode(args)
+
 	return param, nil
 }
 
-func getProxyParam(args *sshArgs, param *sshParam) {
+func getProxyParam(param *sshParam) {
+	args := param.args
 	proxyJump := args.ProxyJump // -J
 	if proxyJump == "" {
 		proxyJump = args.Option.get("ProxyJump")
@@ -269,8 +291,8 @@ func (p *cmdPipe) Close() error {
 	return err2
 }
 
-func execProxyCommand(args *sshArgs, param *sshParam) (net.Conn, string, error) {
-	command, err := expandTokens(param.command, args, param, "%hnpr")
+func execProxyCommand(param *sshParam) (net.Conn, string, error) {
+	command, err := expandTokens(param.command, param, "%hnpr")
 	if err != nil {
 		return nil, param.command, err
 	}
@@ -303,42 +325,8 @@ func execProxyCommand(args *sshArgs, param *sshParam) (net.Conn, string, error) 
 	return &cmdPipe{stdin: cmdIn, stdout: cmdOut, addr: param.addr}, command, nil
 }
 
-func execLocalCommand(args *sshArgs, param *sshParam) {
-	if strings.ToLower(getOptionConfig(args, "PermitLocalCommand")) != "yes" {
-		return
-	}
-	localCmd := getOptionConfig(args, "LocalCommand")
-	if localCmd == "" {
-		return
-	}
-	expandedCmd, err := expandTokens(localCmd, args, param, "%CdfHhIijKkLlnprTtu")
-	if err != nil {
-		warning("expand LocalCommand [%s] failed: %v", localCmd, err)
-		return
-	}
-	resolvedCmd := resolveHomeDir(expandedCmd)
-	debug("exec local command: %s", resolvedCmd)
-
-	argv, err := splitCommandLine(resolvedCmd)
-	if err != nil || len(argv) == 0 {
-		warning("split local command [%s] failed: %v", resolvedCmd, err)
-		return
-	}
-	if enableDebugLogging {
-		for i, arg := range argv {
-			debug("local command argv[%d] = %s", i, arg)
-		}
-	}
-	cmd := exec.Command(argv[0], argv[1:]...)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		warning("exec local command [%s] failed: %v", resolvedCmd, err)
-	}
-}
-
-func parseRemoteCommand(args *sshArgs, param *sshParam) (string, error) {
+func parseRemoteCommand(param *sshParam) (string, error) {
+	args := param.args
 	command := args.Option.get("RemoteCommand")
 	if args.Command != "" && command != "" && strings.ToLower(command) != "none" {
 		return "", fmt.Errorf("cannot execute command-line and remote command")
@@ -355,19 +343,20 @@ func parseRemoteCommand(args *sshArgs, param *sshParam) (string, error) {
 	if command == "" {
 		command = getConfig(args.Destination, "RemoteCommand")
 	}
-	expandedCmd, err := expandTokens(command, args, param, "%CdhijkLlnpru")
+	expandedCmd, err := expandTokens(command, param, "%CdhijkLlnpru")
 	if err != nil {
 		return "", fmt.Errorf("expand RemoteCommand [%s] failed: %v", command, err)
 	}
 	return expandedCmd, nil
 }
 
-func parseCmdAndTTY(args *sshArgs, param *sshParam) (cmd string, tty bool, err error) {
-	cmd, err = parseRemoteCommand(args, param)
+func parseCmdAndTTY(param *sshParam) (cmd string, tty bool, err error) {
+	cmd, err = parseRemoteCommand(param)
 	if err != nil {
 		return
 	}
 
+	args := param.args
 	if args.DisableTTY && args.ForceTTY {
 		err = fmt.Errorf("cannot specify -t with -T")
 		return
@@ -426,27 +415,21 @@ func (c *connWithTimeout) Read(b []byte) (n int, err error) {
 }
 
 func setupLogLevel(args *sshArgs) func() {
-	previousDebug := enableDebugLogging
-	previousWarning := envbleWarningLogging
+	previousDebug, previousWarning := enableDebugLogging, enableWarningLogging
 	reset := func() {
-		enableDebugLogging = previousDebug
-		envbleWarningLogging = previousWarning
+		enableDebugLogging, enableWarningLogging = previousDebug, previousWarning
 	}
 	if args.Debug {
-		enableDebugLogging = true
-		envbleWarningLogging = true
+		enableDebugLogging, enableWarningLogging = true, true
 		return reset
 	}
 	switch strings.ToLower(getOptionConfig(args, "LogLevel")) {
-	case "quiet", "fatal", "error":
-		enableDebugLogging = false
-		envbleWarningLogging = false
-	case "debug", "debug1", "debug2", "debug3":
-		enableDebugLogging = true
-		envbleWarningLogging = true
-	case "info", "verbose":
-		enableDebugLogging = false
-		envbleWarningLogging = true
+	case "quiet", "fatal":
+		enableDebugLogging, enableWarningLogging = false, false
+	case "error", "info":
+		enableDebugLogging, enableWarningLogging = false, true
+	case "verbose", "debug", "debug1", "debug2", "debug3":
+		enableDebugLogging, enableWarningLogging = true, true
 	}
 	return reset
 }
@@ -476,27 +459,27 @@ func getConnectTimeout(args *sshArgs) time.Duration {
 	if connectTimeout == "" {
 		return kDefaultConnectTimeout
 	}
-	value, err := strconv.Atoi(connectTimeout)
+	value, err := strconv.ParseUint(connectTimeout, 10, 32)
 	if err != nil {
 		warning("ConnectTimeout [%s] invalid: %v", connectTimeout, err)
 		return kDefaultConnectTimeout
 	}
-	if value <= 0 {
-		return 24 * time.Hour
+	if value <= 0 { // set a long time to avoid issue with 0
+		return 1000 * time.Hour
 	}
 	return time.Duration(value) * time.Second
 }
 
-func getClientConfig(args *sshArgs, param *sshParam) (*ssh.ClientConfig, error) {
-	authMethods := getAuthMethods(args, param)
-	hostKeyCallback, hostKeyAlgorithms, err := getHostKeyCallback(args, param)
+func getClientConfig(param *sshParam) (*ssh.ClientConfig, error) {
+	authMethods := getAuthMethods(param)
+	hostKeyCallback, hostKeyAlgorithms, err := getHostKeyCallback(param)
 	if err != nil {
 		return nil, err
 	}
 	return &ssh.ClientConfig{
 		User:              param.user,
 		Auth:              authMethods,
-		Timeout:           getConnectTimeout(args),
+		Timeout:           getConnectTimeout(param.args),
 		HostKeyCallback:   hostKeyCallback,
 		HostKeyAlgorithms: hostKeyAlgorithms,
 		BannerCallback: func(banner string) error {
@@ -506,25 +489,29 @@ func getClientConfig(args *sshArgs, param *sshParam) (*ssh.ClientConfig, error) 
 	}, nil
 }
 
-func connectViaProxyJump(args *sshArgs, param *sshParam, config *ssh.ClientConfig) (SshClient, error) {
-	debug("login to [%s] via proxy jump [%s] addr: %s", args.Destination, param.proxy.name, param.addr)
-	network := getNetworkAddressFamily(args)
+func connectViaProxyJump(param *sshParam, config *ssh.ClientConfig) (SshClient, error) {
+	debug("login to [%s] via proxy jump [%s] addr: %s", param.args.Destination, param.proxy.name, param.addr)
+	network := getNetworkAddressFamily(param.args)
 	conn, err := param.proxy.client.DialTimeout(network, param.addr, config.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("proxy jump [%s] dial [%s] [%s] failed: %v", param.proxy.name, network, param.addr, err)
 	}
+	param.setNetworkAddressFamily(conn)
 	ncc, chans, reqs, err := ssh.NewClientConn(&connWithTimeout{conn, config.Timeout, true}, param.addr, config)
 	if err != nil {
 		return nil, fmt.Errorf("proxy jump [%s] new conn [%s] failed: %v", param.proxy.name, param.addr, err)
 	}
-	debug("login to [%s] via proxy jump [%s] success", args.Destination, param.proxy.name)
-	addOnExitFunc(func() { _ = param.proxy.client.Close() })
+	debug("login to [%s] via proxy jump [%s] success", param.args.Destination, param.proxy.name)
+	addOnExitFunc(func() {
+		_ = param.proxy.client.Close()
+		debug("proxy jump [%s] close completed", param.proxy.name)
+	})
 	return sshNewClient(ncc, chans, reqs), nil
 }
 
-func connectViaProxyCommand(args *sshArgs, param *sshParam, config *ssh.ClientConfig) (SshClient, error) {
-	conn, cmd, err := execProxyCommand(args, param)
-	debug("login to [%s] via proxy command [%s] addr: %s", args.Destination, cmd, param.addr)
+func connectViaProxyCommand(param *sshParam, config *ssh.ClientConfig) (SshClient, error) {
+	conn, cmd, err := execProxyCommand(param)
+	debug("login to [%s] via proxy command [%s] addr: %s", param.args.Destination, cmd, param.addr)
 	if err != nil {
 		return nil, fmt.Errorf("proxy command [%s] exec failed: %v", cmd, err)
 	}
@@ -532,105 +519,125 @@ func connectViaProxyCommand(args *sshArgs, param *sshParam, config *ssh.ClientCo
 	if err != nil {
 		return nil, fmt.Errorf("proxy command [%s] new conn [%s] failed: %v", cmd, param.addr, err)
 	}
-	debug("login to [%s] via proxy command [%s] success", args.Destination, cmd)
+	debug("login to [%s] via proxy command [%s] success", param.args.Destination, cmd)
 	return sshNewClient(ncc, chans, reqs), nil
 }
 
-func connectDirectly(args *sshArgs, param *sshParam, config *ssh.ClientConfig) (SshClient, error) {
-	debug("login to [%s] addr: %s", args.Destination, param.addr)
+func connectDirectly(param *sshParam, config *ssh.ClientConfig) (SshClient, error) {
+	debug("login to [%s] addr: %s", param.args.Destination, param.addr)
 	var dialer net.Dialer
 	if config.Timeout > 0 {
 		dialer.Timeout = config.Timeout
 	}
-	network := getNetworkAddressFamily(args)
+	network := getNetworkAddressFamily(param.args)
 	conn, err := dialer.Dial(network, param.addr)
 	if err != nil {
-		return nil, fmt.Errorf("login to [%s] dial [%s] [%s] failed: %v", args.Destination, network, param.addr, err)
+		return nil, fmt.Errorf("login to [%s] dial [%s] [%s] failed: %v", param.args.Destination, network, param.addr, err)
 	}
+	param.setNetworkAddressFamily(conn)
 	ncc, chans, reqs, err := ssh.NewClientConn(&connWithTimeout{conn, config.Timeout, true}, param.addr, config)
 	if err != nil {
-		return nil, fmt.Errorf("login to [%s] new conn [%s] failed: %v", args.Destination, param.addr, err)
+		return nil, fmt.Errorf("login to [%s] new conn [%s] failed: %v", param.args.Destination, param.addr, err)
 	}
-	debug("login to [%s] success", args.Destination)
+	debug("login to [%s] success", param.args.Destination)
 	return sshNewClient(ncc, chans, reqs), nil
 }
 
-func sshConnect(args *sshArgs, proxy *proxyJump, requireUdpMode udpModeType) (SshClient, *sshParam, error) {
-	param, err := getSshParam(args)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	resetLogLevel := setupLogLevel(args)
-	defer resetLogLevel()
-
-	if client := connectViaControl(args, param); client != nil {
+func tcpLogin(param *sshParam, proxy *proxyJump, requireUDP udpModeType) (SshClient, error) {
+	// ssh multiplexing
+	if client := connectViaControl(param); client != nil {
 		param.control = true
-		return client, param, nil
+		return client, nil
 	}
 
-	config, err := getClientConfig(args, param)
+	// init config
+	config, err := getClientConfig(param)
 	if err != nil {
-		return nil, param, err
+		return nil, err
 	}
-
-	if err := setupCiphersConfig(args, config); err != nil {
-		return nil, param, err
+	if err := setupCiphersConfig(param.args, config); err != nil {
+		return nil, err
 	}
 
 	// connect via proxy jump
 	if proxy != nil {
 		param.proxy = proxy
-		client, err := connectViaProxyJump(args, param, config)
-		return client, param, err
+		client, err := connectViaProxyJump(param, config)
+		return client, err
 	}
 
 	// connect via proxy command
 	if param.command != "" {
-		client, err := connectViaProxyCommand(args, param, config)
-		return client, param, err
+		client, err := connectViaProxyCommand(param, config)
+		return client, err
 	}
 
 	// no proxy
 	if len(param.proxies) == 0 {
-		client, err := connectDirectly(args, param, config)
-		return client, param, err
+		client, err := connectDirectly(param, config)
+		return client, err
 	}
 
 	// has proxies
 	udpModes := make([]udpModeType, len(param.proxies))
-	for i := len(param.proxies) - 1; i >= 0; i-- {
-		udpMode := getUdpMode(&sshArgs{Destination: param.proxies[i]})
-		if requireUdpMode != kUdpModeNo && udpMode == kUdpModeNo {
-			udpMode = requireUdpMode
+	for i := len(param.proxies) - 1; i >= 0; i-- { // init proxy udp mode
+		proxyArgs := &sshArgs{Destination: param.proxies[i]}
+		udpMode := getUdpMode(proxyArgs)
+		if requireUDP != kUdpModeNo && udpMode == kUdpModeNo {
+			udpMode = requireUDP
 		}
-		if requireUdpMode == kUdpModeNo && udpMode != kUdpModeNo {
-			requireUdpMode = udpMode
+		if requireUDP == kUdpModeNo && udpMode != kUdpModeNo {
+			initGlobalUdpAliveTimeout(proxyArgs)
+			requireUDP = udpMode
 		}
 		udpModes[i] = udpMode
 	}
-	for i, proxyName := range param.proxies {
-		proxyArgs := &sshArgs{Destination: proxyName}
-		proxyClient, proxyParam, err := sshConnect(proxyArgs, proxy, udpModes[i])
+	for i, proxyName := range param.proxies { // proxy login
+		proxyParam, err := getSshParam(&sshArgs{Destination: proxyName})
 		if err != nil {
-			return nil, param, err
+			return nil, err
 		}
-		if udpModes[i] != kUdpModeNo {
-			proxyClient, err = udpConnectAsProxy(proxyArgs, proxyParam, proxyClient, udpModes[i])
-			if err != nil {
-				return nil, param, fmt.Errorf("udp login to proxy jump [%s] failed: %v", proxyName, err)
-			}
+		proxyClient, err := sshLogin(proxyParam, proxy, udpModes[i])
+		if err != nil {
+			return nil, err
 		}
 		proxy = &proxyJump{client: proxyClient, name: proxyName}
 	}
 	param.proxy = proxy
-	client, err := connectViaProxyJump(args, param, config)
-	return client, param, err
+	client, err := connectViaProxyJump(param, config)
+	return client, err
 }
 
-func keepAlive(ss *sshClientSession, args *sshArgs) {
+func sshLogin(param *sshParam, proxy *proxyJump, requireUDP udpModeType) (SshClient, error) {
+	// init udp mode
+	if requireUDP != kUdpModeNo && param.udpMode == kUdpModeNo {
+		param.udpMode = requireUDP
+	}
+	if requireUDP == kUdpModeNo && param.udpMode != kUdpModeNo {
+		initGlobalUdpAliveTimeout(param.args)
+		requireUDP = param.udpMode
+	}
+
+	// setup log level
+	resetLogLevel := setupLogLevel(param.args)
+	defer resetLogLevel()
+
+	// tcp login
+	tcpClient, err := tcpLogin(param, proxy, requireUDP)
+	if err != nil {
+		return nil, err
+	}
+	if param.udpMode == kUdpModeNo {
+		return tcpClient, nil
+	}
+
+	// udp login
+	return udpLogin(param, tcpClient)
+}
+
+func keepAlive(sshConn *sshConnection) {
 	serverAliveInterval := uint32(0)
-	if c := getOptionConfig(args, "ServerAliveInterval"); c != "" {
+	if c := getOptionConfig(sshConn.param.args, "ServerAliveInterval"); c != "" {
 		v, err := strconv.ParseUint(c, 10, 32)
 		if err != nil {
 			warning("ServerAliveInterval [%s] is invalid: %v", c, err)
@@ -639,12 +646,12 @@ func keepAlive(ss *sshClientSession, args *sshArgs) {
 		}
 	}
 	if serverAliveInterval == 0 {
-		debug("no keep alive for [%s]", args.Destination)
+		debug("no keep alive for [%s]", sshConn.param.args.Destination)
 		return
 	}
 
 	serverAliveCountMax := uint32(3)
-	if c := getOptionConfig(args, "ServerAliveCountMax"); c != "" {
+	if c := getOptionConfig(sshConn.param.args, "ServerAliveCountMax"); c != "" {
 		v, err := strconv.ParseUint(c, 10, 32)
 		if err != nil {
 			warning("ServerAliveCountMax [%s] is invalid: %v", c, err)
@@ -655,7 +662,7 @@ func keepAlive(ss *sshClientSession, args *sshArgs) {
 
 	sendKeepAlive := func(idx int) {
 		debug("keep alive [%d] sending", idx)
-		if _, _, err := ss.client.SendRequest("keepalive@openssh.com", true, nil); err != nil {
+		if _, _, err := sshConn.client.SendRequest("keepalive@openssh.com", true, nil); err != nil {
 			if !isClosedError(err) {
 				debug("keep alive [%d] failed: %v", idx, err)
 			}
@@ -692,9 +699,9 @@ func keepAlive(ss *sshClientSession, args *sshArgs) {
 
 				if aliveTimeout > 0 && time.Since(*lastServerAliveTime.Load()) > aliveTimeout {
 					ticker.Stop()
-					warning("Exit due to keep alive timeout [%v], ServerAliveInterval [%d], ServerAliveCountMax [%d]",
-						aliveTimeout, serverAliveInterval, serverAliveCountMax)
-					go killProcess(ss)
+					sshConn.forceExit(kExitCodeKeepAlive, fmt.Sprintf(
+						"Exit due to keep alive timeout [%v], ServerAliveInterval [%d], ServerAliveCountMax [%d]",
+						aliveTimeout, serverAliveInterval, serverAliveCountMax))
 					return
 				}
 
@@ -713,158 +720,67 @@ func keepAlive(ss *sshClientSession, args *sshArgs) {
 	}()
 }
 
-func sshTcpLogin(args *sshArgs) (ss *sshClientSession, udpMode udpModeType, err error) {
-	ss = &sshClientSession{}
-	defer func() {
-		if err != nil {
-			ss.Close()
-		} else {
-			sshLoginSuccess.Store(true)
-			// execute local command if necessary
-			execLocalCommand(args, ss.param)
-		}
-	}()
+func sshConnect(args *sshArgs) (*sshConnection, error) {
+	// init log level
+	_ = setupLogLevel(args)
 
-	// ssh login
-	udpMode = getUdpMode(args)
-	ss.client, ss.param, err = sshConnect(args, nil, udpMode)
+	// init ssh param
+	param, err := getSshParam(args)
 	if err != nil {
-		return
+		return nil, err
 	}
 
 	// parse cmd and tty
-	ss.cmd, ss.tty, err = parseCmdAndTTY(args, ss.param)
+	cmd, tty, err := parseCmdAndTTY(param)
 	if err != nil {
-		return
+		return nil, err
 	}
 
-	// keep alive
-	if !ss.param.control && udpMode == kUdpModeNo {
-		keepAlive(ss, args)
-	}
-
-	// stdio forward runs as a proxy without port forwarding.
-	// but udp mode requires a new session to start tsshd.
-	if args.StdioForward != "" && udpMode == kUdpModeNo {
-		return
-	}
-
-	// ssh port forwarding
-	if !args.Subsystem && !ss.param.control && udpMode == kUdpModeNo {
-		if err = sshForward(ss.client, args, ss.param); err != nil {
-			return
-		}
-	}
-
-	// session is useless without executing remote command.
-	// but udp mode requires a new session to start tsshd.
-	if args.NoCommand && udpMode == kUdpModeNo {
-		return
-	}
-
-	// new session
-	ss.session, err = ss.client.NewSession()
+	// ssh login
+	client, err := sshLogin(param, nil, kUdpModeNo)
 	if err != nil {
-		err = fmt.Errorf("login to [%s] new session failed: %v", args.Destination, err)
-		return
+		return nil, err
+	}
+	sshLoginSuccess.Store(true)
+
+	sshConn := &sshConnection{
+		exitChan: make(chan int, 1),
+		client:   client,
+		param:    param,
+		cmd:      cmd,
+		tty:      tty,
 	}
 
-	// for UDP connection loss notification
-	if lastJumpUdpClient != nil && udpMode == kUdpModeNo {
-		ss.session = lastJumpUdpClient.setMainSession(args, ss.session)
+	// init global sshConn for udp mode
+	if lastJumpUdpClient != nil {
+		lastJumpUdpClient.sshConn = sshConn
 	}
 
-	// session input and output
-	ss.serverIn, err = ss.session.StdinPipe()
-	if err != nil {
-		err = fmt.Errorf("login to [%s] stdin pipe failed: %v", args.Destination, err)
-		return
-	}
-	ss.serverOut, err = ss.session.StdoutPipe()
-	if err != nil {
-		err = fmt.Errorf("login to [%s] stdout pipe failed: %v", args.Destination, err)
-		return
-	}
-	ss.serverErr, err = ss.session.StderrPipe()
-	if err != nil {
-		err = fmt.Errorf("login to [%s] stderr pipe failed: %v", args.Destination, err)
-		return
+	// tcp keep alive
+	if !param.control && param.udpMode == kUdpModeNo {
+		keepAlive(sshConn)
 	}
 
-	if !args.Subsystem && !ss.param.control && udpMode == kUdpModeNo {
-		// ssh agent forward
-		sshAgentForward(args, ss.param, ss.client, ss.session, udpMode)
-		// x11 forward
-		sshX11Forward(args, ss.client, ss.session, udpMode)
-	}
+	//  cleanup
+	cleanupAfterLogin()
 
-	return
+	return sshConn, nil
 }
 
-func sshLogin(args *sshArgs) (*sshClientSession, error) {
-	ss, udpMode, err := sshTcpLogin(args)
-	if err != nil {
-		return nil, err
-	}
+var afterLoginFuncs []func()
+var afterLoginMutex sync.Mutex
 
-	if udpMode != kUdpModeNo {
-		ss, err = sshUdpLogin(args, ss, udpMode, false)
-		if err != nil {
-			return nil, err
-		}
-
-		if !args.Subsystem && !ss.param.control && args.StdioForward == "" { // not -s, not ControlPath and not -W
-			// ssh port forwarding
-			if err := sshForward(ss.client, args, ss.param); err != nil {
-				ss.Close()
-				return nil, err
-			}
-
-			// ssh agent forward and x11 forward
-			if !args.NoCommand { // not -N
-				// ssh agent forward
-				sshAgentForward(args, ss.param, ss.client, ss.session, udpMode)
-				// x11 forward
-				sshX11Forward(args, ss.client, ss.session, udpMode)
-			}
-		}
+func cleanupAfterLogin() {
+	afterLoginMutex.Lock()
+	defer afterLoginMutex.Unlock()
+	for i := len(afterLoginFuncs) - 1; i >= 0; i-- {
+		afterLoginFuncs[i]()
 	}
+	afterLoginFuncs = nil
+}
 
-	// if running as a proxy ( aka: stdio forward ), or if not executing remote command,
-	// or request invocation of a subsystem on the remote system,
-	// then there is no need to initialize the session, so we return early here.
-	if args.StdioForward != "" || args.NoCommand || args.Subsystem {
-		return ss, nil
-	}
-
-	// send and set env
-	term, err := sendAndSetEnv(args, ss.session)
-	if err != nil {
-		ss.Close()
-		return nil, err
-	}
-
-	// not terminal or not tty
-	if !isTerminal || !ss.tty {
-		return ss, nil
-	}
-
-	// request pty session
-	width, height, err := getTerminalSize()
-	if err != nil {
-		ss.Close()
-		return nil, fmt.Errorf("get terminal size failed: %v", err)
-	}
-	if term == "" {
-		term = os.Getenv("TERM")
-		if term == "" {
-			term = "xterm-256color"
-		}
-	}
-	if err = ss.session.RequestPty(term, height, width, ssh.TerminalModes{}); err != nil {
-		ss.Close()
-		return nil, fmt.Errorf("request pty failed: %v", err)
-	}
-
-	return ss, nil
+func addAfterLoginFunc(f func()) {
+	afterLoginMutex.Lock()
+	defer afterLoginMutex.Unlock()
+	afterLoginFuncs = append(afterLoginFuncs, f)
 }

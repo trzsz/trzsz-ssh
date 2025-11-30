@@ -116,7 +116,7 @@ func getTsshConfigPath(forCreating bool) string {
 		if isDirExist(xdgConfigHome) {
 			cfgPath := filepath.Join(xdgConfigHome, "tssh")
 			if err := os.Mkdir(cfgPath, 0700); err != nil {
-				warning("create config path [%s] failed:", cfgPath, err)
+				warning("create config path [%s] failed: %v", cfgPath, err)
 			}
 			return xdgPath
 		}

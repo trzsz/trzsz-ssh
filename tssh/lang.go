@@ -101,7 +101,7 @@ func chooseLanguage() {
 
 	path := getTsshConfigPath(true)
 	if err := writeLanguage(path, language); err != nil {
-		warning("write language [%s] to %s failed:", language, path, err)
+		warning("write language [%s] to %s failed: %v", language, path, err)
 		return
 	}
 	toolsInfo(fmt.Sprintf("Language = %s", language), "has been written to %s", path)

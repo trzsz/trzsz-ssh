@@ -28,7 +28,9 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -125,7 +127,7 @@ type SshSession interface {
 	// A subsystem is a predefined command that runs in the background when the ssh session is initiated
 	RequestSubsystem(subsystem string) error
 
-	// RedrawScreen clear and redraw the screen right now.
+	// RedrawScreen clear and redraw the screen right now
 	RedrawScreen()
 
 	// GetTerminalWidth returns the width of the terminal
@@ -192,7 +194,7 @@ func SshLogin(args *SshArgs) (SshClient, error) {
 	if err := initUserConfig(args.ConfigFile); err != nil {
 		return nil, err
 	}
-	ss, err := sshLogin(&sshArgs{
+	sshConn, err := sshConnect(&sshArgs{
 		NoCommand:   true,
 		Destination: args.Destination,
 		IPv4Only:    args.IPv4Only,
@@ -211,30 +213,89 @@ func SshLogin(args *SshArgs) (SshClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	return ss.client, nil
+	return sshConn.client, nil
 }
 
-type sshClientSession struct {
+type sshConnection struct {
 	client    SshClient
 	session   SshSession
+	exitChan  chan int
 	serverIn  io.WriteCloser
 	serverOut io.Reader
 	serverErr io.Reader
 	param     *sshParam
 	cmd       string
 	tty       bool
+	closed    atomic.Bool
+	exited    atomic.Bool
 }
 
-func (s *sshClientSession) Close() {
-	if s.serverIn != nil {
-		_ = s.serverIn.Close()
+func (c *sshConnection) Close() {
+	if !c.closed.CompareAndSwap(false, true) {
+		return
 	}
-	if s.session != nil {
-		_ = s.session.Close()
+	if c.serverIn != nil {
+		_ = c.serverIn.Close()
 	}
-	if s.client != nil {
-		_ = s.client.Close()
+	if c.session != nil {
+		_ = c.session.Close()
 	}
+	if c.client != nil {
+		_ = c.client.Close()
+	}
+}
+
+func (c *sshConnection) waitUntilExit() int {
+	done := make(chan int, 1)
+	go func() {
+		defer close(done)
+		_ = c.session.Wait()
+		done <- c.session.GetExitCode()
+	}()
+	select {
+	case code := <-c.exitChan:
+		debug("force exit with code: %d", code)
+		return code
+	case code := <-done:
+		debug("session wait completed with code: %d", code)
+		return code
+	}
+}
+
+func (c *sshConnection) forceExit(code int, msg string) {
+	if !c.exited.CompareAndSwap(false, true) {
+		return
+	}
+
+	if enableWarningLogging {
+		if isTerminal && c.tty {
+			fmt.Fprintf(os.Stderr, "\n\r") // make the top message still visible after exiting
+		}
+		warning("%s", msg)
+	}
+
+	go func() {
+		// UDP connections do not support half-close (write-only close) for now,
+		// so we add extra wait time to allow all incoming data to be received.
+		// See tsshd.SshUdpClient.Close for more details.
+		udpClientCount := 0
+		client := lastJumpUdpClient
+		for client != nil {
+			udpClientCount++
+			client = client.proxyClient
+		}
+		time.Sleep(time.Duration(200+300*udpClientCount) * time.Millisecond)
+		debug("closing did not trigger a normal exit")
+		c.exitChan <- code
+		go func() {
+			time.Sleep(300 * time.Millisecond)
+			debug("force exit due to normal exit timeout")
+			_, _ = doWithTimeout(func() (int, error) { cleanupOnClose(); return 0, nil }, 50*time.Millisecond)
+			_, _ = doWithTimeout(func() (int, error) { cleanupOnExit(); return 0, nil }, 300*time.Millisecond)
+			os.Exit(kExitCodeForceExit)
+		}()
+	}()
+	c.Close()
 }
 
 type sshSessionWrapper struct {
@@ -259,6 +320,7 @@ func (s *sshSessionWrapper) RedrawScreen() {
 	}
 	height, width := s.height, s.width
 	_ = s.WindowChange(height, width+1)
+	time.Sleep(10 * time.Millisecond) // fix redraw issue in `screen`
 	_ = s.WindowChange(height, width)
 }
 

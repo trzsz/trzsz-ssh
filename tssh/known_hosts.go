@@ -32,6 +32,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"github.com/skeema/knownhosts"
@@ -39,6 +40,7 @@ import (
 )
 
 var acceptHostKeys []string
+var addHostKeyMutex sync.Mutex
 var sshLoginSuccess atomic.Bool
 
 func ensureNewline(file *os.File) error {
@@ -74,17 +76,23 @@ func writeKnownHost(path, host string, key ssh.PublicKey) error {
 }
 
 func addHostKey(path, host string, key ssh.PublicKey, ask bool) error {
+	addHostKeyMutex.Lock()
+	defer addHostKeyMutex.Unlock()
 	keyNormalizedLine := knownhosts.Line([]string{host}, key)
 	if slices.Contains(acceptHostKeys, keyNormalizedLine) {
+		if enableDebugLogging {
+			debug("host key [%s] has been accepted", ssh.FingerprintSHA256(key))
+		}
 		return nil
 	}
 
-	if ask {
-		if sshLoginSuccess.Load() {
-			fmt.Fprintf(os.Stderr, "\r\n\033[0;31mThe public key of the remote server has changed after login.\033[0m\r\n")
-			return fmt.Errorf("host key changed")
-		}
+	if sshLoginSuccess.Load() {
+		warning("The public key of the remote server has changed after login")
+		return fmt.Errorf("host key changed")
+	}
 
+	// writing only during the login process with the user's permission
+	if ask {
 		fingerprint := ssh.FingerprintSHA256(key)
 		fmt.Fprintf(os.Stderr, "The authenticity of host '%s' can't be established.\r\n"+
 			"%s key fingerprint is %s.\r\n", host, key.Type(), fingerprint)
@@ -127,11 +135,11 @@ func addHostKey(path, host string, key ssh.PublicKey, ask bool) error {
 	return nil
 }
 
-func getHostKeyCallback(args *sshArgs, param *sshParam) (ssh.HostKeyCallback, []string, error) {
+func getHostKeyCallback(param *sshParam) (ssh.HostKeyCallback, []string, error) {
 	primaryPath := ""
 	var files []string
 	addKnownHostsFiles := func(key string, user bool) error {
-		knownHostsFiles := getOptionConfigSplits(args, key)
+		knownHostsFiles := getOptionConfigSplits(param.args, key)
 		if len(knownHostsFiles) == 0 {
 			debug("%s is empty", key)
 			return nil
@@ -143,7 +151,7 @@ func getHostKeyCallback(args *sshArgs, param *sshParam) (ssh.HostKeyCallback, []
 		for _, path := range knownHostsFiles {
 			var resolvedPath string
 			if user {
-				expandedPath, err := expandTokens(path, args, param, "%CdhijkLlnpru")
+				expandedPath, err := expandTokens(path, param, "%CdhijkLlnpru")
 				if err != nil {
 					return fmt.Errorf("expand UserKnownHostsFile [%s] failed: %v", path, err)
 				}
@@ -188,7 +196,7 @@ func getHostKeyCallback(args *sshArgs, param *sshParam) (ssh.HostKeyCallback, []
 		if err == nil {
 			return nil
 		}
-		strictHostKeyChecking := strings.ToLower(getOptionConfig(args, "StrictHostKeyChecking"))
+		strictHostKeyChecking := strings.ToLower(getOptionConfig(param.args, "StrictHostKeyChecking"))
 		if knownhosts.IsHostKeyChanged(err) {
 			path := primaryPath
 			if path == "" {

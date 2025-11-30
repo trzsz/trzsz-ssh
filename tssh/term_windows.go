@@ -143,15 +143,15 @@ func sttySize() (int, int, error) {
 	if len(tokens) != 2 {
 		return 0, 0, fmt.Errorf("stty size invalid: %s", output)
 	}
-	rows, err := strconv.Atoi(tokens[0])
+	rows, err := strconv.ParseUint(tokens[0], 10, 32)
 	if err != nil {
 		return 0, 0, fmt.Errorf("stty size invalid: %s", output)
 	}
-	cols, err := strconv.Atoi(tokens[1])
+	cols, err := strconv.ParseUint(tokens[1], 10, 32)
 	if err != nil {
 		return 0, 0, fmt.Errorf("stty size invalid: %s", output)
 	}
-	return cols, rows, nil
+	return int(cols), int(rows), nil
 }
 
 func setupVirtualTerminal() error {

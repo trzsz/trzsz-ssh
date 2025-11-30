@@ -25,11 +25,12 @@ SOFTWARE.
 package tssh
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"runtime"
 	"strings"
-	"time"
+	"sync/atomic"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -166,19 +167,8 @@ func (m *menuModel) renderSeparator() string {
 	return m.separatorStyle.Render(strings.Repeat("─", m.menuWidth))
 }
 
-func killProcess(ss *sshClientSession) {
-	go func() {
-		time.Sleep(500 * time.Millisecond)
-		debug("force exit due to normal exit timeout")
-		_, _ = doWithTimeout(func() (int, error) { cleanupOnClose(); return 0, nil }, 50*time.Millisecond)
-		_, _ = doWithTimeout(func() (int, error) { cleanupOnExit(); return 0, nil }, 300*time.Millisecond)
-		os.Exit(kExitCodeConsoleKill)
-	}()
-	ss.Close()
-}
-
-func runConsole(escapeChar byte, reader io.Reader, writer io.WriteCloser, ss *sshClientSession) {
-	width := ss.session.GetTerminalWidth()
+func runConsole(escapeChar byte, reader io.Reader, writer io.WriteCloser, sshConn *sshConnection) {
+	width := sshConn.session.GetTerminalWidth()
 	model := initMenuModel(min(width, 60), width)
 
 	var key, char string
@@ -211,8 +201,15 @@ func runConsole(escapeChar byte, reader io.Reader, writer io.WriteCloser, ss *ss
 		}})
 	}
 
+	quitted := make(chan struct{})
+	defer close(quitted)
+	var exiting atomic.Bool
 	model.items = append(model.items, &menuItem{".", getText("console/terminate"), func() (tea.Model, tea.Cmd) {
-		go killProcess(ss)
+		exiting.Store(true)
+		go func() {
+			<-quitted
+			sshConn.forceExit(kExitCodeConsoleKill, fmt.Sprintf("Exit due to user actions in the console or entered the ssh escape sequences ( %s. )", char))
+		}()
 		model.quitting = true
 		return model, tea.Quit
 	}})
@@ -221,5 +218,8 @@ func runConsole(escapeChar byte, reader io.Reader, writer io.WriteCloser, ss *ss
 	if _, err := p.Run(); err != nil {
 		warning("run escape console failed: %v", err)
 	}
-	ss.session.RedrawScreen()
+
+	if !exiting.Load() {
+		sshConn.session.RedrawScreen()
+	}
 }

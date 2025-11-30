@@ -322,7 +322,8 @@ var getDefaultSigners = func() func() []*sshSigner {
 	}
 }()
 
-func getPublicKeysAuthMethod(args *sshArgs, param *sshParam) ssh.AuthMethod {
+func getPublicKeysAuthMethod(param *sshParam) ssh.AuthMethod {
+	args := param.args
 	if strings.ToLower(getOptionConfig(args, "PubkeyAuthentication")) == "no" {
 		debug("disable auth method: public key authentication")
 		return nil
@@ -344,7 +345,7 @@ func getPublicKeysAuthMethod(args *sshArgs, param *sshParam) ssh.AuthMethod {
 	}
 
 	if strings.ToLower(getOptionConfig(args, "IdentitiesOnly")) != "yes" {
-		if agentClient := getAgentClient(args, param); agentClient != nil {
+		if agentClient := getAgentClient(param); agentClient != nil {
 			signers, err := agentClient.Signers()
 			if err != nil {
 				warning("get ssh agent signers failed: %v", err)
@@ -358,7 +359,7 @@ func getPublicKeysAuthMethod(args *sshArgs, param *sshParam) ssh.AuthMethod {
 
 	identities := args.Identity.values
 	for _, identity := range getAllOptionConfig(args, "IdentityFile") {
-		expandedIdentity, err := expandTokens(identity, args, param, "%CdhijkLlnpru")
+		expandedIdentity, err := expandTokens(identity, param, "%CdhijkLlnpru")
 		if err != nil {
 			warning("expand IdentityFile [%s] failed: %v", identity, err)
 			continue
@@ -382,21 +383,21 @@ func getPublicKeysAuthMethod(args *sshArgs, param *sshParam) ssh.AuthMethod {
 	return ssh.PublicKeys(pubKeySigners...)
 }
 
-func getAuthMethods(args *sshArgs, param *sshParam) []ssh.AuthMethod {
+func getAuthMethods(param *sshParam) []ssh.AuthMethod {
 	var authMethods []ssh.AuthMethod
-	if authMethod := getPublicKeysAuthMethod(args, param); authMethod != nil {
+	if authMethod := getPublicKeysAuthMethod(param); authMethod != nil {
 		debug("add auth method: public key authentication")
 		authMethods = append(authMethods, authMethod)
 	}
-	if authMethod := getGSSAPIWithMICAuthMethod(args, param.host); authMethod != nil {
+	if authMethod := getGSSAPIWithMICAuthMethod(param.args, param.host); authMethod != nil {
 		debug("add auth method: gssapi-with-mic authentication")
 		authMethods = append(authMethods, authMethod)
 	}
-	if authMethod := getKeyboardInteractiveAuthMethod(args, param.host, param.user); authMethod != nil {
+	if authMethod := getKeyboardInteractiveAuthMethod(param.args, param.host, param.user); authMethod != nil {
 		debug("add auth method: keyboard interactive authentication")
 		authMethods = append(authMethods, authMethod)
 	}
-	if authMethod := getPasswordAuthMethod(args, param.host, param.user); authMethod != nil {
+	if authMethod := getPasswordAuthMethod(param.args, param.host, param.user); authMethod != nil {
 		debug("add auth method: password authentication")
 		authMethods = append(authMethods, authMethod)
 	}

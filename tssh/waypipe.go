@@ -37,8 +37,8 @@ import (
 	"time"
 )
 
-func enableWaypipe(args *sshArgs, ss *sshClientSession) error {
-	if !ss.tty || strings.ToLower(getExOptionConfig(args, "EnableWaypipe")) != "yes" {
+func enableWaypipe(sshConn *sshConnection) error {
+	if !sshConn.tty || strings.ToLower(getExOptionConfig(sshConn.param.args, "EnableWaypipe")) != "yes" {
 		return nil
 	}
 	if os.Getenv("WAYLAND_DISPLAY") == "" {
@@ -51,15 +51,15 @@ func enableWaypipe(args *sshArgs, ss *sshClientSession) error {
 		return fmt.Errorf("generate random token for waypipe failed: %v", err)
 	}
 
-	clientSocket, err := runWaypipeClient(args, token)
+	clientSocket, err := runWaypipeClient(sshConn.param.args, token)
 	if err != nil {
 		return fmt.Errorf("run waypipe client failed: %v", err)
 	}
 
-	cmd, serverSocket := getWaypipeServerCmd(args, ss.cmd, token)
-	ss.cmd = cmd
+	cmd, serverSocket := getWaypipeServerCmd(sshConn.param.args, sshConn.cmd, token)
+	sshConn.cmd = cmd
 
-	if err := remoteForwardSocket(ss.client, clientSocket, serverSocket); err != nil {
+	if err := remoteForwardSocket(sshConn.client, clientSocket, serverSocket); err != nil {
 		return fmt.Errorf("remote forward socket for waypipe failed: %v", err)
 	}
 

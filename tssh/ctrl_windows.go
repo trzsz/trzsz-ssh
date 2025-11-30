@@ -28,10 +28,9 @@ import (
 	"strings"
 )
 
-func connectViaControl(args *sshArgs, param *sshParam) SshClient {
-	_ = param
-	ctrlMaster := getOptionConfig(args, "ControlMaster")
-	ctrlPath := getOptionConfig(args, "ControlPath")
+func connectViaControl(param *sshParam) SshClient {
+	ctrlMaster := getOptionConfig(param.args, "ControlMaster")
+	ctrlPath := getOptionConfig(param.args, "ControlPath")
 
 	switch strings.ToLower(ctrlMaster) {
 	case "auto", "yes", "ask", "autoask":

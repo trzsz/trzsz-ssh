@@ -28,7 +28,6 @@ package tssh
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -44,6 +43,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
 )
 
@@ -88,23 +88,30 @@ func (c *controlMaster) handleStdout() <-chan error {
 		defer func() { _ = c.stdout.Close() }()
 		defer close(doneCh)
 		buf := make([]byte, 1000)
-		n, err := c.stdout.Read(buf)
-		if err != nil {
-			doneCh <- fmt.Errorf("read stdout failed: %v", err)
+		for {
+			n, err := c.stdout.Read(buf)
+			if err != nil || n <= 0 {
+				doneCh <- fmt.Errorf("read stdout failed: %v", err)
+				return
+			}
+			out := strings.TrimSpace(ansi.Strip(string(buf[:n])))
+			if out == "" {
+				continue
+			}
+			if out == "ok" {
+				doneCh <- nil
+			} else {
+				doneCh <- fmt.Errorf("control master stdout invalid: %v", strconv.QuoteToASCII(string(buf[:n])))
+			}
 			return
 		}
-		if !bytes.Equal(bytes.TrimSpace(buf[:n]), []byte("ok")) {
-			doneCh <- fmt.Errorf("control master stdout invalid: %v", buf[:n])
-			return
-		}
-		doneCh <- nil
 	}()
 	return doneCh
 }
 
-func (c *controlMaster) fillPassword(args *sshArgs, param *sshParam, expectCount int) (cancel context.CancelFunc) {
+func (c *controlMaster) fillPassword(param *sshParam, expectCount int) (cancel context.CancelFunc) {
 	var ctx context.Context
-	expectTimeout := getExpectTimeout(args, "Ctrl")
+	expectTimeout := getExpectTimeout(param.args, "Ctrl")
 	if expectTimeout > 0 {
 		ctx, cancel = context.WithTimeout(context.Background(), time.Duration(expectTimeout)*time.Second)
 	} else {
@@ -113,7 +120,6 @@ func (c *controlMaster) fillPassword(args *sshArgs, param *sshParam, expectCount
 
 	expect := &sshExpect{
 		param: param,
-		args:  args,
 		ctx:   ctx,
 		pre:   "Ctrl",
 		out:   make(chan []byte, 100),
@@ -142,10 +148,10 @@ func (c *controlMaster) checkExit() <-chan struct{} {
 	return exitCh
 }
 
-func (c *controlMaster) start(args *sshArgs, param *sshParam) error {
+func (c *controlMaster) start(param *sshParam) error {
 	var err error
 	c.cmd = exec.Command(c.path, c.args...)
-	expectCount := getExpectCount(args, "Ctrl")
+	expectCount := getExpectCount(param.args, "Ctrl")
 	if expectCount > 0 {
 		c.cmd.SysProcAttr = &syscall.SysProcAttr{
 			Setsid:  true,
@@ -158,7 +164,7 @@ func (c *controlMaster) start(args *sshArgs, param *sshParam) error {
 		defer func() { _ = tty.Close() }()
 		c.cmd.Stdin = tty
 		c.ptmx = pty
-		cancel := c.fillPassword(args, param, expectCount)
+		cancel := c.fillPassword(param, expectCount)
 		defer cancel()
 	}
 	if c.stdout, err = c.cmd.StdoutPipe(); err != nil {
@@ -243,26 +249,58 @@ func getOpenSSH() (string, int, int, error) {
 	majorVersion := -1
 	minorVersion := -1
 	if len(matches) > 2 {
-		majorVersion, _ = strconv.Atoi(matches[1])
-		minorVersion, _ = strconv.Atoi(matches[2])
+		if v, err := strconv.ParseUint(matches[1], 10, 32); err == nil {
+			majorVersion = int(v)
+		}
+		if v, err := strconv.ParseUint(matches[2], 10, 32); err == nil {
+			minorVersion = int(v)
+		}
 	}
 	return sshPath, majorVersion, minorVersion, nil
 }
 
-func startControlMaster(args *sshArgs, param *sshParam, sshPath string) error {
-	cmdArgs := []string{"-T", "-oRemoteCommand=none", "-oConnectTimeout=10"}
+func startControlMaster(param *sshParam, sshPath string) error {
+	cmdArgs := []string{"-T", "-oRemoteCommand=none",
+		"-oConnectTimeout=" + strconv.Itoa(int(getConnectTimeout(param.args)/time.Second))}
 
+	args := param.args
 	if args.Debug {
 		cmdArgs = append(cmdArgs, "-v")
 	}
-	if !args.NoForwardAgent && args.ForwardAgent {
+	if args.IPv4Only {
+		cmdArgs = append(cmdArgs, "-4")
+	}
+	if args.IPv6Only {
+		cmdArgs = append(cmdArgs, "-6")
+	}
+	if args.Gateway {
+		cmdArgs = append(cmdArgs, "-g")
+	}
+
+	if args.NoForwardAgent {
+		cmdArgs = append(cmdArgs, "-a")
+	} else if args.ForwardAgent {
 		cmdArgs = append(cmdArgs, "-A")
 	}
+	if args.NoX11Forward {
+		cmdArgs = append(cmdArgs, "-x")
+	} else {
+		if args.X11Untrusted {
+			cmdArgs = append(cmdArgs, "-X")
+		}
+		if args.X11Trusted {
+			cmdArgs = append(cmdArgs, "-Y")
+		}
+	}
+
 	if args.LoginName != "" {
 		cmdArgs = append(cmdArgs, "-l", args.LoginName)
 	}
 	if args.Port != 0 {
 		cmdArgs = append(cmdArgs, "-p", strconv.Itoa(args.Port))
+	}
+	if args.CipherSpec != "" {
+		cmdArgs = append(cmdArgs, "-c", args.CipherSpec)
 	}
 	if args.ConfigFile != "" {
 		cmdArgs = append(cmdArgs, "-F", args.ConfigFile)
@@ -308,14 +346,15 @@ func startControlMaster(args *sshArgs, param *sshParam, sshPath string) error {
 	}
 
 	ctrlMaster := &controlMaster{path: sshPath, args: cmdArgs}
-	if err := ctrlMaster.start(args, param); err != nil {
+	if err := ctrlMaster.start(param); err != nil {
 		return err
 	}
 	debug("start control master success")
 	return nil
 }
 
-func connectViaControl(args *sshArgs, param *sshParam) SshClient {
+func connectViaControl(param *sshParam) SshClient {
+	args := param.args
 	ctrlMaster := getOptionConfig(args, "ControlMaster")
 	ctrlPath := getOptionConfig(args, "ControlPath")
 
@@ -338,7 +377,7 @@ func connectViaControl(args *sshArgs, param *sshParam) SshClient {
 	if majorVersion < 9 || (majorVersion == 9 && minorVersion < 6) {
 		tokens = "%CdhikLlnpru"
 	}
-	socket, err := expandTokens(ctrlPath, args, param, tokens)
+	socket, err := expandTokens(ctrlPath, param, tokens)
 	if err != nil {
 		warning("expand ControlPath [%s] failed: %v", socket, err)
 		return nil
@@ -353,7 +392,7 @@ func connectViaControl(args *sshArgs, param *sshParam) SshClient {
 		}
 		fallthrough
 	case "auto", "autoask":
-		if err := startControlMaster(args, param, sshPath); err != nil {
+		if err := startControlMaster(param, sshPath); err != nil {
 			warning("start control master failed: %v", err)
 		}
 	}
