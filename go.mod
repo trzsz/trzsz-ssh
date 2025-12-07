@@ -4,7 +4,6 @@ go 1.25
 
 require (
 	github.com/Microsoft/go-winio v0.6.2
-	github.com/alessio/shellescape v1.4.2
 	github.com/charmbracelet/bubbles v0.21.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
@@ -22,12 +21,13 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/trzsz/go-arg v1.5.4
 	github.com/trzsz/go-socks5 v0.1.0
-	github.com/trzsz/iterm2 v0.1.3
+	github.com/trzsz/iterm2 v0.2.0
 	github.com/trzsz/pageant v0.1.1
 	github.com/trzsz/promptui v0.10.8
+	github.com/trzsz/shellescape v1.6.0
 	github.com/trzsz/ssh_config v1.3.6
-	github.com/trzsz/trzsz-go v1.1.9-0.20251129030057-7804c762a48b
-	github.com/trzsz/tsshd v0.1.6-rc5
+	github.com/trzsz/trzsz-go v1.1.9-0.20251207122516-52362ab96080
+	github.com/trzsz/tsshd v0.1.6-rc6
 	golang.org/x/crypto v0.45.0
 	golang.org/x/sys v0.38.0
 	golang.org/x/term v0.37.0
@@ -44,7 +44,7 @@ require (
 	github.com/charmbracelet/colorprofile v0.3.3 // indirect
 	github.com/charmbracelet/x/cellbuf v0.0.14 // indirect
 	github.com/charmbracelet/x/term v0.2.2 // indirect
-	github.com/clipperhouse/displaywidth v0.6.0 // indirect
+	github.com/clipperhouse/displaywidth v0.6.1 // indirect
 	github.com/clipperhouse/stringish v0.1.1 // indirect
 	github.com/clipperhouse/uax29/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
@@ -58,7 +58,7 @@ require (
 	github.com/jcmturner/goidentity/v6 v6.0.1 // indirect
 	github.com/jcmturner/rpc/v2 v2.0.3 // indirect
 	github.com/josephspurrier/goversioninfo v1.5.0 // indirect
-	github.com/klauspost/compress v1.18.1 // indirect
+	github.com/klauspost/compress v1.18.2 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/klauspost/reedsolomon v1.12.6 // indirect
 	github.com/lucasb-eyer/go-colorful v1.3.0 // indirect
@@ -74,7 +74,7 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/tjfoc/gmsm v1.4.1 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
-	github.com/xtaci/kcp-go/v5 v5.6.42 // indirect
+	github.com/xtaci/kcp-go/v5 v5.6.46 // indirect
 	github.com/xtaci/smux v1.5.44 // indirect
 	golang.org/x/image v0.33.0 // indirect
 	golang.org/x/net v0.47.0 // indirect

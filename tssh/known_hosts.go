@@ -104,7 +104,7 @@ func addHostKey(path, host string, key ssh.PublicKey, ask bool) error {
 		defer closer()
 
 		reader := bufio.NewReader(stdin)
-		fmt.Fprintf(os.Stderr, "Are you sure you want to continue connecting (yes/no/[fingerprint])? ")
+		_, _ = os.Stderr.WriteString("Are you sure you want to continue connecting (yes/no/[fingerprint])? ")
 		for {
 			input, err := reader.ReadString('\n')
 			if err != nil {
@@ -120,7 +120,7 @@ func addHostKey(path, host string, key ssh.PublicKey, ask bool) error {
 			} else if input == "no" {
 				return fmt.Errorf("host key not trusted")
 			}
-			fmt.Fprintf(os.Stderr, "Please type 'yes', 'no' or the fingerprint: ")
+			_, _ = os.Stderr.WriteString("Please type 'yes', 'no' or the fingerprint: ")
 		}
 	}
 

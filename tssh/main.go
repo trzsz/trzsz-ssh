@@ -153,6 +153,9 @@ func TsshMain(argv []string) int {
 		enableDebugLogging = true
 	}
 
+	// init iterm2 session if necessary
+	initIterm2Session()
+
 	// print message after stdin reset
 	defer func() {
 		if err != nil {
@@ -323,10 +326,16 @@ func sshStart(args *sshArgs) (int, error) {
 		defer resetStdin(state)
 	}
 
-	// enable trzsz
-	if err := enableTrzsz(sshConn); err != nil {
+	// setup trzsz filter if necessary
+	if err := setupTrzszFilter(sshConn); err != nil {
 		return kExitCodeTrzszFailed, err
 	}
+
+	// setup udp notification if necessary
+	setupUdpNotification(sshConn)
+
+	// forward standard input output
+	forwardStdio(sshConn)
 
 	// cleanup and wait for exit
 	code := sshConn.waitUntilExit()
@@ -380,11 +389,6 @@ func openSession(sshConn *sshConnection) (err error) {
 	sshConn.session, err = sshConn.client.NewSession()
 	if err != nil {
 		return fmt.Errorf("new session for [%s] failed: %v", sshConn.param.args.Destination, err)
-	}
-
-	// for UDP connection loss notification
-	if lastJumpUdpClient != nil {
-		lastJumpUdpClient.setMainSession(sshConn)
 	}
 
 	// session input and output

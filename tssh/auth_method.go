@@ -177,8 +177,8 @@ func getSignerWithCert(dest string, path string) []*sshSigner {
 }
 
 func readSecret(prompt string) (secret []byte, err error) {
-	fmt.Fprintf(os.Stderr, "%s", prompt)
-	defer fmt.Fprintf(os.Stderr, "\r\n")
+	_, _ = os.Stderr.WriteString(prompt)
+	defer func() { _, _ = os.Stderr.WriteString("\r\n") }()
 
 	stdin, closer, err := getKeyboardInput()
 	if err != nil {

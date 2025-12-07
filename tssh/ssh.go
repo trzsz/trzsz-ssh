@@ -30,6 +30,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -228,6 +229,7 @@ type sshConnection struct {
 	tty       bool
 	closed    atomic.Bool
 	exited    atomic.Bool
+	waitWarn  sync.WaitGroup
 }
 
 func (c *sshConnection) Close() {
@@ -257,6 +259,7 @@ func (c *sshConnection) waitUntilExit() int {
 		debug("force exit with code: %d", code)
 		return code
 	case code := <-done:
+		c.waitWarn.Wait()
 		debug("session wait completed with code: %d", code)
 		return code
 	}
@@ -268,10 +271,15 @@ func (c *sshConnection) forceExit(code int, msg string) {
 	}
 
 	if enableWarningLogging {
+		c.waitWarn.Add(1)
 		if isTerminal && c.tty {
-			fmt.Fprintf(os.Stderr, "\n\r") // make the top message still visible after exiting
+			if isRunningTmuxIntegration() {
+				detachTmuxIntegration()
+			}
+			_, _ = os.Stderr.Write([]byte("\n\r")) // make the top message still visible after exiting
 		}
 		warning("%s", msg)
+		c.waitWarn.Done()
 	}
 
 	go func() {

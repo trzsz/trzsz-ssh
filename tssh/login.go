@@ -37,7 +37,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/alessio/shellescape"
+	"github.com/trzsz/shellescape"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -483,7 +483,7 @@ func getClientConfig(param *sshParam) (*ssh.ClientConfig, error) {
 		HostKeyCallback:   hostKeyCallback,
 		HostKeyAlgorithms: hostKeyAlgorithms,
 		BannerCallback: func(banner string) error {
-			_, err := fmt.Fprint(os.Stderr, strings.ReplaceAll(banner, "\n", "\r\n"))
+			_, err := os.Stderr.WriteString(strings.ReplaceAll(banner, "\n", "\r\n"))
 			return err
 		},
 	}, nil

@@ -33,7 +33,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/alessio/shellescape"
+	"github.com/trzsz/shellescape"
 )
 
 type tmuxMgr struct {

@@ -25,9 +25,13 @@ SOFTWARE.
 package tssh
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
+	"os/exec"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -35,10 +39,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 )
-
-var enableDebugLogging bool = false
-var enableWarningLogging bool = true
-var currentTerminalWidth atomic.Int32
 
 const (
 	kExitCodeArgsInvalid = 11
@@ -67,14 +67,82 @@ const (
 	kExitCodeForceExit   = 204
 	kExitCodeKeepAlive   = 205
 	kExitCodeSignalKill  = 206
+	kExitCodeTmuxDetach  = 207
 )
+
+var tmuxDebugPaneWriter io.Writer
+var tmuxDebugPaneInited atomic.Bool
+
+var enableDebugLogging bool = false
+var enableWarningLogging bool = true
+var currentTerminalWidth atomic.Int32
+
+func initTmuxDebugPane() {
+	if os.Getenv("TMUX") == "" {
+		if runtime.GOOS != "windows" {
+			_, _ = os.Stderr.WriteString("\r\033[42;30mFor better debugging: run `tmux` first, then `tssh --debug`.\033[K\033[0m\r\n")
+		}
+		return
+	}
+
+	out, err := exec.Command("tmux", "display-message", "-p", "#{pane_id}").Output()
+	if err != nil {
+		debug("tmux display message failed: %v", err)
+		return
+	}
+	currentPaneId := strings.TrimSpace(string(out))
+
+	out, err = exec.Command("tmux", "split-pane", "-h", "-p", "33", "-P", "-F", "#{pane_id}|#{pane_tty}").Output()
+	if err != nil {
+		debug("tmux split pane failed: %v", err)
+		return
+	}
+
+	if err := exec.Command("tmux", "select-pane", "-t", currentPaneId).Run(); err != nil {
+		debug("tmux select pane failed: %v", err)
+		return
+	}
+
+	tokens := strings.Split(strings.TrimSpace(string(out)), "|")
+	if len(tokens) != 2 {
+		debug("tmux split pane result is not as expected: %v", tokens)
+		return
+	}
+
+	debugPaneId, tty := tokens[0], tokens[1]
+	addOnExitFunc(func() { _ = exec.Command("tmux", "kill-pane", "-t", debugPaneId).Run() })
+
+	tmuxDebugPaneWriter, err = os.OpenFile(tty, os.O_WRONLY, 0)
+	if err != nil {
+		debug("open tmux tty [%s] failed: %v", tty, err)
+		return
+	}
+}
 
 func debug(format string, a ...any) {
 	if !enableDebugLogging {
 		return
 	}
+
 	msg := fmt.Sprintf(format, a...)
-	fmt.Fprintf(os.Stderr, "\r\033[0;36mdebug:\033[0m %s\033[K\r\n", msg)
+	buf := fmt.Appendf(nil, "\r\033[0;36mdebug:\033[0m %s\033[K\r\n", msg)
+
+	if isRunningTmuxIntegration() {
+		paneId, _ := getTmuxPaneIdAndColumns()
+		if logToTmuxIntegration(buf, paneId) {
+			return
+		}
+	}
+
+	if tmuxDebugPaneInited.CompareAndSwap(false, true) {
+		initTmuxDebugPane()
+	}
+
+	if tmuxDebugPaneWriter != nil {
+		_, _ = tmuxDebugPaneWriter.Write(buf)
+	} else {
+		_, _ = os.Stderr.Write(buf)
+	}
 }
 
 func warning(format string, a ...any) {
@@ -94,19 +162,33 @@ func warning(format string, a ...any) {
 		debug("warning: "+format, a...)
 	}
 
+	var paneId string
+	tmux := isRunningTmuxIntegration()
+	if tmux {
+		paneId, terminalWidth = getTmuxPaneIdAndColumns()
+		if terminalWidth <= 0 {
+			terminalWidth = int(currentTerminalWidth.Load())
+		}
+	}
+
 	msgWidth := ansi.StringWidth(msg)
 	if msgWidth > terminalWidth {
 		msg = lipgloss.NewStyle().Foreground(blackColor).Background(yellowColor).Render(ansi.Truncate(msg, terminalWidth, ""))
 	} else {
 		msg = lipgloss.NewStyle().Foreground(blackColor).Width(terminalWidth).Background(yellowColor).Render(msg)
 	}
-	var buf strings.Builder
+	var buf bytes.Buffer
 	buf.WriteString(ansi.SaveCurrentCursorPosition)
 	buf.WriteString(ansi.CursorHomePosition)
 	buf.WriteString(msg)
 	buf.WriteString(ansi.EraseLineRight)
 	buf.WriteString(ansi.RestoreCurrentCursorPosition)
-	fmt.Fprint(os.Stderr, buf.String())
+
+	if tmux && logToTmuxIntegration(buf.Bytes(), paneId) {
+		return
+	}
+
+	_, _ = os.Stderr.Write(buf.Bytes())
 }
 
 func isFileExist(path string) bool {

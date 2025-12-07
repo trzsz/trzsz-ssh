@@ -173,3 +173,6 @@ func getTmuxManager() terminalManager {
 func getIterm2Manager() terminalManager {
 	return nil
 }
+
+func initIterm2Session() {
+}
