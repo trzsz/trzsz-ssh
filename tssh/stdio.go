@@ -57,12 +57,23 @@ func forwardInput(reader io.Reader, writer io.WriteCloser, win bool, escapeChar 
 		_ = writer.Close()
 		debug("ssh session stdin forward completed")
 	}()
+
+	stdinBeingRead.Store(true)
+
 	var enterPressedFlag bool
 	var enterPressedTime time.Time
+
 	buffer := make([]byte, 32*1024)
 	for {
 		n, err := reader.Read(buffer)
 		if n > 0 {
+			if enableDebugLogging {
+				if ch := stdinInputChan.Load(); ch != nil {
+					*ch <- append([]byte(nil), buffer[:n]...)
+					continue
+				}
+			}
+
 			if escapeTime > 0 { // enter tssh console ?
 				if n == 1 && buffer[0] == '\r' {
 					enterPressedFlag = true

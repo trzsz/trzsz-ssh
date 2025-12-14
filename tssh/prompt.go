@@ -607,6 +607,11 @@ func chooseAlias(keywords string) (string, bool, error) {
 		termMgr: termMgr,
 	}
 
+	if enableDebugLogging && tmuxDebugPaneWriter == nil {
+		enableDebugLogging = false
+		defer func() { enableDebugLogging = true }()
+	}
+
 	go prompt.wrapStdin()
 
 	idx, _, err := prompt.selector.Run()
@@ -635,7 +640,7 @@ func fastLookupHost(host string) bool {
 }
 
 func predictDestination(dest string) (string, bool, error) {
-	if strings.ContainsAny(dest, ".:[]@") {
+	if !isTerminal || strings.ContainsAny(dest, ".:[]@") {
 		return dest, false, nil
 	}
 

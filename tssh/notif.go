@@ -45,12 +45,12 @@ func showConnectionLostNotif(client *sshUdpClient) {
 	client.notifInterceptor.cursorPos.Store(nil)
 
 	client.debug("start intercepting user input")
-	intCh := client.notifInterceptor.interceptInput()
+	client.notifInterceptor.interceptFlag.Store(true)
 	defer func() {
 		client.debug("releasing intercepted user input")
-		client.notifInterceptor.cancelIntercept()
+		client.notifInterceptor.interceptFlag.Store(false)
 	}()
-	go interactWithUserInput(client, intCh)
+	go interactWithUserInput(client)
 
 	tmuxPaneId, tmuxColumns := "", 0
 	if tmux {
@@ -80,11 +80,10 @@ func showConnectionLostNotif(client *sshUdpClient) {
 	notif.renderView(false, false)
 }
 
-func interactWithUserInput(client *sshUdpClient, intCh <-chan byte) {
+func interactWithUserInput(client *sshUdpClient) {
 	for client.isReconnectTimeout() {
 		select {
-		case ch, ok := <-intCh:
-			client.debug("discard user input %s", strconv.QuoteToASCII(string(ch)))
+		case ch, ok := <-client.notifInterceptor.interceptChan:
 			if !ok {
 				return
 			}
@@ -285,38 +284,24 @@ func (m *notifModel) getReconnectError() error {
 }
 
 type notifInterceptor struct {
-	sshConn       *sshConnection
+	client        *sshUdpClient
 	inputBufChan  chan []byte
 	noticeOnTop   bool
 	showFullNotif atomic.Bool
-	intMutex      sync.Mutex
-	intFlag       atomic.Bool
-	intChan       chan byte
+	interceptFlag atomic.Bool
+	interceptChan chan byte
 	cursorPos     atomic.Pointer[string]
 	tmuxFlag      atomic.Bool
 	tmuxPaneId    atomic.Pointer[string]
 	tmuxLeftBuf   []byte
 }
 
-func (ni *notifInterceptor) interceptInput() <-chan byte {
-	ni.intMutex.Lock()
-	defer ni.intMutex.Unlock()
-	if ni.intChan == nil {
-		ni.intChan = make(chan byte, 1)
-	}
-	ni.intFlag.Store(true)
-	return ni.intChan
-}
-
-func (ni *notifInterceptor) cancelIntercept() {
-	ni.intMutex.Lock()
-	defer ni.intMutex.Unlock()
-	ni.intFlag.Store(false)
-}
-
 func (ni *notifInterceptor) handleUserInput(input []byte) {
-	buf := input
+	if enableDebugLogging {
+		ni.client.debug("discard user input %s", strconv.QuoteToASCII(string(input)))
+	}
 
+	buf := input
 	if ni.tmuxFlag.Load() {
 		if ni.tmuxLeftBuf != nil {
 			buf = append(ni.tmuxLeftBuf, buf...)
@@ -325,7 +310,7 @@ func (ni *notifInterceptor) handleUserInput(input []byte) {
 		var paneId string
 		buf, ni.tmuxLeftBuf, paneId, detach = handleAndDecodeTmuxInput(buf)
 		if detach {
-			ni.sshConn.forceExit(kExitCodeTmuxDetach, "Exit due to connection was lost and detach from tmux integration")
+			ni.client.sshConn.forceExit(kExitCodeTmuxDetach, "Exit due to connection was lost and detach from tmux integration")
 			return
 		}
 		if paneId == "" {
@@ -343,9 +328,9 @@ func (ni *notifInterceptor) handleUserInput(input []byte) {
 	}
 
 	n := len(buf)
-	if n == 1 && ni.intChan != nil {
+	if n == 1 {
 		select {
-		case ni.intChan <- buf[0]:
+		case ni.interceptChan <- buf[0]:
 		default:
 		}
 		return
@@ -360,21 +345,25 @@ func (ni *notifInterceptor) handleUserInput(input []byte) {
 func (ni *notifInterceptor) forwardInput(reader io.Reader, writer io.WriteCloser) {
 	ni.inputBufChan = make(chan []byte, 10)
 	defer close(ni.inputBufChan)
+	defer close(ni.interceptChan)
+
 	go func() {
 		defer func() { _ = writer.Close() }()
 		for buf := range ni.inputBufChan {
-			_ = writeAll(writer, buf)
+			if err := writeAll(writer, buf); err != nil {
+				warning("udp forward input failed: %v", err)
+			}
 		}
 	}()
 
 	buffer := make([]byte, 32*1024)
 	for {
 		n, err := reader.Read(buffer)
-		if ni.intFlag.Load() {
-			ni.handleUserInput(buffer[:n])
-			continue
-		}
 		if n > 0 {
+			if ni.interceptFlag.Load() {
+				ni.handleUserInput(buffer[:n])
+				continue
+			}
 			var buf []byte
 			if ni.tmuxLeftBuf != nil {
 				buf = append(ni.tmuxLeftBuf, buffer[:n]...)
@@ -389,8 +378,8 @@ func (ni *notifInterceptor) forwardInput(reader io.Reader, writer io.WriteCloser
 				case ni.inputBufChan <- buf:
 					break out
 				default:
-					if ni.intFlag.Load() {
-						ni.tmuxLeftBuf = buf
+					if ni.interceptFlag.Load() {
+						ni.handleUserInput(buf)
 						break out
 					}
 					time.Sleep(10 * time.Millisecond)
@@ -401,14 +390,14 @@ func (ni *notifInterceptor) forwardInput(reader io.Reader, writer io.WriteCloser
 			break
 		}
 	}
-	if ni.intChan != nil {
-		close(ni.intChan)
-	}
 }
 
 func (ni *notifInterceptor) discardPendingInput(discardMarker []byte) []byte {
+	if ni.client == ni.client.sshConn.client { // the last ssh client is udp client
+		defer func() { ni.inputBufChan <- discardMarker }()
+	}
+
 	if len(ni.inputBufChan) == 0 {
-		ni.inputBufChan <- discardMarker
 		return nil
 	}
 
@@ -423,42 +412,92 @@ out:
 		}
 	}
 
-	ni.inputBufChan <- discardMarker
 	return input
 }
 
 func (ni *notifInterceptor) forwardOutput(reader io.Reader, writer io.WriteCloser) {
 	defer func() { _ = writer.Close() }()
+	cache := &outputCache{client: ni.client}
 	buffer := make([]byte, 32*1024)
 	for {
 		n, err := reader.Read(buffer)
 		if n > 0 {
-			for ni.intFlag.Load() {
-				time.Sleep(10 * time.Millisecond)
+			if ni.interceptFlag.Load() {
+				cache.appendOutput(buffer[:n])
+			} else {
+				if err := cache.flushOutput(writer); err != nil {
+					break
+				}
+				if err := writeAll(writer, buffer[:n]); err != nil {
+					break
+				}
 			}
-			_ = writeAll(writer, buffer[:n])
 		}
 		if err != nil {
 			break
 		}
 	}
+	_ = cache.flushOutput(writer)
+}
+
+type outputCache struct {
+	client *sshUdpClient
+	chunks [][]byte
+}
+
+func (c *outputCache) appendOutput(data []byte) {
+	for len(data) > 0 {
+		var last []byte
+		if len(c.chunks) > 0 {
+			last = c.chunks[len(c.chunks)-1]
+		}
+		if len(last) == cap(last) {
+			last = make([]byte, 0, max(len(data), 64*1024))
+			c.chunks = append(c.chunks, last)
+		}
+
+		n := min(len(data), cap(last)-len(last))
+		c.chunks[len(c.chunks)-1] = append(last, data[:n]...)
+		data = data[n:]
+	}
+}
+
+func (c *outputCache) flushOutput(writer io.Writer) error {
+	if c.chunks == nil {
+		return nil
+	}
+
+	if enableDebugLogging {
+		n := 0
+		for _, chunk := range c.chunks {
+			n += len(chunk)
+		}
+		c.client.debug("session output cache size [%d]", n)
+	}
+
+	for _, chunk := range c.chunks {
+		if len(chunk) > 0 {
+			if _, err := writer.Write(chunk); err != nil {
+				return err
+			}
+		}
+	}
+	c.chunks = nil
+	return nil
 }
 
 func setupUdpNotification(sshConn *sshConnection) {
-	if lastJumpUdpClient == nil {
+	if lastJumpUdpClient == nil || !isTerminal || !sshConn.tty {
 		return
 	}
-	if !isTerminal || !sshConn.tty {
-		return
-	}
+
+	ni := notifInterceptor{client: lastJumpUdpClient, interceptChan: make(chan byte, 1)}
+	ni.noticeOnTop = strings.ToLower(getExOptionConfig(sshConn.param.args, "ShowNotificationOnTop")) != "no"
+	ni.showFullNotif.Store(strings.ToLower(getExOptionConfig(sshConn.param.args, "ShowFullNotifications")) != "no")
 
 	inReader, inWriter := io.Pipe()
 	outReader, outWriter := io.Pipe()
 	errReader, errWriter := io.Pipe()
-
-	ni := notifInterceptor{sshConn: sshConn}
-	ni.noticeOnTop = strings.ToLower(getExOptionConfig(sshConn.param.args, "ShowNotificationOnTop")) != "no"
-	ni.showFullNotif.Store(strings.ToLower(getExOptionConfig(sshConn.param.args, "ShowFullNotifications")) != "no")
 
 	go ni.forwardInput(inReader, sshConn.serverIn)
 	go ni.forwardOutput(sshConn.serverOut, outWriter)

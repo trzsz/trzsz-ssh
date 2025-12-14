@@ -156,15 +156,15 @@ func TsshMain(argv []string) int {
 	// init iterm2 session if necessary
 	initIterm2Session()
 
+	// cleanup on exit
+	defer cleanupOnExit()
+
 	// print message after stdin reset
 	defer func() {
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%v\r\n", err)
 		}
 	}()
-
-	// cleanup on exit
-	defer cleanupOnExit()
 
 	// init user config
 	if err = initUserConfig(args.ConfigFile); err != nil {

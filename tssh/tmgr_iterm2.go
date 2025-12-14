@@ -188,6 +188,7 @@ func initIterm2Session() {
 			debug("new iTerm2 app failed: %v", err)
 			return
 		}
+		addOnExitFunc(func() { _ = app.Close() })
 
 		iterm2Session, err = app.GetCurrentHostSession()
 		if err != nil {

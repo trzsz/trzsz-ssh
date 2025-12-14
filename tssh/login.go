@@ -386,7 +386,7 @@ func parseCmdAndTTY(param *sshParam) (cmd string, tty bool, err error) {
 	return
 }
 
-var lastServerAliveTime atomic.Pointer[time.Time]
+var lastServerAliveTime atomic.Int64
 
 type connWithTimeout struct {
 	net.Conn
@@ -398,8 +398,7 @@ func (c *connWithTimeout) Read(b []byte) (n int, err error) {
 	if !c.firstRead {
 		n, err = c.Conn.Read(b)
 		if err == nil {
-			now := time.Now()
-			lastServerAliveTime.Store(&now)
+			lastServerAliveTime.Store(time.Now().UnixMilli())
 		}
 		return
 	}
@@ -672,36 +671,35 @@ func keepAlive(sshConn *sshConnection) {
 	}
 
 	go func() {
-		now := time.Now()
-		lastServerAliveTime.Store(&now)
+		lastServerAliveTime.Store(time.Now().UnixMilli())
 		concurrent := make(chan struct{}, 2) // do not close to prevent writing after closing
-		aliveTimeout := time.Duration(serverAliveInterval*serverAliveCountMax) * time.Second
-		intervalTime := time.Duration(serverAliveInterval)*time.Second - 300*time.Millisecond // send keep alive a little earlier
+		aliveTimeout := int64(serverAliveInterval) * int64(serverAliveCountMax) * 1000
+		intervalTime := int64(serverAliveInterval)*1000 - 300 // send keep alive a little earlier
 
 		for {
-			sleepTime := time.Until(lastServerAliveTime.Load().Add(intervalTime))
+			sleepTime := lastServerAliveTime.Load() + intervalTime - time.Now().UnixMilli()
 			if sleepTime > 0 {
-				time.Sleep(sleepTime)
+				time.Sleep(time.Duration(sleepTime) * time.Millisecond)
 				continue
 			}
 
 			n := 1
 			go sendKeepAlive(n)
 
-			ticker := time.NewTicker(intervalTime)
+			ticker := time.NewTicker(time.Duration(intervalTime) * time.Millisecond)
 			for range ticker.C {
-				sleepTime = time.Until(lastServerAliveTime.Load().Add(intervalTime))
+				sleepTime = lastServerAliveTime.Load() + intervalTime - time.Now().UnixMilli()
 				if sleepTime > 0 {
 					ticker.Stop()
-					time.Sleep(sleepTime)
+					time.Sleep(time.Duration(sleepTime) * time.Millisecond)
 					break
 				}
 
-				if aliveTimeout > 0 && time.Since(*lastServerAliveTime.Load()) > aliveTimeout {
+				if aliveTimeout > 0 && time.Now().UnixMilli()-lastServerAliveTime.Load() > aliveTimeout {
 					ticker.Stop()
 					sshConn.forceExit(kExitCodeKeepAlive, fmt.Sprintf(
-						"Exit due to keep alive timeout [%v], ServerAliveInterval [%d], ServerAliveCountMax [%d]",
-						aliveTimeout, serverAliveInterval, serverAliveCountMax))
+						"Exit due to keep alive timeout [%ds], ServerAliveInterval [%d], ServerAliveCountMax [%d]",
+						aliveTimeout/1000, serverAliveInterval, serverAliveCountMax))
 					return
 				}
 

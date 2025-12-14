@@ -292,7 +292,9 @@ func (c *sshConnection) forceExit(code int, msg string) {
 			udpClientCount++
 			client = client.proxyClient
 		}
-		time.Sleep(time.Duration(200+300*udpClientCount) * time.Millisecond)
+		time.Sleep(time.Duration(100+300*udpClientCount) * time.Millisecond)
+		debugCleanupWG.Wait()
+		time.Sleep(100 * time.Millisecond)
 		debug("closing did not trigger a normal exit")
 		c.exitChan <- code
 		go func() {

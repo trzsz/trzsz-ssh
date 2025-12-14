@@ -60,7 +60,9 @@ func isRunningTmuxIntegration() bool {
 
 	tmux, err := iterm2Session.IsTmuxIntegrationSession()
 	if err != nil {
-		tmuxDebug("check tmux integration failed: %v", err)
+		if !iterm2Session.GetApp().IsClosed() {
+			tmuxDebug("check tmux integration failed: %v", err)
+		}
 		return false
 	}
 
