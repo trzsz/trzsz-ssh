@@ -80,29 +80,30 @@ var tmuxDebugPaneInited atomic.Bool
 var tmuxDebugPaneWriter io.WriteCloser
 
 var debugCleanupWG sync.WaitGroup
-var debugCleanuped atomic.Bool
-var stdinBeingRead atomic.Bool
 var stdinInputChan atomic.Pointer[chan []byte]
 
 var enableDebugLogging bool = false
 var enableWarningLogging bool = true
 var currentTerminalWidth atomic.Int32
 
-func initDebugLogFile() (err error) {
+func initDebugLogFile() bool {
 	debugWriteMutex.Lock()
-	defer func() {
-		debugWriteMutex.Unlock()
-		if err != nil {
-			debug("create debug log file failed: %v", err)
-		} else {
-			addOnExitFunc(cleanupDebugResources)
-		}
-	}()
 	if debugLogFile != nil {
-		return
+		debugWriteMutex.Unlock()
+		return true
 	}
+
+	var err error
 	debugLogFile, err = os.CreateTemp("", "tssh_debug_*.log")
-	return
+	debugWriteMutex.Unlock()
+
+	if err != nil {
+		debug("create debug log file failed: %v", err)
+		return false
+	}
+
+	addOnExitFunc(cleanupDebugResources)
+	return true
 }
 
 func writeDebugLog(msec int64, host, log string) {
@@ -132,7 +133,7 @@ func initTmuxDebugPane() {
 		return
 	}
 
-	if err := initDebugLogFile(); err != nil || debugLogFile == nil {
+	if !initDebugLogFile() {
 		return
 	}
 
@@ -171,30 +172,41 @@ func initTmuxDebugPane() {
 }
 
 func cleanupDebugResources() {
-	if !debugCleanuped.CompareAndSwap(false, true) {
-		return
-	}
-
 	debugCleanupWG.Add(1)
 	defer debugCleanupWG.Done()
 
 	ch := make(chan []byte, 10)
 	stdinInputChan.Store(&ch)
 
-	if !stdinBeingRead.Load() {
-		go func() {
-			buffer := make([]byte, 128)
-			for {
-				n, err := os.Stdin.Read(buffer)
-				if n > 0 {
-					ch <- append([]byte(nil), buffer[:n]...)
-				}
-				if err != nil {
-					break
-				}
-			}
-		}()
+	stdin, closer, err := getKeyboardInput()
+	if err != nil {
+		debug("get keyboard input failed: %v", err)
+		return
 	}
+	defer closer()
+
+	stderr := os.Stderr
+	if !isTerminal {
+		stderr, err = os.OpenFile("/dev/tty", os.O_WRONLY, 0)
+		defer func() { _ = stderr.Close() }()
+		if err != nil {
+			debug("open /dev/tty failed: %v", err)
+			return
+		}
+	}
+
+	go func() {
+		buffer := make([]byte, 128)
+		for {
+			n, err := stdin.Read(buffer)
+			if n > 0 {
+				ch <- append([]byte(nil), buffer[:n]...)
+			}
+			if err != nil {
+				break
+			}
+		}
+	}()
 
 	var inputBuffer []byte
 	readLineFromStdin := func() (string, error) {
@@ -222,7 +234,7 @@ func cleanupDebugResources() {
 		}
 		prompt := fmt.Sprintf("%s %s ", question, suffix)
 		for {
-			_, _ = os.Stderr.WriteString(prompt)
+			_, _ = stderr.WriteString(prompt)
 			input, err := readLineFromStdin()
 			if err != nil {
 				debug("read input failed: %v", err)
@@ -238,7 +250,7 @@ func cleanupDebugResources() {
 			case "n", "no":
 				return false
 			default:
-				_, _ = os.Stderr.WriteString("Please enter yes (y) or no (n).\r\n")
+				_, _ = stderr.WriteString("Please enter yes (y) or no (n).\r\n")
 			}
 		}
 	}

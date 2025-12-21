@@ -27,7 +27,7 @@ require (
 	github.com/trzsz/shellescape v1.6.0
 	github.com/trzsz/ssh_config v1.3.6
 	github.com/trzsz/trzsz-go v1.1.9-0.20251213172702-24af0ed3571b
-	github.com/trzsz/tsshd v0.1.6-rc7
+	github.com/trzsz/tsshd v0.1.6-rc8
 	golang.org/x/crypto v0.46.0
 	golang.org/x/sys v0.39.0
 	golang.org/x/term v0.38.0
@@ -44,7 +44,7 @@ require (
 	github.com/charmbracelet/colorprofile v0.4.1 // indirect
 	github.com/charmbracelet/x/cellbuf v0.0.14 // indirect
 	github.com/charmbracelet/x/term v0.2.2 // indirect
-	github.com/clipperhouse/displaywidth v0.6.1 // indirect
+	github.com/clipperhouse/displaywidth v0.6.2 // indirect
 	github.com/clipperhouse/stringish v0.1.1 // indirect
 	github.com/clipperhouse/uax29/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
@@ -69,13 +69,13 @@ require (
 	github.com/ncruces/zenity v0.10.14 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/quic-go/quic-go v0.57.1 // indirect
+	github.com/quic-go/quic-go v0.58.0 // indirect
 	github.com/randall77/makefat v0.0.0-20210315173500-7ddd0e42c844 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/tjfoc/gmsm v1.4.1 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
-	github.com/xtaci/kcp-go/v5 v5.6.56 // indirect
-	github.com/xtaci/smux v1.5.47 // indirect
+	github.com/xtaci/kcp-go/v5 v5.6.59 // indirect
+	github.com/xtaci/smux v1.5.49 // indirect
 	golang.org/x/image v0.34.0 // indirect
 	golang.org/x/net v0.48.0 // indirect
 	golang.org/x/text v0.32.0 // indirect

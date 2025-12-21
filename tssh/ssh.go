@@ -298,7 +298,9 @@ func (c *sshConnection) forceExit(code int, msg string) {
 		debug("closing did not trigger a normal exit")
 		c.exitChan <- code
 		go func() {
-			time.Sleep(300 * time.Millisecond)
+			time.Sleep(200 * time.Millisecond)
+			debugCleanupWG.Wait()
+			time.Sleep(100 * time.Millisecond)
 			debug("force exit due to normal exit timeout")
 			_, _ = doWithTimeout(func() (int, error) { cleanupOnClose(); return 0, nil }, 50*time.Millisecond)
 			_, _ = doWithTimeout(func() (int, error) { cleanupOnExit(); return 0, nil }, 300*time.Millisecond)

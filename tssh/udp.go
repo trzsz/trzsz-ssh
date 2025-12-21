@@ -29,6 +29,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -72,23 +73,21 @@ type sshUdpClient struct {
 	intervalTime     time.Duration
 	aliveTimeout     time.Duration
 	connectTimeout   time.Duration
-	heartbeatTimeout time.Duration
 	reconnectTimeout time.Duration
 	waitCloseChan    chan struct{}
-	lastAliveTime    atomic.Int64
-	reconnectMutex   sync.Mutex
-	reconnectError   atomic.Pointer[error]
 	showNotifMutex   sync.Mutex
 	notifInterceptor *notifInterceptor
 	notifModel       atomic.Pointer[notifModel]
-	usingProxy       bool
 	sshDestName      string
-	offlineFlag      atomic.Bool
 	sshConn          *sshConnection
 }
 
 func (c *sshUdpClient) NewSession() (SshSession, error) {
 	return c.SshUdpClient.NewSession()
+}
+
+func (c *sshUdpClient) DialTimeout(network, addr string, timeout time.Duration) (net.Conn, error) {
+	return c.SshUdpClient.DialTimeout(network, addr, timeout)
 }
 
 func (c *sshUdpClient) Close() error {
@@ -125,87 +124,16 @@ func (c *sshUdpClient) debug(format string, a ...any) {
 	writeDebugLog(time.Now().UnixMilli(), c.sshDestName, msg)
 }
 
-func (c *sshUdpClient) isHeartbeatTimeout() bool {
-	offline := time.Since(time.UnixMilli(c.lastAliveTime.Load())) > c.heartbeatTimeout
-	if enableDebugLogging {
-		if offline {
-			if c.offlineFlag.CompareAndSwap(false, true) {
-				c.debug("udp transport offline (%dms)", time.Since(time.UnixMilli(c.lastAliveTime.Load()))/time.Millisecond)
-			}
-		} else {
-			if c.offlineFlag.CompareAndSwap(true, false) {
-				c.debug("comes back online successfully")
-			}
-		}
-	}
-	return offline
-}
-
 func (c *sshUdpClient) isReconnectTimeout() bool {
-	return time.Since(time.UnixMilli(c.lastAliveTime.Load())) > c.reconnectTimeout
+	return time.Since(time.UnixMilli(c.GetLastActiveTime())) > c.reconnectTimeout
 }
 
 func (c *sshUdpClient) udpKeepAlive() {
-	ackChan := make(chan int64, 2) // do not close to prevent writing after closing
-	aliveCallback := func(aliveTime int64) {
-		if c.IsClosed() {
-			return
-		}
-
-		if aliveTime == 0 {
-			if enableDebugLogging && c.isHeartbeatTimeout() {
-				c.debug("received ping response from the server")
-			}
-			c.lastAliveTime.Store(time.Now().UnixMilli())
-			select {
-			case ackChan <- 0:
-			default:
-			}
-			return
-		}
-
-		if enableDebugLogging && c.isHeartbeatTimeout() {
-			c.debug("keep alive response [%d]: %v", aliveTime, time.UnixMilli(aliveTime).Format("15:04:05.000"))
-		}
-		if aliveTime > c.lastAliveTime.Load() {
-			c.lastAliveTime.Store(aliveTime)
-		}
-		ackChan <- aliveTime
-	}
-
-	ticker := time.NewTicker(c.intervalTime)
-	defer ticker.Stop()
-	go func() {
-		for range ticker.C {
-			aliveTime := time.Now().UnixMilli()
-			if enableDebugLogging && c.isHeartbeatTimeout() {
-				c.debug("sending keep alive [%d]", aliveTime)
-			}
-			err := c.KeepAlive(aliveTime, aliveCallback)
-			if err != nil {
-				warning("udp [%s] keep alive failed: %v", c.sshDestName, err)
-			}
-			if enableDebugLogging && c.isHeartbeatTimeout() {
-				c.debug("keep alive [%d] sent: %v", aliveTime, err)
-			}
-			for {
-				ackAliveTime := <-ackChan
-				if ackAliveTime == aliveTime || ackAliveTime == 0 {
-					break
-				}
-			}
-		}
-	}()
-
 	for !c.IsClosed() {
-		if c.sshConn != nil && time.Since(time.UnixMilli(c.lastAliveTime.Load())) > c.aliveTimeout {
+		if c.sshConn != nil && time.Since(time.UnixMilli(c.GetLastActiveTime())) > c.aliveTimeout {
 			c.debug("alive timeout for %v", c.aliveTimeout)
 			c.exit(kExitCodeUdpTimeout, fmt.Sprintf("Exit due to connection was lost and timeout for %v", c.aliveTimeout))
 			return
-		}
-
-		if c.usingProxy && c.isHeartbeatTimeout() {
-			go c.tryToReconnect()
 		}
 
 		if isTerminal && enableWarningLogging && c.sshConn != nil && c.isReconnectTimeout() {
@@ -216,59 +144,9 @@ func (c *sshUdpClient) udpKeepAlive() {
 	}
 }
 
-func (c *sshUdpClient) tryToReconnect() {
-	if !c.reconnectMutex.TryLock() {
-		return
-	}
-	defer c.reconnectMutex.Unlock()
-
-	if c.proxyClient != nil {
-		// prioritize allowing the proxy to reconnect first
-		time.Sleep(c.proxyClient.intervalTime)
-
-		if c.proxyClient.isHeartbeatTimeout() {
-			// wait for the proxy to reconnect first
-			for c.proxyClient.isHeartbeatTimeout() {
-				time.Sleep(c.intervalTime)
-			}
-			// wait for auto-recovery after proxy reconnection
-			time.Sleep(c.intervalTime*2 + 200*time.Millisecond)
-		}
-	}
-
-	if !c.isHeartbeatTimeout() {
-		return
-	}
-
-	c.debug("attempting new transport path")
-	if err := c.Reconnect(c.connectTimeout); err != nil {
-		c.debug("reconnect failed: %v", err)
-		c.reconnectError.Store(&err)
-		time.Sleep(c.intervalTime) // don't reconnect too frequently
-		return
-	}
-
-	c.debug("new transport path established")
-	c.reconnectError.Store(nil)
-
-	// give heartbeat some time
-	for {
-		sleepTime := time.Until(time.UnixMilli(c.GetLastOutputTime()).Add(c.heartbeatTimeout))
-		if sleepTime < time.Millisecond {
-			break
-		}
-		time.Sleep(sleepTime)
-	}
-}
-
 func (c *sshUdpClient) getConnLostStatus() string {
-	var format string
-	if c.usingProxy {
-		format = "Oops, looks like the connection to the server was lost, trying to reconnect for %d/%d seconds."
-	} else {
-		format = "Oops, looks like the connection to the server was lost, automatically exit countdown %d/%d seconds."
-	}
-	return fmt.Sprintf(format, time.Since(time.UnixMilli(c.lastAliveTime.Load()))/time.Second, c.aliveTimeout/time.Second)
+	return fmt.Sprintf("Oops, looks like the connection to the server was lost, trying to reconnect for %d/%d seconds.",
+		time.Since(time.UnixMilli(c.GetLastActiveTime()))/time.Second, c.aliveTimeout/time.Second)
 }
 
 func (c *sshUdpClient) notifyConnectionLost() {
@@ -336,7 +214,7 @@ func udpLogin(param *sshParam, tcpClient SshClient) (SshClient, error) {
 	debug("udp login to [%s] using UDP mode: %s", args.Destination, param.udpMode)
 
 	if enableDebugLogging {
-		if initDebugLogFile() == nil && debugLogFile != nil && maxHostNameLength == 0 {
+		if initDebugLogFile() && maxHostNameLength == 0 {
 			debug("udp debug logs are written to \x1b[0;35m%s\x1b[0m", debugLogFile.Name())
 		}
 		maxHostNameLength = max(maxHostNameLength, len(args.Destination))
@@ -344,9 +222,7 @@ func udpLogin(param *sshParam, tcpClient SshClient) (SshClient, error) {
 
 	// start tsshd
 	connectTimeout := getConnectTimeout(args)
-	udpProxyMode := getExOptionConfig(args, "UdpProxyMode")
-	usingProxy := strings.ToLower(udpProxyMode) != "no"
-	tsshdCmd := getTsshdCommand(param, udpProxyMode, connectTimeout)
+	tsshdCmd := getTsshdCommand(param, connectTimeout)
 	debug("udp login to [%s] tsshd command: %s", args.Destination, tsshdCmd)
 
 	serverInfo, err := startTsshdServer(tcpClient, tsshdCmd)
@@ -361,45 +237,18 @@ func udpLogin(param *sshParam, tcpClient SshClient) (SshClient, error) {
 	}
 	heartbeatTimeout := getUdpTimeoutConfig(args, "UdpHeartbeatTimeout", kDefaultUdpHeartbeatTimeout)
 	reconnectTimeout := getUdpTimeoutConfig(args, "UdpReconnectTimeout", kDefaultUdpReconnectTimeout)
-	var intervalTime time.Duration
-	if usingProxy {
-		intervalTime = min(globalUdpAliveTimeout/10, min(heartbeatTimeout, reconnectTimeout)/5, 1*time.Second)
-	} else {
-		intervalTime = min(globalUdpAliveTimeout/10, 10*time.Second)
-	}
-
-	tsshdAddr := joinHostPort(param.host, strconv.Itoa(serverInfo.Port))
-	debug("udp login to [%s] tsshd server addr: %s", param.args.Destination, tsshdAddr)
-
-	// proxy forward
-	var proxyClient *sshUdpClient
-	if param.proxy != nil {
-		var ok bool
-		proxyClient, ok = param.proxy.client.(*sshUdpClient)
-		if !ok {
-			return nil, fmt.Errorf("proxy client [%T] for [%s] is not a udp client", param.proxy.client, args.Destination)
-		}
-		localAddr, err := proxyClient.ForwardUDPv1(tsshdAddr, max(connectTimeout, heartbeatTimeout, reconnectTimeout))
-		if err != nil {
-			return nil, fmt.Errorf("udp login to [%s] forward udp [%s] failed: %v", args.Destination, tsshdAddr, err)
-		}
-		debug("udp login to [%s] proxy jump: %s <=> [%s] <=> %s", args.Destination, localAddr, param.proxy.name, tsshdAddr)
-		tsshdAddr = localAddr
-	}
+	intervalTime := min(globalUdpAliveTimeout/10, min(heartbeatTimeout, reconnectTimeout)/5, 1*time.Second)
 
 	// new udp client
 	udpClient := &sshUdpClient{
-		proxyClient:      proxyClient,
 		intervalTime:     intervalTime,
 		aliveTimeout:     globalUdpAliveTimeout,
 		connectTimeout:   connectTimeout,
-		heartbeatTimeout: heartbeatTimeout,
 		reconnectTimeout: reconnectTimeout,
 		sshDestName:      args.Destination,
-		usingProxy:       usingProxy,
 	}
-
-	udpClient.SshUdpClient, err = tsshd.NewSshUdpClient(&tsshd.UdpClientOptions{
+	tsshdAddr := joinHostPort(param.host, strconv.Itoa(serverInfo.Port))
+	clientOpts := &tsshd.UdpClientOptions{
 		EnableDebugging:  enableDebugLogging,
 		EnableWarning:    enableWarningLogging,
 		IPv4:             param.ipv4,
@@ -421,7 +270,20 @@ func udpLogin(param *sshParam, tcpClient SshClient) (SshClient, error) {
 				handleTmuxDiscardedInput(discardedInput)
 			}
 		},
-	})
+	}
+
+	if param.proxy != nil {
+		proxyClient, ok := param.proxy.client.(*sshUdpClient)
+		if !ok {
+			return nil, fmt.Errorf("proxy client [%T] for [%s] is not a udp client", param.proxy.client, args.Destination)
+		}
+		udpClient.proxyClient, clientOpts.ProxyClient = proxyClient, proxyClient.SshUdpClient
+		debug("udp login to [%s] via proxy jump [%s] addr: %s", args.Destination, param.proxy.name, tsshdAddr)
+	} else {
+		debug("udp login to [%s] tsshd server addr: %s", param.args.Destination, tsshdAddr)
+	}
+
+	udpClient.SshUdpClient, err = tsshd.NewSshUdpClient(clientOpts)
 	if err != nil {
 		return nil, fmt.Errorf("udp login to [%s] failed: %v", args.Destination, err)
 	}
@@ -435,7 +297,6 @@ func udpLogin(param *sshParam, tcpClient SshClient) (SshClient, error) {
 	}
 
 	// udp keep alive
-	udpClient.lastAliveTime.Store(time.Now().UnixMilli())
 	go udpClient.udpKeepAlive()
 
 	return udpClient, nil
@@ -513,7 +374,7 @@ func startTsshdServer(tcpClient SshClient, tsshdCmd string) (*tsshd.ServerInfo, 
 	return &info, nil
 }
 
-func getTsshdCommand(param *sshParam, udpProxyMode string, connectTimeout time.Duration) string {
+func getTsshdCommand(param *sshParam, connectTimeout time.Duration) string {
 	args := param.args
 	var buf strings.Builder
 	if args.TsshdPath != "" {
@@ -527,18 +388,13 @@ func getTsshdCommand(param *sshParam, udpProxyMode string, connectTimeout time.D
 	if param.udpMode == kUdpModeKcp {
 		buf.WriteString(" --kcp")
 	}
-
-	switch strings.ToLower(udpProxyMode) {
-	case "tcp":
+	if udpProxyMode := strings.ToLower(getExOptionConfig(args, "UdpProxyMode")); udpProxyMode == "tcp" {
 		buf.WriteString(" --tcp")
-	case "no":
-	default:
-		buf.WriteString(" --proxy")
 	}
-
 	if enableDebugLogging {
 		buf.WriteString(" --debug")
 	}
+
 	network := getNetworkAddressFamily(args)
 	if strings.HasSuffix(network, "4") {
 		buf.WriteString(" --ipv4")

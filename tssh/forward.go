@@ -66,10 +66,6 @@ func (f *forwardCfg) String() string {
 	return f.argument
 }
 
-type closeWriter interface {
-	CloseWrite() error
-}
-
 var spaceRegexp = regexp.MustCompile(`\s+`)
 var portOnlyRegexp = regexp.MustCompile(`^\d+$`)
 var ipv6AndPortRegexp = regexp.MustCompile(`^\[([:\da-fA-F]+)\]:(\d+)$`)
@@ -253,7 +249,7 @@ func isClosedError(err error) bool {
 	if errors.Is(err, io.ErrClosedPipe) {
 		return true
 	}
-	if strings.Contains(err.Error(), "io: read/write on closed pipe") {
+	if err != nil && strings.Contains(err.Error(), "io: read/write on closed pipe") {
 		return true
 	}
 	return false
@@ -277,7 +273,7 @@ func forwardDeniedReason(err error, network string) string {
 	}
 
 	const kDeniedError = "request denied by peer"
-	if strings.Contains(err.Error(), kDeniedError) {
+	if err != nil && strings.Contains(err.Error(), kDeniedError) {
 		return buildDeniedMsg() + " And check if the bind address is already in use."
 	}
 
@@ -356,15 +352,26 @@ func stdioForward(args *sshArgs, client SshClient, addr string) error {
 	}
 
 	var wg sync.WaitGroup
+
 	wg.Go(func() {
 		_, _ = io.Copy(conn, os.Stdin)
-		_ = conn.Close()
+
+		if cw, ok := conn.(interface{ CloseWrite() error }); ok {
+			_ = cw.CloseWrite()
+		}
 	})
+
 	wg.Go(func() {
 		_, _ = io.Copy(os.Stdout, conn)
-		_ = os.Stdin.Close()
+
+		if cr, ok := conn.(interface{ CloseRead() error }); ok {
+			_ = cr.CloseRead()
+		}
 	})
+
 	wg.Wait()
+	_ = conn.Close()
+	_ = os.Stdout.Close()
 	return nil
 }
 
@@ -440,21 +447,35 @@ func dynamicForward(client SshClient, b *bindCfg, args *sshArgs) {
 }
 
 func netForward(local, remote net.Conn) {
-	defer func() {
-		_ = local.Close()
-		_ = remote.Close()
-	}()
+	var wg sync.WaitGroup
 
-	done := make(chan struct{}, 2)
-	go func() {
-		_, _ = io.Copy(local, remote)
-		done <- struct{}{}
-	}()
-	go func() {
-		_, _ = io.Copy(remote, local)
-		done <- struct{}{}
-	}()
-	<-done
+	wg.Go(func() {
+		_, _ = io.Copy(local, remote) // local <- remote
+
+		if cw, ok := local.(interface{ CloseWrite() error }); ok {
+			_ = cw.CloseWrite()
+		}
+
+		if cr, ok := remote.(interface{ CloseRead() error }); ok {
+			_ = cr.CloseRead()
+		}
+	})
+
+	wg.Go(func() {
+		_, _ = io.Copy(remote, local) // remote <- local
+
+		if cw, ok := remote.(interface{ CloseWrite() error }); ok {
+			_ = cw.CloseWrite()
+		}
+
+		if cr, ok := local.(interface{ CloseRead() error }); ok {
+			_ = cr.CloseRead()
+		}
+	})
+
+	wg.Wait()
+	_ = local.Close()
+	_ = remote.Close()
 }
 
 func localForward(client SshClient, f *forwardCfg, args *sshArgs) {
@@ -749,18 +770,24 @@ func forwardChannel(channel ssh.Channel, conn net.Conn) {
 
 	wg.Go(func() {
 		_, _ = io.Copy(conn, channel)
-		if cw, ok := conn.(closeWriter); ok {
+
+		if cw, ok := conn.(interface{ CloseWrite() error }); ok {
 			_ = cw.CloseWrite()
-		} else {
-			// close the entire stream since there is no half-close
-			time.Sleep(200 * time.Millisecond)
-			_ = conn.Close()
+		}
+
+		if cr, ok := channel.(interface{ CloseRead() error }); ok {
+			_ = cr.CloseRead()
 		}
 	})
 
 	wg.Go(func() {
 		_, _ = io.Copy(channel, conn)
+
 		_ = channel.CloseWrite()
+
+		if cr, ok := conn.(interface{ CloseRead() error }); ok {
+			_ = cr.CloseRead()
+		}
 	})
 
 	wg.Wait()

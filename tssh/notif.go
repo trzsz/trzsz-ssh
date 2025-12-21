@@ -250,7 +250,7 @@ func (m *notifModel) getView(redrawing bool) string {
 
 	buf.WriteString(m.statusStyle.Render(statusMsg))
 	if !m.clientExiting.Load() && !redrawing {
-		if err := m.getReconnectError(); err != nil {
+		if err := m.client.GetLastReconnectError(); err != nil {
 			buf.WriteByte('\n')
 			buf.WriteString(m.errorStyle.Render("Last reconnect error: " + err.Error()))
 		}
@@ -266,21 +266,6 @@ func (m *notifModel) getWidth() int {
 		return m.tmuxColumns
 	}
 	return m.client.sshConn.session.GetTerminalWidth()
-}
-
-func (m *notifModel) getReconnectError() error {
-	client := m.client
-	err := client.reconnectError.Load()
-	for client.proxyClient != nil {
-		client = client.proxyClient
-		if e := client.reconnectError.Load(); e != nil {
-			err = e
-		}
-	}
-	if err != nil {
-		return *err
-	}
-	return nil
 }
 
 type notifInterceptor struct {
