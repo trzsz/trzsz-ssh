@@ -228,11 +228,14 @@ type sshConnection struct {
 	cmd       string
 	tty       bool
 	closed    atomic.Bool
+	closeMu   sync.Mutex
 	exited    atomic.Bool
 	waitWarn  sync.WaitGroup
 }
 
 func (c *sshConnection) Close() {
+	c.closeMu.Lock()
+	defer c.closeMu.Unlock()
 	if !c.closed.CompareAndSwap(false, true) {
 		return
 	}
@@ -283,30 +286,43 @@ func (c *sshConnection) forceExit(code int, msg string) {
 	}
 
 	go func() {
-		// UDP connections do not support half-close (write-only close) for now,
-		// so we add extra wait time to allow all incoming data to be received.
-		// See tsshd.SshUdpClient.Close for more details.
+		// Add extra wait time to allow all incoming data to be received for UDP mode.
+		// See tsshd.SshUdpClient.Close and tsshd.SshUdpSession.Close for more details.
 		udpClientCount := 0
 		client := lastJumpUdpClient
 		for client != nil {
 			udpClientCount++
 			client = client.proxyClient
 		}
-		time.Sleep(time.Duration(100+300*udpClientCount) * time.Millisecond)
-		debugCleanupWG.Wait()
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(time.Duration(200+1000*udpClientCount) * time.Millisecond)
+		if enableDebugLogging && debugCleanuped.Load() {
+			debugCleanupWG.Wait()
+			// the process is expected to exit before sleep returns
+			time.Sleep(100 * time.Millisecond)
+		}
+
 		debug("closing did not trigger a normal exit")
 		c.exitChan <- code
+
 		go func() {
-			time.Sleep(200 * time.Millisecond)
-			debugCleanupWG.Wait()
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(300 * time.Millisecond)
+			if enableDebugLogging && debugCleanuped.Load() {
+				debugCleanupWG.Wait()
+				// the process is expected to exit before sleep returns
+				time.Sleep(100 * time.Millisecond)
+			}
+
 			debug("force exit due to normal exit timeout")
 			_, _ = doWithTimeout(func() (int, error) { cleanupOnClose(); return 0, nil }, 50*time.Millisecond)
 			_, _ = doWithTimeout(func() (int, error) { cleanupOnExit(); return 0, nil }, 300*time.Millisecond)
+			if enableDebugLogging {
+				cleanupDebugResources()
+				debugCleanupWG.Wait()
+			}
 			os.Exit(kExitCodeForceExit)
 		}()
 	}()
+
 	c.Close()
 }
 

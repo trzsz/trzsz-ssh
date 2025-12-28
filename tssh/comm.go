@@ -79,6 +79,7 @@ var tmuxDebugPaneID string
 var tmuxDebugPaneInited atomic.Bool
 var tmuxDebugPaneWriter io.WriteCloser
 
+var debugCleanuped atomic.Bool
 var debugCleanupWG sync.WaitGroup
 var stdinInputChan atomic.Pointer[chan []byte]
 
@@ -172,6 +173,10 @@ func initTmuxDebugPane() {
 }
 
 func cleanupDebugResources() {
+	if !debugCleanuped.CompareAndSwap(false, true) {
+		return
+	}
+
 	debugCleanupWG.Add(1)
 	defer debugCleanupWG.Done()
 

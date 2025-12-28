@@ -84,6 +84,7 @@ func setupTrzszFilter(sshConn *sshConnection) error {
 		if lastJumpUdpClient != nil {
 			trzszRelay.SetTransferStateCallback(func(transferring bool) {
 				_ = lastJumpUdpClient.SetKeepPendingInput(transferring)
+				_ = lastJumpUdpClient.SetKeepPendingOutput(transferring)
 			})
 		}
 		return nil
@@ -157,6 +158,7 @@ func setupTrzszFilter(sshConn *sshConnection) error {
 	if lastJumpUdpClient != nil {
 		trzszFilter.SetTransferStateCallback(func(transferring bool) {
 			_ = lastJumpUdpClient.SetKeepPendingInput(transferring)
+			_ = lastJumpUdpClient.SetKeepPendingOutput(transferring)
 		})
 	}
 

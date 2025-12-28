@@ -220,9 +220,20 @@ func udpLogin(param *sshParam, tcpClient SshClient) (SshClient, error) {
 		maxHostNameLength = max(maxHostNameLength, len(args.Destination))
 	}
 
+	mtu := uint16(0)
+	var proxyClient *sshUdpClient
+	if param.proxy != nil {
+		var ok bool
+		proxyClient, ok = param.proxy.client.(*sshUdpClient)
+		if !ok {
+			return nil, fmt.Errorf("proxy client [%T] for [%s] is not a udp client", param.proxy.client, args.Destination)
+		}
+		mtu = proxyClient.GetMaxDatagramSize()
+	}
+
 	// start tsshd
 	connectTimeout := getConnectTimeout(args)
-	tsshdCmd := getTsshdCommand(param, connectTimeout)
+	tsshdCmd := getTsshdCommand(param, mtu, connectTimeout)
 	debug("udp login to [%s] tsshd command: %s", args.Destination, tsshdCmd)
 
 	serverInfo, err := startTsshdServer(tcpClient, tsshdCmd)
@@ -241,6 +252,7 @@ func udpLogin(param *sshParam, tcpClient SshClient) (SshClient, error) {
 
 	// new udp client
 	udpClient := &sshUdpClient{
+		proxyClient:      proxyClient,
 		intervalTime:     intervalTime,
 		aliveTimeout:     globalUdpAliveTimeout,
 		connectTimeout:   connectTimeout,
@@ -273,11 +285,7 @@ func udpLogin(param *sshParam, tcpClient SshClient) (SshClient, error) {
 	}
 
 	if param.proxy != nil {
-		proxyClient, ok := param.proxy.client.(*sshUdpClient)
-		if !ok {
-			return nil, fmt.Errorf("proxy client [%T] for [%s] is not a udp client", param.proxy.client, args.Destination)
-		}
-		udpClient.proxyClient, clientOpts.ProxyClient = proxyClient, proxyClient.SshUdpClient
+		clientOpts.ProxyClient = proxyClient.SshUdpClient
 		debug("udp login to [%s] via proxy jump [%s] addr: %s", args.Destination, param.proxy.name, tsshdAddr)
 	} else {
 		debug("udp login to [%s] tsshd server addr: %s", param.args.Destination, tsshdAddr)
@@ -374,7 +382,7 @@ func startTsshdServer(tcpClient SshClient, tsshdCmd string) (*tsshd.ServerInfo, 
 	return &info, nil
 }
 
-func getTsshdCommand(param *sshParam, connectTimeout time.Duration) string {
+func getTsshdCommand(param *sshParam, mtu uint16, connectTimeout time.Duration) string {
 	args := param.args
 	var buf strings.Builder
 	if args.TsshdPath != "" {
@@ -402,6 +410,12 @@ func getTsshdCommand(param *sshParam, connectTimeout time.Duration) string {
 	if strings.HasSuffix(network, "6") {
 		buf.WriteString(" --ipv6")
 	}
+
+	if mtu > 0 {
+		buf.WriteString(" --mtu ")
+		buf.WriteString(strconv.Itoa(int(mtu)))
+	}
+
 	if connectTimeout != kDefaultConnectTimeout {
 		buf.WriteString(" --connect-timeout ")
 		buf.WriteString(strconv.Itoa(int(connectTimeout / time.Second)))
