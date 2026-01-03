@@ -44,20 +44,19 @@ type menuItem struct {
 }
 
 type menuModel struct {
-	items            []*menuItem
-	cursor           int
-	menuWidth        int
-	screenWidth      int
-	quitting         bool
-	backgroundStyle  lipgloss.Style
-	titleStyle       lipgloss.Style
-	footerStyle      lipgloss.Style
-	blankLineStyle   lipgloss.Style
-	separatorStyle   lipgloss.Style
-	activeItemStyle  lipgloss.Style
-	normalItemStyle  lipgloss.Style
-	activeBarStyle   lipgloss.Style
-	inactiveBarStyle lipgloss.Style
+	items           []*menuItem
+	cursor          int
+	menuWidth       int
+	screenWidth     int
+	quitting        bool
+	backgroundStyle lipgloss.Style
+	titleStyle      lipgloss.Style
+	footerStyle     lipgloss.Style
+	blankLineStyle  lipgloss.Style
+	separatorStyle  lipgloss.Style
+	activeItemStyle lipgloss.Style
+	normalItemStyle lipgloss.Style
+	activeBarStyle  lipgloss.Style
 }
 
 func initMenuModel(menuWidth, screenWidth int) *menuModel {
@@ -70,18 +69,17 @@ func initMenuModel(menuWidth, screenWidth int) *menuModel {
 	separatorColor := lipgloss.Color("#31354A")
 	highlightBarColor := lipgloss.Color("#FFD700")
 	return &menuModel{
-		cursor:           0,
-		menuWidth:        menuWidth,
-		screenWidth:      screenWidth,
-		backgroundStyle:  lipgloss.NewStyle().Background(bgColor).Width(screenWidth).Align(lipgloss.Center),
-		titleStyle:       lipgloss.NewStyle().Foreground(titleColor).Background(bgColor).Bold(true).Width(menuWidth).Align(lipgloss.Center),
-		footerStyle:      lipgloss.NewStyle().Foreground(footerColor).Background(bgColor).Width(menuWidth).Align(lipgloss.Center),
-		blankLineStyle:   lipgloss.NewStyle().Background(bgColor).Width(menuWidth),
-		separatorStyle:   lipgloss.NewStyle().Foreground(separatorColor).Background(bgColor).Width(menuWidth),
-		activeItemStyle:  lipgloss.NewStyle().Foreground(itemSelectedFG).Background(itemSelectedBG).Width(menuWidth - 1),
-		normalItemStyle:  lipgloss.NewStyle().Foreground(itemNormalFG).Background(bgColor).Width(menuWidth - 1),
-		activeBarStyle:   lipgloss.NewStyle().Foreground(highlightBarColor).Background(itemSelectedBG),
-		inactiveBarStyle: lipgloss.NewStyle().Foreground(bgColor).Background(bgColor),
+		cursor:          0,
+		menuWidth:       menuWidth,
+		screenWidth:     screenWidth,
+		backgroundStyle: lipgloss.NewStyle().Background(bgColor).Width(screenWidth).Align(lipgloss.Center),
+		titleStyle:      lipgloss.NewStyle().Foreground(titleColor).Background(bgColor).Bold(true).Width(menuWidth).Align(lipgloss.Center),
+		footerStyle:     lipgloss.NewStyle().Foreground(footerColor).Background(bgColor).Width(menuWidth).Align(lipgloss.Center),
+		blankLineStyle:  lipgloss.NewStyle().Background(bgColor).Width(menuWidth),
+		separatorStyle:  lipgloss.NewStyle().Foreground(separatorColor).Background(bgColor).Width(menuWidth),
+		activeItemStyle: lipgloss.NewStyle().Foreground(itemSelectedFG).Background(itemSelectedBG),
+		normalItemStyle: lipgloss.NewStyle().Foreground(itemNormalFG).Background(bgColor),
+		activeBarStyle:  lipgloss.NewStyle().Foreground(highlightBarColor).Background(itemSelectedBG),
 	}
 }
 
@@ -137,15 +135,17 @@ func (m *menuModel) View() string {
 }
 
 func (m *menuModel) renderMenuItems(builder *strings.Builder) {
+	var linePrefix string
+	var textStyle lipgloss.Style
 	for i, item := range m.items {
-		barStyle, textStyle := m.inactiveBarStyle, m.normalItemStyle
 		if i == m.cursor {
-			barStyle, textStyle = m.activeBarStyle, m.activeItemStyle
+			linePrefix, textStyle = m.activeBarStyle.Render("│ "), m.activeItemStyle
+		} else {
+			linePrefix, textStyle = m.normalItemStyle.Render("  "), m.normalItemStyle
 		}
-		prefix := barStyle.Render("│")
-		blankLine := prefix + textStyle.Render(strings.Repeat(" ", m.menuWidth-1))
+		blankLine := linePrefix + textStyle.Render(strings.Repeat(" ", m.menuWidth-2))
 		m.writeLine(builder, blankLine)
-		m.writeLine(builder, prefix+textStyle.Render(" "+item.label))
+		m.writeLine(builder, linePrefix+textStyle.Width(m.menuWidth-2).Render(item.label))
 		m.writeLine(builder, blankLine)
 		m.writeLine(builder, m.renderSeparator())
 	}
@@ -167,7 +167,7 @@ func (m *menuModel) renderSeparator() string {
 	return m.separatorStyle.Render(strings.Repeat("─", m.menuWidth))
 }
 
-func runConsole(escapeChar byte, reader io.Reader, writer io.WriteCloser, sshConn *sshConnection) {
+func runConsole(escapeChar byte, writer io.WriteCloser, sshConn *sshConnection) {
 	width := sshConn.session.GetTerminalWidth()
 	model := initMenuModel(min(width, 60), width)
 
@@ -214,7 +214,18 @@ func runConsole(escapeChar byte, reader io.Reader, writer io.WriteCloser, sshCon
 		return model, tea.Quit
 	}})
 
-	p := tea.NewProgram(model, tea.WithInput(reader), tea.WithOutput(os.Stderr))
+	teaInput, cancelReader := newTeaStdinInput(func(buf []byte) {
+		if enableDebugLogging {
+			if ch := stdinInputChan.Load(); ch != nil {
+				*ch <- append([]byte(nil), buf...)
+				return
+			}
+		}
+		_, _ = writer.Write(buf)
+	})
+	defer cancelReader()
+
+	p := tea.NewProgram(model, teaInput, tea.WithOutput(os.Stderr))
 	if _, err := p.Run(); err != nil {
 		warning("run escape console failed: %v", err)
 	}

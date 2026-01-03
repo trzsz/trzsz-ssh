@@ -48,6 +48,7 @@ func showConnectionLostNotif(client *sshUdpClient) {
 	client.notifInterceptor.interceptFlag.Store(true)
 	defer func() {
 		client.debug("releasing intercepted user input")
+		client.notifInterceptor.filterESC6n.Store(true)
 		client.notifInterceptor.interceptFlag.Store(false)
 	}()
 	go interactWithUserInput(client)
@@ -73,7 +74,7 @@ func showConnectionLostNotif(client *sshUdpClient) {
 	notif.renderView(false, true)
 	_, _ = doWithTimeout(func() (int, error) {
 		client.debug("requesting screen redraw")
-		client.sshConn.session.RedrawScreen()
+		client.sshConn.Load().session.RedrawScreen()
 		client.debug("screen redraw completed")
 		return 0, nil
 	}, client.reconnectTimeout)
@@ -265,7 +266,7 @@ func (m *notifModel) getWidth() int {
 	if m.tmuxColumns > 0 {
 		return m.tmuxColumns
 	}
-	return m.client.sshConn.session.GetTerminalWidth()
+	return m.client.sshConn.Load().session.GetTerminalWidth()
 }
 
 type notifInterceptor struct {
@@ -279,6 +280,7 @@ type notifInterceptor struct {
 	tmuxFlag      atomic.Bool
 	tmuxPaneId    atomic.Pointer[string]
 	tmuxLeftBuf   []byte
+	filterESC6n   atomic.Bool
 }
 
 func (ni *notifInterceptor) handleUserInput(input []byte) {
@@ -295,7 +297,7 @@ func (ni *notifInterceptor) handleUserInput(input []byte) {
 		var paneId string
 		buf, ni.tmuxLeftBuf, paneId, detach = handleAndDecodeTmuxInput(buf)
 		if detach {
-			ni.client.sshConn.forceExit(kExitCodeTmuxDetach, "Exit due to connection was lost and detach from tmux integration")
+			ni.client.sshConn.Load().forceExit(kExitCodeTmuxDetach, "Exit due to connection was lost and detach from tmux integration")
 			return
 		}
 		if paneId == "" {
@@ -357,6 +359,10 @@ func (ni *notifInterceptor) forwardInput(reader io.Reader, writer io.WriteCloser
 				buf = make([]byte, n)
 				copy(buf, buffer[:n])
 			}
+			if ni.filterESC6n.Load() {
+				// stop filtering ESC[6n once the user provides real input and starts interacting with the remote program again.
+				ni.filterESC6n.Store(false)
+			}
 		out:
 			for {
 				select {
@@ -378,7 +384,7 @@ func (ni *notifInterceptor) forwardInput(reader io.Reader, writer io.WriteCloser
 }
 
 func (ni *notifInterceptor) discardPendingInput(discardMarker []byte) []byte {
-	if ni.client == ni.client.sshConn.client { // the last ssh client is udp client
+	if ni.client == ni.client.sshConn.Load().client { // the last ssh client is udp client
 		defer func() { ni.inputBufChan <- discardMarker }()
 	}
 
@@ -410,10 +416,19 @@ func (ni *notifInterceptor) forwardOutput(reader io.Reader, writer io.WriteClose
 			if ni.interceptFlag.Load() {
 				cache.appendOutput(buffer[:n])
 			} else {
-				if err := cache.flushOutput(writer); err != nil {
-					break
+				if len(cache.chunks) > 0 {
+					if err := cache.flushOutput(writer); err != nil {
+						break
+					}
 				}
-				if err := writeAll(writer, buffer[:n]); err != nil {
+				buf := buffer[:n]
+				if ni.filterESC6n.Load() {
+					if enableDebugLogging {
+						ni.client.debug("filtered %d ESC[6n sequence(s) from live output", bytes.Count(buf, []byte("\x1b[6n")))
+					}
+					buf = bytes.ReplaceAll(buf, []byte("\x1b[6n"), []byte(""))
+				}
+				if err := writeAll(writer, buf); err != nil {
 					break
 				}
 			}
@@ -453,14 +468,21 @@ func (c *outputCache) flushOutput(writer io.Writer) error {
 	}
 
 	if enableDebugLogging {
-		n := 0
+		cacheSize, filteredCount := 0, 0
 		for _, chunk := range c.chunks {
-			n += len(chunk)
+			cacheSize += len(chunk)
+			filteredCount += bytes.Count(chunk, []byte("\x1b[6n"))
 		}
-		c.client.debug("session output cache size [%d]", n)
+		if cacheSize > 0 {
+			c.client.debug("session output cache size [%d]", cacheSize)
+		}
+		if filteredCount > 0 {
+			c.client.debug("filtered %d ESC[6n sequence(s) from cache output", filteredCount)
+		}
 	}
 
 	for _, chunk := range c.chunks {
+		chunk = bytes.ReplaceAll(chunk, []byte("\x1b[6n"), []byte(""))
 		if len(chunk) > 0 {
 			if _, err := writer.Write(chunk); err != nil {
 				return err

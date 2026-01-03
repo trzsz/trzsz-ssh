@@ -97,6 +97,7 @@ func forwardToRemote(client SshClient, addr string) error {
 		for ch := range channels {
 			channel, reqs, err := ch.Accept()
 			if err != nil {
+				warning("agent forwarding accept failed: %v", err)
 				continue
 			}
 			go ssh.DiscardRequests(reqs)

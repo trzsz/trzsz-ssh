@@ -31,6 +31,12 @@ import (
 )
 
 func execEncodeSecret() (int, bool) {
+	state, err := makeStdinRaw()
+	if err != nil {
+		toolsErrorExit("make stdin raw failed: %v", err)
+	}
+	addOnExitFunc(func() { resetStdin(state) })
+
 	secret := promptPassword("Password or secret to be encoded", "",
 		&inputValidator{func(secret string) error {
 			if secret == "" {

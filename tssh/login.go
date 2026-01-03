@@ -416,7 +416,12 @@ func (c *connWithTimeout) Read(b []byte) (n int, err error) {
 func setupLogLevel(args *sshArgs) func() {
 	previousDebug, previousWarning := enableDebugLogging, enableWarningLogging
 	reset := func() {
-		enableDebugLogging, enableWarningLogging = previousDebug, previousWarning
+		if enableDebugLogging != previousDebug {
+			enableDebugLogging = previousDebug
+		}
+		if enableWarningLogging != previousWarning {
+			enableWarningLogging = previousWarning
+		}
 	}
 	if args.Debug {
 		enableDebugLogging, enableWarningLogging = true, true
@@ -751,7 +756,7 @@ func sshConnect(args *sshArgs) (*sshConnection, error) {
 
 	// init global sshConn for udp mode
 	if lastJumpUdpClient != nil {
-		lastJumpUdpClient.sshConn = sshConn
+		lastJumpUdpClient.sshConn.Store(sshConn)
 	}
 
 	// tcp keep alive

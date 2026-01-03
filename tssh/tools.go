@@ -30,11 +30,14 @@ import (
 	"math"
 	"os"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/cancelreader"
 )
 
 const (
@@ -53,6 +56,51 @@ func hideCursor(writer io.Writer) {
 
 func showCursor(writer io.Writer) {
 	_, _ = writer.Write([]byte("\x1b[?25h"))
+}
+
+var stdinFallbackBuf []byte
+var stdinFallbackMu sync.Mutex
+
+type teaStdinReader struct {
+	fallbackFn func([]byte)
+	cancelled  atomic.Bool
+}
+
+func (r *teaStdinReader) Read(p []byte) (int, error) {
+	stdinFallbackMu.Lock()
+	defer stdinFallbackMu.Unlock()
+
+	if len(stdinFallbackBuf) > 0 {
+		n := copy(p, stdinFallbackBuf)
+		if n < len(stdinFallbackBuf) {
+			stdinFallbackBuf = stdinFallbackBuf[n:]
+		} else {
+			stdinFallbackBuf = nil
+		}
+		return n, nil
+	}
+
+	n, err := os.Stdin.Read(p)
+
+	if n > 0 && r.cancelled.Load() {
+		if r.fallbackFn != nil {
+			r.fallbackFn(p[:n])
+		} else {
+			stdinFallbackBuf = append(stdinFallbackBuf, p[:n]...)
+		}
+		return 0, io.EOF
+	}
+
+	return n, err
+}
+
+func newTeaStdinInput(fallbackFn func([]byte)) (tea.ProgramOption, func()) {
+	cancelReader, err := cancelreader.NewReader(os.Stdin)
+	if err != nil {
+		trr := &teaStdinReader{fallbackFn: fallbackFn}
+		return tea.WithInput(trr), func() { trr.cancelled.Store(true) }
+	}
+	return tea.WithInput(cancelReader), func() { cancelReader.Cancel() }
 }
 
 type toolsProgress struct {
@@ -119,6 +167,7 @@ func toolsSucc(tool, format string, a ...any) {
 func toolsErrorExit(format string, a ...any) {
 	msg := fmt.Sprintf(format, a...)
 	fmt.Fprintf(os.Stderr, "\033[0;31m%s\033[0m\r\n", msg)
+	cleanupOnExit()
 	os.Exit(kExitCodeToolsError)
 }
 
@@ -211,6 +260,9 @@ func (m *textInputModel) getValue() string {
 }
 
 func promptTextInput(promptLabel, defaultValue, helpMessage string, validator *inputValidator) string {
+	teaInput, cancelReader := newTeaStdinInput(nil)
+	defer cancelReader()
+
 	textInput := textinput.New()
 	textInput.Prompt = ": "
 	textInput.Focus()
@@ -220,10 +272,11 @@ func promptTextInput(promptLabel, defaultValue, helpMessage string, validator *i
 		helpMessage:  helpMessage,
 		textInput:    textInput,
 		validator:    validator,
-	}).Run()
+	}, teaInput).Run()
 
 	if model, ok := m.(*textInputModel); err == nil && ok {
 		if model.quit {
+			cleanupOnExit()
 			os.Exit(0)
 		}
 		return model.getValue()
@@ -349,14 +402,18 @@ func (m *passwordModel) View() string {
 }
 
 func promptPassword(promptLabel, helpMessage string, validator *inputValidator) string {
+	teaInput, cancelReader := newTeaStdinInput(nil)
+	defer cancelReader()
+
 	m, err := tea.NewProgram(&passwordModel{
 		promptLabel: promptLabel,
 		helpMessage: helpMessage,
 		validator:   validator,
-	}).Run()
+	}, teaInput).Run()
 
 	if model, ok := m.(*passwordModel); err == nil && ok {
 		if model.quit {
+			cleanupOnExit()
 			os.Exit(0)
 		}
 		return model.passwordInput
@@ -426,14 +483,18 @@ func (m *listModel) View() string {
 }
 
 func promptList(promptLabel, helpMessage string, listItems []string) string {
+	teaInput, cancelReader := newTeaStdinInput(nil)
+	defer cancelReader()
+
 	m, err := tea.NewProgram(&listModel{
 		promptLabel: promptLabel,
 		helpMessage: helpMessage,
 		items:       listItems,
-	}).Run()
+	}, teaInput).Run()
 
 	if model, ok := m.(*listModel); err == nil && ok {
 		if model.quit {
+			cleanupOnExit()
 			os.Exit(0)
 		}
 		return model.items[model.cursor]

@@ -30,12 +30,18 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
+	"unsafe"
 
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 	"golang.org/x/sys/windows"
 	"golang.org/x/term"
 )
+
+var isRunningOnOldWindows atomic.Bool
 
 type stdinState struct {
 	state    *term.State
@@ -73,9 +79,7 @@ func enableVirtualTerminal() error {
 	if err := windows.GetConsoleMode(windows.Handle(inHandle), &inMode); err != nil {
 		return err
 	}
-	onExitFuncs = append(onExitFuncs, func() {
-		windows.SetConsoleMode(windows.Handle(inHandle), inMode)
-	})
+	addOnCloseFunc(func() { windows.SetConsoleMode(windows.Handle(inHandle), inMode) })
 	if err := windows.SetConsoleMode(windows.Handle(inHandle), inMode|windows.ENABLE_VIRTUAL_TERMINAL_INPUT); err != nil {
 		return err
 	}
@@ -87,9 +91,7 @@ func enableVirtualTerminal() error {
 	if err := windows.GetConsoleMode(windows.Handle(outHandle), &outMode); err != nil {
 		return err
 	}
-	onExitFuncs = append(onExitFuncs, func() {
-		windows.SetConsoleMode(windows.Handle(outHandle), outMode)
-	})
+	addOnCloseFunc(func() { windows.SetConsoleMode(windows.Handle(outHandle), outMode) })
 	if err := windows.SetConsoleMode(windows.Handle(outHandle),
 		outMode|windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING|windows.DISABLE_NEWLINE_AUTO_RETURN); err != nil {
 		return err
@@ -158,8 +160,13 @@ func setupVirtualTerminal() error {
 	// enable virtual terminal
 	if err := enableVirtualTerminal(); err != nil {
 		if !sttyExecutable() {
-			return fmt.Errorf("enable virtual terminal failed: %v", err)
+			return fmt.Errorf("enable virtual terminal failed: %v\r\n%s", err,
+				"Hint: You can try running tssh in Cygwin, MSYS2, or Git Bash.")
 		}
+
+		isRunningOnOldWindows.Store(true)
+		lipgloss.SetColorProfile(termenv.ANSI256)
+
 		if userConfig.promptCursorIcon == "" {
 			promptCursorIcon = ">>"
 		}
@@ -173,10 +180,7 @@ func setupVirtualTerminal() error {
 	outCP := getConsoleOutputCP()
 	setConsoleCP(CP_UTF8)
 	setConsoleOutputCP(CP_UTF8)
-	onExitFuncs = append(onExitFuncs, func() {
-		setConsoleCP(inCP)
-		setConsoleOutputCP(outCP)
-	})
+	addOnCloseFunc(func() { setConsoleCP(inCP); setConsoleOutputCP(outCP) })
 
 	return nil
 }
@@ -188,8 +192,13 @@ func makeStdinRaw() (*stdinState, error) {
 	}
 
 	if !sttyExecutable() {
-		return nil, fmt.Errorf("terminal make raw failed: %v", err)
+		return nil, fmt.Errorf("terminal make raw failed: %v\r\n%s", err,
+			"Hint: You can try running tssh in Cygwin, MSYS2, or Git Bash.")
 	}
+
+	isRunningOnOldWindows.Store(true)
+	lipgloss.SetColorProfile(termenv.ANSI256)
+
 	settings, err := sttySettings()
 	if err != nil {
 		return nil, fmt.Errorf("get stty settings failed: %v", err)
@@ -254,18 +263,84 @@ func getKeyboardInput() (*os.File, func(), error) {
 		return os.Stdin, func() {}, nil
 	}
 
-	path, err := syscall.UTF16PtrFromString("CONIN$")
+	// O_RDWR is mandatory for capturing user keyboard input in non-terminal mode.
+	// TEST: scp -S tssh xxx @xxx:/tmp/
+	//       Enter passphrase for key xxx:
+	file, err := os.OpenFile(`\\.\CONIN$`, os.O_RDWR, 0)
 	if err != nil {
 		return nil, nil, err
 	}
-	handle, err := syscall.CreateFile(path, syscall.GENERIC_READ|syscall.GENERIC_WRITE,
-		syscall.FILE_SHARE_READ, nil, syscall.OPEN_EXISTING, 0, 0)
+
+	// file.Close() may block on Windows console handles (CONIN$).
+	// it's safer to never close it and let the OS clean up on process exit.
+	return file, func() {}, nil
+}
+
+func getStderrOutput() (*os.File, func(), error) {
+	if isTerminal {
+		return os.Stderr, func() {}, nil
+	}
+
+	file, err := os.OpenFile(`\\.\CONOUT$`, os.O_WRONLY, 0)
 	if err != nil {
 		return nil, nil, err
 	}
-	file := os.NewFile(uintptr(handle), "CONIN$")
 
 	return file, func() { _ = file.Close() }, nil
+}
+
+type input_record struct {
+	EventType uint16
+	_         uint16 // padding
+	Event     [16]byte
+}
+
+type key_event_record struct {
+	KeyDown         int32
+	RepeatCount     uint16
+	VirtualKeyCode  uint16
+	VirtualScanCode uint16
+	UnicodeChar     uint16
+	ControlKeyState uint32
+}
+
+func injectConsoleSpace() error {
+	handle, err := syscall.GetStdHandle(syscall.STD_INPUT_HANDLE)
+	if err != nil {
+		return fmt.Errorf("get std handle failed: %v", err)
+	}
+
+	events := []input_record{
+		makeSpaceKeyEvent(true),
+		makeSpaceKeyEvent(false),
+	}
+
+	ret, _, err := kernel32.NewProc("WriteConsoleInputW").Call(
+		uintptr(handle),
+		uintptr(unsafe.Pointer(&events[0])),
+		uintptr(len(events)),
+		uintptr(unsafe.Pointer(new(uint32))),
+	)
+
+	if ret == 0 {
+		return fmt.Errorf("write console input failed: %v", err)
+	}
+	return nil
+}
+
+func makeSpaceKeyEvent(down bool) input_record {
+	var ir input_record
+	ir.EventType = 0x0001 // KEY_EVENT
+
+	ke := (*key_event_record)(unsafe.Pointer(&ir.Event[0]))
+	if down {
+		ke.KeyDown = 1
+	}
+	ke.RepeatCount = 1
+	ke.VirtualKeyCode = 0x20 // VK_SPACE
+	ke.UnicodeChar = uint16(' ')
+
+	return ir
 }
 
 func splitCommandLine(command string) ([]string, error) {

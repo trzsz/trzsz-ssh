@@ -78,7 +78,7 @@ func forwardInput(reader io.Reader, writer io.WriteCloser, win bool, escapeChar 
 					enterPressedTime = time.Now()
 				} else if enterPressedFlag && n == 1 && buffer[0] == escapeChar && time.Since(enterPressedTime) <= escapeTime {
 					pauseOutput.Store(true)
-					runConsole(escapeChar, reader, writer, sshConn)
+					runConsole(escapeChar, writer, sshConn)
 					pauseOutput.Store(false)
 					continue
 				} else {
@@ -97,7 +97,8 @@ func forwardInput(reader io.Reader, writer io.WriteCloser, win bool, escapeChar 
 		}
 		if err == io.EOF {
 			if win && isTerminal && sshConn.tty {
-				_, _ = writer.Write([]byte{0x1A}) // ctrl + z
+				_, _ = writer.Write([]byte{0x1A})  // ctrl + z
+				time.Sleep(100 * time.Millisecond) // give it a break just in case of real EOF
 				continue
 			}
 			return
@@ -148,8 +149,14 @@ func wrapStdIO(serverIn io.WriteCloser, serverOut, serverErr io.Reader, escapeCh
 	}
 	if serverErr != nil {
 		outputWaitGroup.Go(func() {
+			beginTime := time.Now()
 			forwardOutput(serverErr, os.Stderr, win, sshConn.tty)
-			debug("ssh session stderr forward completed")
+			if enableDebugLogging {
+				debug("ssh session stderr forward completed")
+				if tmuxDebugPaneID == "" && time.Since(beginTime) < 3*time.Second {
+					sshConn.session.RedrawScreen()
+				}
+			}
 		})
 	}
 }

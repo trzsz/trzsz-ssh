@@ -79,7 +79,7 @@ type sshUdpClient struct {
 	notifInterceptor *notifInterceptor
 	notifModel       atomic.Pointer[notifModel]
 	sshDestName      string
-	sshConn          *sshConnection
+	sshConn          atomic.Pointer[sshConnection]
 }
 
 func (c *sshUdpClient) NewSession() (SshSession, error) {
@@ -113,7 +113,7 @@ func (c *sshUdpClient) exit(code int, cause string) {
 		notif.clientExiting.Store(true)
 		notif.renderView(true, false)
 	}
-	c.sshConn.forceExit(code, cause)
+	c.sshConn.Load().forceExit(code, cause)
 }
 
 func (c *sshUdpClient) debug(format string, a ...any) {
@@ -130,13 +130,13 @@ func (c *sshUdpClient) isReconnectTimeout() bool {
 
 func (c *sshUdpClient) udpKeepAlive() {
 	for !c.IsClosed() {
-		if c.sshConn != nil && time.Since(time.UnixMilli(c.GetLastActiveTime())) > c.aliveTimeout {
+		if c.sshConn.Load() != nil && time.Since(time.UnixMilli(c.GetLastActiveTime())) > c.aliveTimeout {
 			c.debug("alive timeout for %v", c.aliveTimeout)
 			c.exit(kExitCodeUdpTimeout, fmt.Sprintf("Exit due to connection was lost and timeout for %v", c.aliveTimeout))
 			return
 		}
 
-		if isTerminal && enableWarningLogging && c.sshConn != nil && c.isReconnectTimeout() {
+		if isTerminal && c.sshConn.Load() != nil && enableWarningLogging && c.isReconnectTimeout() {
 			go c.notifyConnectionLost()
 		}
 
@@ -160,11 +160,11 @@ func (c *sshUdpClient) notifyConnectionLost() {
 
 	if c.notifInterceptor == nil {
 		_, _ = os.Stderr.WriteString(ansi.HideCursor)
-		for c.isReconnectTimeout() && !c.sshConn.exited.Load() {
+		for c.isReconnectTimeout() && !c.sshConn.Load().exited.Load() {
 			fmt.Fprintf(os.Stderr, "\r\033[0;33m%s\033[0m\x1b[K", c.getConnLostStatus())
 			time.Sleep(time.Second)
 		}
-		if !c.isReconnectTimeout() && !c.sshConn.exited.Load() {
+		if !c.isReconnectTimeout() && !c.sshConn.Load().exited.Load() {
 			fmt.Fprintf(os.Stderr, "\r\033[0;32m%s\033[0m\x1b[K\r\n", "Congratulations, you have successfully reconnected to the server.")
 		}
 		_, _ = os.Stderr.WriteString(ansi.ShowCursor)
@@ -192,10 +192,10 @@ var lastJumpUdpClient *sshUdpClient
 var globalUdpAliveTimeout time.Duration
 
 func quitCallback(name, reason string) {
-	for lastJumpUdpClient == nil || lastJumpUdpClient.sshConn == nil {
+	for lastJumpUdpClient == nil || lastJumpUdpClient.sshConn.Load() == nil {
 		time.Sleep(10 * time.Millisecond) // waiting for sshConn to be initialized
 	}
-	lastJumpUdpClient.sshConn.forceExit(kExitCodeSignalKill, fmt.Sprintf("Exit due to [%s] %s", name, reason))
+	lastJumpUdpClient.sshConn.Load().forceExit(kExitCodeSignalKill, fmt.Sprintf("Exit due to [%s] %s", name, reason))
 }
 
 func initGlobalUdpAliveTimeout(args *sshArgs) {
@@ -215,7 +215,7 @@ func udpLogin(param *sshParam, tcpClient SshClient) (SshClient, error) {
 
 	if enableDebugLogging {
 		if initDebugLogFile() && maxHostNameLength == 0 {
-			debug("udp debug logs are written to \x1b[0;35m%s\x1b[0m", debugLogFile.Name())
+			debug("udp debug logs are written to \x1b[0;35m%s\x1b[0m", debugLogFileName)
 		}
 		maxHostNameLength = max(maxHostNameLength, len(args.Destination))
 	}
@@ -238,7 +238,7 @@ func udpLogin(param *sshParam, tcpClient SshClient) (SshClient, error) {
 
 	serverInfo, err := startTsshdServer(tcpClient, tsshdCmd)
 	if err != nil {
-		return nil, fmt.Errorf("udp login to [%s] start tsshd failed: %v", args.Destination, err)
+		return nil, fmt.Errorf("udp login to [%s] start tsshd on remote failed: %v", args.Destination, err)
 	}
 
 	// udp config
@@ -329,33 +329,38 @@ func startTsshdServer(tcpClient SshClient, tsshdCmd string) (*tsshd.ServerInfo, 
 	}
 
 	if err := session.Start(tsshdCmd); err != nil {
-		return nil, fmt.Errorf("start tsshd failed: %v", err)
+		return nil, fmt.Errorf("session start failed: %v", err)
 	}
+
 	if err := session.Wait(); err != nil {
 		var builder strings.Builder
-		if outMsg := readFromStream(serverOut); outMsg != "" {
+		if outMsg, _ := readConsoleOutput(serverOut); outMsg != "" {
 			builder.WriteString(outMsg)
 		}
-		if errMsg := readFromStream(serverErr); errMsg != "" {
+		if errMsg, _ := readConsoleOutput(serverErr); errMsg != "" {
 			if builder.Len() > 0 {
 				builder.WriteString("\n")
 			}
 			builder.WriteString(errMsg)
 		}
 		if builder.Len() == 0 {
-			builder.WriteString(err.Error())
+			builder.WriteString(fmt.Sprintf("session wait failed: %v", err))
 		}
-		return nil, fmt.Errorf("(Have you installed tsshd on your server? You may need to specify the path to tsshd.)\r\n"+
-			"run tsshd failed: %s", builder.String())
+		return nil, fmt.Errorf("%s\r\n%s", builder.String(),
+			"\033[0;36mHint:\033[0m Have you installed tsshd on your server? You may need to specify the path to tsshd.")
 	}
 
-	output := readFromStream(serverOut)
+	output, err := readConsoleOutput(serverOut)
 	if output == "" {
-		if errMsg := readFromStream(serverErr); errMsg != "" {
-			return nil, fmt.Errorf("run tsshd failed: %s", errMsg)
+		if errMsg, _ := readConsoleOutput(serverErr); errMsg != "" {
+			return nil, fmt.Errorf("stdout is empty, stderr output: %s", errMsg)
 		}
-		return nil, fmt.Errorf("run tsshd failed: the output is empty")
+		if err != nil {
+			return nil, fmt.Errorf("read stdout output failed: %v", err)
+		}
+		return nil, fmt.Errorf("stdout and stderr are both empty")
 	}
+
 	pos := strings.LastIndexByte(output, '\a')
 	if pos >= 0 {
 		output = output[pos+1:]
@@ -371,7 +376,7 @@ func startTsshdServer(tcpClient SshClient, tsshdCmd string) (*tsshd.ServerInfo, 
 	output = strings.ReplaceAll(output, "\r", "")
 	output = strings.ReplaceAll(output, "\n", "")
 	if !strings.HasPrefix(output, "{") || !strings.HasSuffix(output, "}") {
-		return nil, fmt.Errorf("run tsshd failed: %s", strconv.QuoteToASCII(output))
+		return nil, fmt.Errorf("unexpected stdout output: %s", strconv.QuoteToASCII(output))
 	}
 
 	var info tsshd.ServerInfo
@@ -454,10 +459,11 @@ func getTsshdCommand(param *sshParam, mtu uint16, connectTimeout time.Duration) 
 	return buf.String()
 }
 
-func readFromStream(stream io.Reader) string {
+func readConsoleOutput(stream io.Reader) (string, error) {
 	var buf bytes.Buffer
-	_, _ = buf.ReadFrom(stream)
-	return strings.TrimSpace(buf.String())
+	_, err := buf.ReadFrom(stream)
+	out := strings.TrimSpace(ansi.Strip(buf.String()))
+	return out, err
 }
 
 func getUdpTimeoutConfig(args *sshArgs, timeoutOption string, defaultTimeout time.Duration) time.Duration {

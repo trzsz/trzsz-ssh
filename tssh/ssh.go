@@ -317,7 +317,6 @@ func (c *sshConnection) forceExit(code int, msg string) {
 			_, _ = doWithTimeout(func() (int, error) { cleanupOnExit(); return 0, nil }, 300*time.Millisecond)
 			if enableDebugLogging {
 				cleanupDebugResources()
-				debugCleanupWG.Wait()
 			}
 			os.Exit(kExitCodeForceExit)
 		}()

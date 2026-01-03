@@ -16,7 +16,10 @@ require (
 	github.com/mattn/go-isatty v0.0.20
 	github.com/mattn/go-runewidth v0.0.19
 	github.com/mitchellh/go-homedir v1.1.0
+	github.com/muesli/cancelreader v0.2.2
+	github.com/muesli/termenv v0.16.0
 	github.com/pquerna/otp v1.5.0
+	github.com/quic-go/quic-go v0.58.0
 	github.com/skeema/knownhosts v1.3.2
 	github.com/stretchr/testify v1.11.1
 	github.com/trzsz/go-arg v1.5.4
@@ -26,8 +29,8 @@ require (
 	github.com/trzsz/promptui v0.10.8
 	github.com/trzsz/shellescape v1.6.0
 	github.com/trzsz/ssh_config v1.3.6
-	github.com/trzsz/trzsz-go v1.1.9-0.20251213172702-24af0ed3571b
-	github.com/trzsz/tsshd v0.1.6-rc9
+	github.com/trzsz/trzsz-go v1.1.9-0.20260103092200-35b400b58a34
+	github.com/trzsz/tsshd v0.1.6-rc10
 	golang.org/x/crypto v0.46.0
 	golang.org/x/sys v0.39.0
 	golang.org/x/term v0.38.0
@@ -64,18 +67,15 @@ require (
 	github.com/lucasb-eyer/go-colorful v1.3.0 // indirect
 	github.com/mattn/go-localereader v0.0.1 // indirect
 	github.com/muesli/ansi v0.0.0-20230316100256-276c6243b2f6 // indirect
-	github.com/muesli/cancelreader v0.2.2 // indirect
-	github.com/muesli/termenv v0.16.0 // indirect
 	github.com/ncruces/zenity v0.10.14 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/quic-go/quic-go v0.58.0 // indirect
 	github.com/randall77/makefat v0.0.0-20210315173500-7ddd0e42c844 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/tjfoc/gmsm v1.4.1 // indirect
 	github.com/trzsz/smux v1.6.0 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
-	github.com/xtaci/kcp-go/v5 v5.6.60 // indirect
+	github.com/xtaci/kcp-go/v5 v5.6.61 // indirect
 	golang.org/x/image v0.34.0 // indirect
 	golang.org/x/net v0.48.0 // indirect
 	golang.org/x/text v0.32.0 // indirect

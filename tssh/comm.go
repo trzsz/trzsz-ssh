@@ -72,7 +72,9 @@ const (
 )
 
 var debugLogFile *os.File
+var debugLogFileName string
 var maxHostNameLength int
+var debugStderrWriter *os.File
 var debugWriteMutex sync.Mutex
 
 var tmuxDebugPaneID string
@@ -80,6 +82,7 @@ var tmuxDebugPaneInited atomic.Bool
 var tmuxDebugPaneWriter io.WriteCloser
 
 var debugCleanuped atomic.Bool
+var debugCleanupMu sync.Mutex
 var debugCleanupWG sync.WaitGroup
 var stdinInputChan atomic.Pointer[chan []byte]
 
@@ -96,6 +99,10 @@ func initDebugLogFile() bool {
 
 	var err error
 	debugLogFile, err = os.CreateTemp("", "tssh_debug_*.log")
+	if debugLogFile != nil {
+		debugLogFileName = debugLogFile.Name()
+	}
+
 	debugWriteMutex.Unlock()
 
 	if err != nil {
@@ -107,23 +114,46 @@ func initDebugLogFile() bool {
 	return true
 }
 
+func closeDebugLogFile() {
+	debugWriteMutex.Lock()
+	defer debugWriteMutex.Unlock()
+
+	if debugLogFile == nil {
+		return
+	}
+
+	_ = debugLogFile.Close()
+	debugLogFile = nil
+}
+
 func writeDebugLog(msec int64, host, log string) {
 	if !enableDebugLogging {
 		return
 	}
 
-	line := fmt.Sprintf("%s | %-*s | %s", time.UnixMilli(msec).Format("15:04:05.000"), maxHostNameLength, host, log)
+	line := fmt.Sprintf("%s | %-*s | %s\n", time.UnixMilli(msec).Format("15:04:05.000"), maxHostNameLength, host, log)
 
-	if debugLogFile != nil {
+	ok, err := func() (bool, error) {
 		debugWriteMutex.Lock()
-		_, _ = debugLogFile.WriteString(line)
-		_, _ = debugLogFile.Write([]byte{'\n'})
-		debugWriteMutex.Unlock()
-		_ = debugLogFile.Sync()
-		return
-	}
+		defer debugWriteMutex.Unlock()
+		if debugLogFile == nil {
+			return false, nil
+		}
+		if _, err := debugLogFile.WriteString(line); err != nil {
+			return false, fmt.Errorf("write debug log to [%s] failed: %v", debugLogFileName, err)
+		}
+		if err := debugLogFile.Sync(); err != nil {
+			return false, fmt.Errorf("sync debug log to [%s] failed: %v", debugLogFileName, err)
+		}
+		return true, nil
+	}()
 
-	debug("%s", line)
+	if err != nil {
+		debug("%v", err)
+	}
+	if !ok {
+		debug("%s", line[:len(line)-1])
+	}
 }
 
 func initTmuxDebugPane() {
@@ -138,22 +168,10 @@ func initTmuxDebugPane() {
 		return
 	}
 
-	out, err := exec.Command("tmux", "display-message", "-p", "#{pane_id}").Output()
-	if err != nil {
-		debug("tmux display message failed: %v", err)
-		return
-	}
-	currentPaneId := strings.TrimSpace(string(out))
-
-	out, err = exec.Command("tmux", "split-pane", "-h", "-p", "33", "-P", "-F", "#{pane_id}|#{pane_tty}",
-		"tail", "-f", debugLogFile.Name()).Output()
+	out, err := exec.Command("tmux", "split-window", "-h", "-d", "-p", "33", "-P", "-F", "#{pane_id}|#{pane_tty}",
+		"tail", "-f", debugLogFileName).Output()
 	if err != nil {
 		debug("tmux split pane failed: %v", err)
-		return
-	}
-
-	if err := exec.Command("tmux", "select-pane", "-t", currentPaneId).Run(); err != nil {
-		debug("tmux select pane failed: %v", err)
 		return
 	}
 
@@ -173,6 +191,8 @@ func initTmuxDebugPane() {
 }
 
 func cleanupDebugResources() {
+	debugCleanupMu.Lock()
+	defer debugCleanupMu.Unlock()
 	if !debugCleanuped.CompareAndSwap(false, true) {
 		return
 	}
@@ -183,22 +203,27 @@ func cleanupDebugResources() {
 	ch := make(chan []byte, 10)
 	stdinInputChan.Store(&ch)
 
-	stdin, closer, err := getKeyboardInput()
+	if isTerminal && runtime.GOOS == "windows" && !isRunningOnOldWindows.Load() {
+		if err := injectConsoleSpace(); err != nil {
+			debug("inject console space failed: %v", err)
+		}
+		// give the stdin forwarding goroutine time to read the injected space
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	stdin, closeStdin, err := getKeyboardInput()
 	if err != nil {
 		debug("get keyboard input failed: %v", err)
 		return
 	}
-	defer closer()
+	defer closeStdin()
 
-	stderr := os.Stderr
-	if !isTerminal {
-		stderr, err = os.OpenFile("/dev/tty", os.O_WRONLY, 0)
-		defer func() { _ = stderr.Close() }()
-		if err != nil {
-			debug("open /dev/tty failed: %v", err)
-			return
-		}
+	stderr, closeStderr, err := getStderrOutput()
+	if err != nil {
+		debug("get stderr output failed: %v", err)
+		return
 	}
+	defer closeStderr()
 
 	go func() {
 		buffer := make([]byte, 128)
@@ -243,7 +268,7 @@ func cleanupDebugResources() {
 			input, err := readLineFromStdin()
 			if err != nil {
 				debug("read input failed: %v", err)
-				continue
+				return defaultYes
 			}
 
 			input = strings.ToLower(strings.TrimSpace(input))
@@ -270,10 +295,23 @@ func cleanupDebugResources() {
 		_ = exec.Command("tmux", "kill-pane", "-t", tmuxDebugPaneID).Run()
 	}
 
-	if stat, _ := debugLogFile.Stat(); stat != nil && stat.Size() == 0 {
-		_ = os.Remove(debugLogFile.Name())
-	} else if confirm(fmt.Sprintf("Do you want to delete the debug log [%s]?", debugLogFile.Name()), false) {
-		_ = os.Remove(debugLogFile.Name())
+	closeDebugLogFile()
+
+	if debugLogFileName != "" {
+		var deleteLogFile bool
+		if stat, err := os.Stat(debugLogFileName); err == nil {
+			if stat.Size() == 0 {
+				deleteLogFile = true
+			} else if confirm(fmt.Sprintf("Do you want to delete the debug log [%s]?", debugLogFileName), false) {
+				deleteLogFile = true
+			}
+		}
+
+		if deleteLogFile {
+			if err := os.Remove(debugLogFileName); err != nil {
+				debug("delete log file [%s] failed: %v", debugLogFileName, err)
+			}
+		}
 	}
 }
 
@@ -297,12 +335,20 @@ func debug(format string, a ...any) {
 	}
 
 	debugWriteMutex.Lock()
+	defer debugWriteMutex.Unlock()
 	if tmuxDebugPaneWriter != nil {
 		_, _ = tmuxDebugPaneWriter.Write(buf)
 	} else {
-		_, _ = os.Stderr.Write(buf)
+		if debugStderrWriter == nil {
+			var err error
+			debugStderrWriter, _, err = getStderrOutput()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "\r\033[0;36mdebug:\033[0m get stderr output failed: %v\033[K\r\n", err)
+				debugStderrWriter = os.Stderr
+			}
+		}
+		_, _ = debugStderrWriter.Write(buf)
 	}
-	debugWriteMutex.Unlock()
 }
 
 func warning(format string, a ...any) {

@@ -38,22 +38,19 @@ const kSshX11Proto = "MIT-MAGIC-COOKIE-1"
 
 func getXauthAndProto(display string, trusted bool, timeout int) (string, string, error) {
 	if !commandExists("xauth") {
-		debug("no xauth program")
-		return genFakeXauth(trusted)
-	}
-
-	if strings.HasPrefix(display, "localhost:") {
-		display = "unix:" + display[10:]
+		debug("X11 authentication will be faked due to xauth not found")
+		return genFakeXauth()
 	}
 
 	var listArgs []string
 	if !trusted {
 		file, err := os.CreateTemp("", "xauthfile_*")
 		if err != nil {
-			debug("create xauth file failed: %v", err)
-			return genFakeXauth(trusted)
+			warning("X11 authentication will be faked due to create temp file failed: %v", err)
+			return genFakeXauth()
 		}
 		path := file.Name()
+		_ = file.Close()
 		defer func() { _ = os.Remove(path) }()
 		genArgs := []string{"-f", path, "generate", display, kSshX11Proto, "untrusted"}
 		if timeout > 0 {
@@ -61,30 +58,45 @@ func getXauthAndProto(display string, trusted bool, timeout int) (string, string
 		}
 		debug("xauth generate command: %v", genArgs)
 		if _, err := execXauthCommand(genArgs); err != nil {
-			debug("xauth generate failed: %v", err)
-			return genFakeXauth(trusted)
+			warning("X11 authentication will be faked due to xauth generate failed: %v", err)
+			return genFakeXauth()
 		}
 		listArgs = []string{"-f", path, "list", display}
 	} else {
-		listArgs = []string{"list", display}
+		listArgs = []string{"list"}
 	}
 
 	debug("xauth list command: %v", listArgs)
 	out, err := execXauthCommand(listArgs)
 	if err != nil {
-		debug("xauth list failed: %v", err)
-		return genFakeXauth(trusted)
-	}
-	if out != "" {
-		tokens := strings.Fields(out)
-		if len(tokens) < 3 {
-			debug("invalid xauth list output: %s", out)
-			return genFakeXauth(trusted)
-		}
-		return tokens[2], tokens[1], nil
+		warning("X11 authentication will be faked due to xauth list failed: %v", err)
+		return genFakeXauth()
 	}
 
-	return genFakeXauth(trusted)
+	displayNumber := getDisplayNumber(display)
+	for line := range strings.SplitSeq(out, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 3 {
+			continue
+		}
+		if getDisplayNumber(fields[0]) == displayNumber {
+			return fields[2], fields[1], nil
+		}
+	}
+
+	warning("X11 authentication will be faked due to no matching xauth for display [%s]", display)
+	return genFakeXauth()
+}
+
+func getDisplayNumber(display string) string {
+	if i := strings.LastIndex(display, ":"); i >= 0 {
+		s := display[i+1:]
+		if j := strings.IndexByte(s, '.'); j >= 0 {
+			return s[:j]
+		}
+		return s
+	}
+	return display
 }
 
 func execXauthCommand(args []string) (string, error) {
@@ -101,13 +113,10 @@ func execXauthCommand(args []string) (string, error) {
 	return strings.TrimSpace(outBuf.String()), nil
 }
 
-func genFakeXauth(trusted bool) (string, string, error) {
+func genFakeXauth() (string, string, error) {
 	cookie := make([]byte, 16)
 	if _, err := rand.Read(cookie); err != nil {
 		return "", "", fmt.Errorf("random cookie failed: %v", err)
-	}
-	if trusted {
-		warning("No xauth data; using fake authentication data for X11 forwarding.")
 	}
 	return fmt.Sprintf("%x", cookie), kSshX11Proto, nil
 }

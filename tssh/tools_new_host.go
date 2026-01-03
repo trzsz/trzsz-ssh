@@ -185,6 +185,12 @@ func (n *newHostTool) loginImmediately() bool {
 }
 
 func execNewHost(args *sshArgs) (int, bool) {
+	state, err := makeStdinRaw()
+	if err != nil {
+		toolsErrorExit("make stdin raw failed: %v", err)
+	}
+	addOnExitFunc(func() { resetStdin(state) })
+
 	n := &newHostTool{}
 
 	chooseLanguage()

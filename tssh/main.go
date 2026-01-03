@@ -442,7 +442,16 @@ func handleExitSignals(sshConn *sshConnection) {
 		os.Interrupt,    // Ctrl+C signal
 	)
 	go func() {
-		sig := <-sigChan
-		sshConn.forceExit(kExitCodeSignalKill, fmt.Sprintf("Exit due to signal [%v] from the operating system", sig))
+		for sig := range sigChan {
+			if enableDebugLogging && debugCleanuped.Load() {
+				_, _ = os.Stderr.WriteString("\r\n")
+				os.Exit(kExitCodeSignalKill)
+			}
+			if isRunningOnOldWindows.Load() && sig.String() == "interrupt" {
+				continue
+			}
+			sshConn.forceExit(kExitCodeSignalKill, fmt.Sprintf("Exit due to signal [%v] from the operating system", sig))
+			break
+		}
 	}()
 }

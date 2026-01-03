@@ -39,6 +39,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/quic-go/quic-go"
 	"github.com/trzsz/go-socks5"
 	"github.com/trzsz/tsshd/tsshd"
 	"golang.org/x/crypto/ssh"
@@ -240,6 +241,9 @@ func isGatewayPorts(args *sshArgs) bool {
 }
 
 func isClosedError(err error) bool {
+	if err == nil {
+		return false
+	}
 	if errors.Is(err, io.EOF) {
 		return true
 	}
@@ -249,7 +253,11 @@ func isClosedError(err error) bool {
 	if errors.Is(err, io.ErrClosedPipe) {
 		return true
 	}
-	if err != nil && strings.Contains(err.Error(), "io: read/write on closed pipe") {
+	var qse *quic.StreamError
+	if errors.As(err, &qse) && qse.ErrorCode == 0 {
+		return true
+	}
+	if strings.Contains(err.Error(), "io: read/write on closed pipe") {
 		return true
 	}
 	return false
@@ -416,7 +424,7 @@ func dynamicForward(client SshClient, b *bindCfg, args *sshArgs) {
 						break
 					}
 					warning("dynamic forwarding [%v] accept failed: %v", b, err)
-					continue
+					break
 				}
 				go func() {
 					if err := server.ServeConn(conn); err != nil {
@@ -500,7 +508,7 @@ func localForward(client SshClient, f *forwardCfg, args *sshArgs) {
 						break
 					}
 					warning("local forwarding [%v] accept failed: %v", f, err)
-					continue
+					break
 				}
 				remote, err := client.DialTimeout(network, remoteAddr, timeout)
 				if err != nil {
@@ -539,7 +547,7 @@ func remoteForward(client SshClient, f *forwardCfg, args *sshArgs) {
 						break
 					}
 					warning("remote forwarding [%v] accept failed: %v", f, err)
-					continue
+					break
 				}
 				local, err := net.DialTimeout(network, localAddr, timeout)
 				if err != nil {
@@ -689,6 +697,7 @@ func sshX11Forward(sshConn *sshConnection) {
 		for ch := range channels {
 			channel, reqs, err := ch.Accept()
 			if err != nil {
+				warning("X11 forwarding accept failed: %v", err)
 				continue
 			}
 			go ssh.DiscardRequests(reqs)

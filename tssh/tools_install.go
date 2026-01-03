@@ -442,8 +442,7 @@ func (h *binaryHelper) uploadBinary(client SshClient, path string) error {
 		return err
 	}
 	if err := session.Run(fmt.Sprintf("scp -tqr %s", path)); err != nil {
-		msg := readFromStream(stderr)
-		if msg != "" {
+		if msg, _ := readConsoleOutput(stderr); msg != "" {
 			errMsg = append(errMsg, msg)
 		}
 		if len(errMsg) > 0 {

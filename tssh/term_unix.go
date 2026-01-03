@@ -33,12 +33,15 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 
 	"github.com/google/shlex"
 	"github.com/mattn/go-isatty"
 	"golang.org/x/term"
 )
+
+var isRunningOnOldWindows atomic.Bool
 
 type stdinState struct {
 	state *term.State
@@ -97,6 +100,19 @@ func getKeyboardInput() (*os.File, func(), error) {
 	return file, func() { _ = file.Close() }, nil
 }
 
+func getStderrOutput() (*os.File, func(), error) {
+	if isTerminal {
+		return os.Stderr, func() {}, nil
+	}
+
+	file, err := os.OpenFile("/dev/tty", os.O_WRONLY, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return file, func() { _ = file.Close() }, nil
+}
+
 func isSshTmuxEnv() bool {
 	if _, tmux := os.LookupEnv("TMUX"); !tmux {
 		return false
@@ -140,4 +156,8 @@ func suspendProcess() {
 		}
 		debug("current process is running in background")
 	}
+}
+
+func injectConsoleSpace() error {
+	return nil
 }

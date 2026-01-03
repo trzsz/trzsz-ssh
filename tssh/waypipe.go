@@ -220,7 +220,7 @@ func remoteForwardSocket(client SshClient, clientSocket, serverSocket string) er
 			}
 			if err != nil {
 				debug("waypipe remote accept failed: %v", err)
-				continue
+				break
 			}
 			local, err := net.DialTimeout("unix", clientSocket, time.Second)
 			if err != nil {
