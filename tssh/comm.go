@@ -200,6 +200,9 @@ func cleanupDebugResources() {
 	debugCleanupWG.Add(1)
 	defer debugCleanupWG.Done()
 
+	// It’s possible that only the first hop has debug enabled while the following hops don’t.
+	// Setting debug to true here ensures that data read by the stdin forwarding goroutine can be forwarded to this channel.
+	enableDebugLogging = true
 	ch := make(chan []byte, 10)
 	stdinInputChan.Store(&ch)
 
