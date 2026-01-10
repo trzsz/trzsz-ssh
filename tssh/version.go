@@ -26,6 +26,9 @@ package tssh
 
 import (
 	"fmt"
+	"path/filepath"
+	"regexp"
+	"runtime"
 	dbg "runtime/debug"
 	"strings"
 )
@@ -67,6 +70,18 @@ func getTsshVersion() string {
 					version.WriteString("-m")
 				}
 			}
+		} else {
+			_, file, _, _ := runtime.Caller(0)
+			if strings.Contains(filepath.ToSlash(file), "/pkg/mod/github.com/trzsz/trzsz-ssh@") {
+				name := filepath.Base(filepath.Dir(filepath.Dir(file)))
+				re := regexp.MustCompile(`^trzsz-ssh@[^-]+-[^-]+-([0-9a-f]{12,})$`)
+				if match := re.FindStringSubmatch(name); len(match) == 2 {
+					hash := match[1]
+					version.WriteByte('.')
+					version.WriteString(hash[:min(7, len(hash))])
+				}
+			}
+
 		}
 	}
 
