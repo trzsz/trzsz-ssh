@@ -434,6 +434,9 @@ func setupLogLevel(args *sshArgs) func() {
 		enableDebugLogging, enableWarningLogging = false, true
 	case "verbose", "debug", "debug1", "debug2", "debug3":
 		enableDebugLogging, enableWarningLogging = true, true
+		if !previousDebug {
+			debug("tssh version: %s", getTsshVersion())
+		}
 	}
 	return reset
 }

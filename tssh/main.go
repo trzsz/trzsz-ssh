@@ -143,14 +143,27 @@ func TsshMain(argv []string) int {
 	var args sshArgs
 	parser, err := arg.NewParser(arg.Config{HideLongOptions: true, Out: os.Stderr, Exit: os.Exit}, &args)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintf(os.Stderr, "new arg parser failed: %v\r\n", err)
 		return kExitCodeArgsInvalid
 	}
-	parser.MustParse(argv)
+
+	if err := parser.Parse(argv); err != nil {
+		if err == arg.ErrHelp {
+			parser.WriteHelp(os.Stdout)
+			return 0
+		}
+		if err == arg.ErrVersion {
+			return printVersionShort()
+		}
+		parser.WriteUsage(os.Stderr)
+		fmt.Fprintf(os.Stderr, "error: %v\r\n", err)
+		return kExitCodeArgsInvalid
+	}
 
 	// debug log
 	if args.Debug {
 		enableDebugLogging = true
+		debug("tssh version: %s", getTsshVersion())
 	}
 
 	// init iterm2 session if necessary
@@ -188,7 +201,7 @@ func TsshMain(argv []string) int {
 	quit := false
 	if args.Destination == "" || args.Destination == "FAKE_DEST_IN_WARP" {
 		if !isTerminal {
-			parser.WriteHelp(os.Stderr)
+			fmt.Fprintln(os.Stderr, "destination is required when running tssh in non-interactive mode")
 			return kExitCodeNoDestHost
 		}
 		dest, quit, err = chooseAlias("")

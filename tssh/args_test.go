@@ -49,7 +49,7 @@ func TestSshArgs(t *testing.T) {
 	}
 
 	assertArgsEqual("", sshArgs{})
-	assertArgsEqual("-V", sshArgs{Ver: true})
+	assertArgsEqual("-V", sshArgs{VerDetailed: true})
 	assertArgsEqual("-A", sshArgs{ForwardAgent: true})
 	assertArgsEqual("-a", sshArgs{NoForwardAgent: true})
 	assertArgsEqual("-T", sshArgs{DisableTTY: true})
@@ -118,7 +118,7 @@ func TestSshArgs(t *testing.T) {
 			Option:      sshOption{map[string][]string{"remotecommand": {"none"}, "serveralivecountmax": {"2"}}},
 			Destination: "dest", Command: "cmd", Argument: []string{"arg1", "arg2"}})
 
-	assertArgsError := func(cmdline, errMsg string) {
+	assertArgsError := func(cmdline, errMsg string) error {
 		t.Helper()
 		var args sshArgs
 		p, err := arg.NewParser(arg.Config{}, &args)
@@ -126,11 +126,16 @@ func TestSshArgs(t *testing.T) {
 		err = p.Parse(strings.Split(cmdline, " "))
 		assert.NotNil(err)
 		assert.Contains(err.Error(), errMsg)
+		return err
 	}
 
-	assertArgsError("-D", "missing value for -D")
-	assertArgsError("-L", "missing value for -L")
-	assertArgsError("-R", "missing value for -R")
+	_ = assertArgsError("-D", "missing value for -D")
+	_ = assertArgsError("-L", "missing value for -L")
+	_ = assertArgsError("-R", "missing value for -R")
+
+	if got := assertArgsError("-v", arg.ErrVersion.Error()); got != arg.ErrVersion {
+		t.Errorf("-v expected error %v, got %v", arg.ErrVersion, got)
+	}
 }
 
 func TestForwardArgs(t *testing.T) {

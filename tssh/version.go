@@ -24,4 +24,61 @@ SOFTWARE.
 
 package tssh
 
+import (
+	"fmt"
+	dbg "runtime/debug"
+	"strings"
+)
+
 const kTsshVersion = "0.1.23"
+
+// buildTag stores the version tag injected at build time via -ldflags.
+var buildTag = ""
+
+func getTsshVersion() string {
+	var version strings.Builder
+	version.WriteString("trzsz ssh ")
+	version.WriteString(kTsshVersion)
+
+	if buildTag != "" {
+		version.WriteByte('(')
+		version.WriteString(buildTag)
+		version.WriteByte(')')
+	}
+
+	if info, ok := dbg.ReadBuildInfo(); ok {
+		var vcs, revision, modified string
+		for _, setting := range info.Settings {
+			switch setting.Key {
+			case "vcs":
+				vcs = setting.Value
+			case "vcs.revision":
+				revision = setting.Value
+			case "vcs.modified":
+				modified = setting.Value
+			}
+		}
+
+		if vcs == "git" {
+			if revision != "" {
+				version.WriteByte('-')
+				version.WriteString(revision[:min(7, len(revision))])
+				if strings.ToLower(modified) == "true" {
+					version.WriteString("-m")
+				}
+			}
+		}
+	}
+
+	return version.String()
+}
+
+func printVersionShort() int {
+	fmt.Println("trzsz ssh " + kTsshVersion)
+	return 0
+}
+
+func printVersionDetailed() (int, bool) {
+	fmt.Println(getTsshVersion())
+	return 0, true
+}

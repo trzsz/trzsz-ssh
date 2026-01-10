@@ -47,7 +47,8 @@ type forwardArgs struct {
 }
 
 type sshArgs struct {
-	Ver            bool        `arg:"-V,--" help:"show program's version number and exit"`
+	VerShort       bool        `arg:"-v,--" help:"show short version number and exit"`
+	VerDetailed    bool        `arg:"-V,--" help:"show detailed version info and exit"`
 	Destination    string      `arg:"positional" help:"alias in ~/.ssh/config, or [user@]hostname[:port]"`
 	Command        string      `arg:"positional" help:"command to execute instead of a login shell"`
 	Argument       []string    `arg:"positional" help:"command arguments separated by spaces"`
@@ -102,10 +103,6 @@ type sshArgs struct {
 
 func (sshArgs) Description() string {
 	return "trzsz-ssh(tssh): alternative ssh client with additional features to meet your needs.\n"
-}
-
-func (sshArgs) Version() string {
-	return fmt.Sprintf("trzsz ssh %s", kTsshVersion)
 }
 
 func (o *sshOption) UnmarshalText(b []byte) error {
