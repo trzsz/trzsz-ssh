@@ -26,14 +26,13 @@ package tssh
 
 import (
 	"os"
-	"strings"
+	"path/filepath"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
 
-func isNoGUI() bool {
-	pid := os.Getppid()
+func isRemoteSshEnv(pid int) bool {
 	for range 1000 {
 		handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, uint32(pid))
 		if err != nil {
@@ -48,7 +47,8 @@ func isNoGUI() bool {
 			return false
 		}
 
-		if strings.HasSuffix(windows.UTF16ToString(path[:pathLen]), "sshd.exe") {
+		name := filepath.Base(windows.UTF16ToString(path[:pathLen]))
+		if name == "sshd.exe" || name == "tsshd.exe" {
 			return true
 		}
 
@@ -60,4 +60,8 @@ func isNoGUI() bool {
 		pid = int(pbi.InheritedFromUniqueProcessId)
 	}
 	return false
+}
+
+func isNoGUI() bool {
+	return isRemoteSshEnv(os.Getppid())
 }

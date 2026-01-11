@@ -27,80 +27,136 @@ package tssh
 import (
 	"bytes"
 	"crypto/rand"
+	"encoding/hex"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
+
+	"github.com/trzsz/ssh_config"
 )
 
 const kSshX11Proto = "MIT-MAGIC-COOKIE-1"
 
-func getXauthAndProto(display string, trusted bool, timeout int) (string, string, error) {
-	if !commandExists("xauth") {
-		debug("X11 authentication will be faked due to xauth not found")
-		return genFakeXauth()
+const kSshX11TimeoutSlack = 60
+
+type xauthInfo struct {
+	xauthProto string
+	realCookie []byte
+	fakeCookie []byte
+}
+
+func getXauthInfo(args *sshArgs, display string, trusted bool, timeout int) (*xauthInfo, error) {
+	xauthData, err := genListXauthInfo(args, display, trusted, timeout)
+	if err == nil {
+		return xauthData, nil
 	}
 
-	var listArgs []string
+	if trusted || runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
+		// === Trusted-mode fallback ===
+		// In trusted mode, if authentication cookie cannot be obtained via xauth list,
+		// a fake cookie is generated. The X11 server will ignore it and use whatever
+		// authentication mechanisms it was using otherwise for the local connection.
+		//
+		// === Platform-specific fallback ===
+		// On Windows or macOS, using a fake cookie is relatively safe because the risk is
+		// limited to the X11 server application. The remote X11 client cannot normally
+		// capture input or events from other local applications outside that X11 server.
+		if isRunningInRemoteSsh() {
+			warning("using fake authentication cookie for X11 forwarding due to: %v", err)
+		} else {
+			debug("using fake authentication cookie for X11 forwarding due to: %v", err)
+		}
+		return fillFakeCookie(&xauthInfo{xauthProto: kSshX11Proto})
+	}
+
+	// Don't fall back to fake cookie for untrusted forwarding on Linux.
+	return nil, err
+}
+
+func genListXauthInfo(args *sshArgs, display string, trusted bool, timeout int) (*xauthInfo, error) {
+	xauthPath := getXauthPath(args)
+	if xauthPath == "" {
+		return nil, fmt.Errorf("no xauth program")
+	}
+
+	if strings.HasPrefix(display, "/") {
+		if pos := strings.LastIndexByte(display, ':'); pos > 0 {
+			display = "unix" + display[pos:]
+		}
+	} else if strings.HasPrefix(display, "localhost:") {
+		display = "unix" + display[9:]
+	}
+
+	var genPath string
 	if !trusted {
 		file, err := os.CreateTemp("", "xauthfile_*")
 		if err != nil {
-			warning("X11 authentication will be faked due to create temp file failed: %v", err)
-			return genFakeXauth()
+			return nil, fmt.Errorf("create temp file failed: %v", err)
 		}
-		path := file.Name()
+		genPath = file.Name()
 		_ = file.Close()
-		defer func() { _ = os.Remove(path) }()
-		genArgs := []string{"-f", path, "generate", display, kSshX11Proto, "untrusted"}
+		defer func() { _ = os.Remove(genPath) }()
+		genArgs := []string{"-f", genPath, "generate", display, kSshX11Proto, "untrusted"}
 		if timeout > 0 {
-			genArgs = append(genArgs, "timeout", strconv.Itoa(timeout))
+			genArgs = append(genArgs, "timeout", strconv.FormatUint(uint64(getX11Timeout(timeout)), 10))
 		}
-		debug("xauth generate command: %v", genArgs)
-		if _, err := execXauthCommand(genArgs); err != nil {
-			warning("X11 authentication will be faked due to xauth generate failed: %v", err)
-			return genFakeXauth()
+		debug("xauth generate command: %s %v", xauthPath, genArgs)
+		if _, err := execXauthCommand(xauthPath, genArgs); err != nil {
+			return nil, fmt.Errorf("xauth generate failed: %v", err)
 		}
-		listArgs = []string{"-f", path, "list", display}
-	} else {
-		listArgs = []string{"list"}
 	}
 
-	debug("xauth list command: %v", listArgs)
-	out, err := execXauthCommand(listArgs)
+	listArgs := []string{"-q", "-n"}
+	if genPath != "" {
+		listArgs = append(listArgs, "-f", genPath)
+	}
+	listArgs = append(listArgs, "list", display)
+	debug("xauth list command: %s %v", xauthPath, listArgs)
+	out, err := execXauthCommand(xauthPath, listArgs)
 	if err != nil {
-		warning("X11 authentication will be faked due to xauth list failed: %v", err)
-		return genFakeXauth()
+		return nil, fmt.Errorf("xauth list failed: %v", err)
 	}
 
-	displayNumber := getDisplayNumber(display)
 	for line := range strings.SplitSeq(out, "\n") {
 		fields := strings.Fields(line)
 		if len(fields) < 3 {
 			continue
 		}
-		if getDisplayNumber(fields[0]) == displayNumber {
-			return fields[2], fields[1], nil
+		// display already constrained, just return the first one.
+		cookie, err := hex.DecodeString(fields[2])
+		if err != nil {
+			return nil, fmt.Errorf("decode cookie [%s] failed: %v", fields[2], err)
+		}
+		return fillFakeCookie(&xauthInfo{xauthProto: fields[1], realCookie: cookie})
+	}
+
+	return nil, fmt.Errorf("no matching xauth for display: %s", display)
+}
+
+func getXauthPath(args *sshArgs) string {
+	ssh_config.SetDefault("XAuthLocation", "")
+	xauthPath := getOptionConfig(args, "XAuthLocation")
+	if xauthPath != "" {
+		if isFileExist(xauthPath) {
+			return xauthPath
+		} else {
+			warning("XAuthLocation [%s] not found, falling back to xauth in $PATH", xauthPath)
 		}
 	}
 
-	warning("X11 authentication will be faked due to no matching xauth for display [%s]", display)
-	return genFakeXauth()
-}
-
-func getDisplayNumber(display string) string {
-	if i := strings.LastIndex(display, ":"); i >= 0 {
-		s := display[i+1:]
-		if j := strings.IndexByte(s, '.'); j >= 0 {
-			return s[:j]
-		}
-		return s
+	if !commandExists("xauth") {
+		return ""
 	}
-	return display
+
+	return "xauth"
 }
 
-func execXauthCommand(args []string) (string, error) {
-	cmd := exec.Command("xauth", args...)
+func execXauthCommand(xauthPath string, args []string) (string, error) {
+	cmd := exec.Command(xauthPath, args...)
 	var outBuf, errBuf bytes.Buffer
 	cmd.Stdout = &outBuf
 	cmd.Stderr = &errBuf
@@ -113,10 +169,25 @@ func execXauthCommand(args []string) (string, error) {
 	return strings.TrimSpace(outBuf.String()), nil
 }
 
-func genFakeXauth() (string, string, error) {
-	cookie := make([]byte, 16)
-	if _, err := rand.Read(cookie); err != nil {
-		return "", "", fmt.Errorf("random cookie failed: %v", err)
+func getX11Timeout(timeout int) uint32 {
+	if timeout < math.MaxUint32-kSshX11TimeoutSlack {
+		return uint32(timeout) + kSshX11TimeoutSlack
 	}
-	return fmt.Sprintf("%x", cookie), kSshX11Proto, nil
+	return math.MaxUint32
+}
+
+func fillFakeCookie(xauthData *xauthInfo) (*xauthInfo, error) {
+	length := len(xauthData.realCookie)
+	if length == 0 {
+		length = 16
+	}
+	cookie := make([]byte, length)
+	if _, err := rand.Read(cookie); err != nil {
+		return nil, fmt.Errorf("random cookie failed: %v", err)
+	}
+	xauthData.fakeCookie = cookie
+	if len(xauthData.realCookie) == 0 {
+		xauthData.realCookie = cookie
+	}
+	return xauthData, nil
 }

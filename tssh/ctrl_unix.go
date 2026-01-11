@@ -285,7 +285,7 @@ func startControlMaster(param *sshParam, sshPath string) error {
 	if args.NoX11Forward {
 		cmdArgs = append(cmdArgs, "-x")
 	} else {
-		if args.X11Untrusted {
+		if args.X11Forward {
 			cmdArgs = append(cmdArgs, "-X")
 		}
 		if args.X11Trusted {

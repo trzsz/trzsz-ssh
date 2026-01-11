@@ -400,6 +400,22 @@ func warning(format string, a ...any) {
 	_, _ = os.Stderr.Write(buf.Bytes())
 }
 
+// delayWarning delays printing the warning message to improve its visibility.
+// In some cases a warning message may be printed on the first line at the top
+// and immediately followed by other output, causing the warning message to be
+// scrolled out of view. Delaying the emission may help mitigate this issue and
+// improve warning visibility during subsequent scroll output.
+func delayWarning(delayTime time.Duration, format string, a ...any) {
+	if !enableWarningLogging {
+		return
+	}
+
+	go func() {
+		time.Sleep(delayTime)
+		warning(format, a...)
+	}()
+}
+
 func isFileExist(path string) bool {
 	stat, _ := os.Stat(path)
 	if stat == nil {
@@ -447,4 +463,14 @@ func doWithTimeout[T any](task func() (T, error), timeout time.Duration) (T, err
 	case res := <-done:
 		return res.ret, res.err
 	}
+}
+
+var runningInRemoteSshOnce sync.Once
+var runningInRemoteSshFlag atomic.Bool
+
+func isRunningInRemoteSsh() bool {
+	runningInRemoteSshOnce.Do(func() {
+		runningInRemoteSshFlag.Store(isRemoteSshEnv(os.Getpid()))
+	})
+	return runningInRemoteSshFlag.Load()
 }
