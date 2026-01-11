@@ -233,7 +233,7 @@ func TestParseForwardArg(t *testing.T) {
 
 func TestConvertSshTime(t *testing.T) {
 	assert := assert.New(t)
-	assertTimeEqual := func(time string, expected int) {
+	assertTimeEqual := func(time string, expected uint32) {
 		t.Helper()
 		seconds, err := convertSshTime(time)
 		assert.Nil(err)
@@ -249,4 +249,25 @@ func TestConvertSshTime(t *testing.T) {
 	assertTimeEqual("2d", 172800)
 	assertTimeEqual("1w", 604800)
 	assertTimeEqual("1W2d3h4m5", 788645)
+
+	assertTimeEqual("10S", 10)
+	assertTimeEqual("2M", 120)
+	assertTimeEqual("2H", 7200)
+	assertTimeEqual("2D", 172800)
+	assertTimeEqual("2W", 1209600)
+	assertTimeEqual("2d3h15m10s", 2*86400+3*3600+15*60+10)
+	assertTimeEqual("4294967295", 4294967295)
+
+	assertTimeError := func(input string, errMsgSubstring string) {
+		t.Helper()
+		_, err := convertSshTime(input)
+		assert.NotNil(err)
+		assert.Contains(err.Error(), errMsgSubstring)
+	}
+	assertTimeError("", "empty")
+	assertTimeError("abc", "invalid")
+	assertTimeError("10x", "invalid")
+	assertTimeError("10m5y", "invalid")
+	assertTimeError("9999999999h", "overflow")
+	assertTimeError("4294967296s", "overflow")
 }

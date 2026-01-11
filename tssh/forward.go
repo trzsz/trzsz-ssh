@@ -31,6 +31,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net"
 	"os"
 	"regexp"
@@ -672,7 +673,7 @@ func sshX11Forward(sshConn *sshConnection) {
 		}
 	}()
 
-	timeout := 1200
+	timeout := uint32(1200)
 	forwardX11Timeout := getOptionConfig(args, "ForwardX11Timeout")
 	if forwardX11Timeout != "" && strings.ToLower(forwardX11Timeout) != "none" {
 		seconds, err := convertSshTime(forwardX11Timeout)
@@ -784,33 +785,60 @@ func resolveDisplayEnv(display string) (string, uint32, uint32, error) {
 	return hostname, uint32(dn), uint32(sn), nil
 }
 
-func convertSshTime(time string) (int, error) {
-	total := 0
-	seconds := 0
-	for _, ch := range time {
-		switch {
-		case ch >= '0' && ch <= '9':
-			seconds = seconds*10 + int(ch-'0')
-		case ch == 's' || ch == 'S':
-			total += seconds
-			seconds = 0
-		case ch == 'm' || ch == 'M':
-			total += seconds * 60
-			seconds = 0
-		case ch == 'h' || ch == 'H':
-			total += seconds * 60 * 60
-			seconds = 0
-		case ch == 'd' || ch == 'D':
-			total += seconds * 60 * 60 * 24
-			seconds = 0
-		case ch == 'w' || ch == 'W':
-			total += seconds * 60 * 60 * 24 * 7
-			seconds = 0
-		default:
-			return 0, fmt.Errorf("invalid char '%c'", ch)
-		}
+func convertSshTime(s string) (uint32, error) {
+	if s == "" {
+		return 0, fmt.Errorf("empty time string")
 	}
-	return total + seconds, nil
+
+	var total uint32
+	for i := 0; i < len(s); {
+		start := i
+		// parse integer
+		for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+			i++
+		}
+		if start == i {
+			return 0, fmt.Errorf("invalid char '%c' at position %d", s[i], i)
+		}
+
+		val64, err := strconv.ParseUint(s[start:i], 10, 32)
+		if err != nil {
+			return 0, fmt.Errorf("value overflow at position %d", start)
+		}
+		val := uint32(val64)
+
+		// determine multiplier
+		multiplier := uint32(1)
+		if i < len(s) {
+			switch s[i] {
+			case 's', 'S':
+				multiplier = 1
+			case 'm', 'M':
+				multiplier = 60
+			case 'h', 'H':
+				multiplier = 60 * 60
+			case 'd', 'D':
+				multiplier = 24 * 60 * 60
+			case 'w', 'W':
+				multiplier = 7 * 24 * 60 * 60
+			default:
+				return 0, fmt.Errorf("invalid time unit '%c'", s[i])
+			}
+			i++
+		}
+
+		// check overflow
+		if val != 0 && multiplier > math.MaxUint32/val {
+			return 0, fmt.Errorf("time value overflow")
+		}
+		val *= multiplier
+		if total > math.MaxUint32-val {
+			return 0, fmt.Errorf("total seconds overflow")
+		}
+		total += val
+	}
+
+	return total, nil
 }
 
 func serveX11(display, hostname string, displayNumber uint32, channel ssh.Channel, xauthData *xauthInfo) {

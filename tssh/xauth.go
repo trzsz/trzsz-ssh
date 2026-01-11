@@ -49,7 +49,7 @@ type xauthInfo struct {
 	fakeCookie []byte
 }
 
-func getXauthInfo(args *sshArgs, display string, trusted bool, timeout int) (*xauthInfo, error) {
+func getXauthInfo(args *sshArgs, display string, trusted bool, timeout uint32) (*xauthInfo, error) {
 	xauthData, err := genListXauthInfo(args, display, trusted, timeout)
 	if err == nil {
 		return xauthData, nil
@@ -77,7 +77,7 @@ func getXauthInfo(args *sshArgs, display string, trusted bool, timeout int) (*xa
 	return nil, err
 }
 
-func genListXauthInfo(args *sshArgs, display string, trusted bool, timeout int) (*xauthInfo, error) {
+func genListXauthInfo(args *sshArgs, display string, trusted bool, timeout uint32) (*xauthInfo, error) {
 	xauthPath := getXauthPath(args)
 	if xauthPath == "" {
 		return nil, fmt.Errorf("no xauth program")
@@ -169,7 +169,7 @@ func execXauthCommand(xauthPath string, args []string) (string, error) {
 	return strings.TrimSpace(outBuf.String()), nil
 }
 
-func getX11Timeout(timeout int) uint32 {
+func getX11Timeout(timeout uint32) uint32 {
 	if timeout < math.MaxUint32-kSshX11TimeoutSlack {
 		return uint32(timeout) + kSshX11TimeoutSlack
 	}
