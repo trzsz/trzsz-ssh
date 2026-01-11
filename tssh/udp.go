@@ -36,7 +36,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	"unicode"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/trzsz/tsshd/tsshd"
@@ -251,6 +250,7 @@ func udpLogin(param *sshParam, tcpClient SshClient) (SshClient, error) {
 	// Ensure at least 10 keep-alive attempts before exiting on timeout,
 	// 3 attempts before reconnect, and at least one attempt every 3 seconds.
 	intervalTime := min(globalUdpAliveTimeout/10, min(heartbeatTimeout, reconnectTimeout)/3, 3*time.Second)
+	debug("udp keep alive interval time [%v] for [%s]", intervalTime, args.Destination)
 
 	// new udp client
 	udpClient := &sshUdpClient{
@@ -420,45 +420,106 @@ func getTsshdCommand(param *sshParam, mtu uint16, connectTimeout time.Duration) 
 
 	if mtu > 0 {
 		buf.WriteString(" --mtu ")
-		buf.WriteString(strconv.Itoa(int(mtu)))
+		buf.WriteString(fmt.Sprintf("%d", mtu))
+	}
+
+	tsshdPort := args.TsshdPort
+	if tsshdPort == "" {
+		tsshdPort = getExOptionConfig(args, "TsshdPort")
+	}
+	if tsshdPort == "" {
+		tsshdPort = getExOptionConfig(args, "UdpPort") // backward compatibility
+	}
+	if tsshdPort != "" {
+		ranges := parseTsshdPortRanges(tsshdPort)
+		if len(ranges) > 0 {
+			buf.WriteString(" --port ")
+			for i, r := range ranges {
+				if i > 0 {
+					buf.WriteByte(',')
+				}
+				if r[0] == r[1] {
+					buf.WriteString(fmt.Sprintf("%d", r[0]))
+				} else {
+					buf.WriteString(fmt.Sprintf("%d-%d", r[0], r[1]))
+				}
+			}
+		}
 	}
 
 	if connectTimeout != kDefaultConnectTimeout {
 		buf.WriteString(" --connect-timeout ")
-		buf.WriteString(strconv.Itoa(int(connectTimeout / time.Second)))
-	}
-
-	if udpPort := getExOptionConfig(args, "UdpPort"); udpPort != "" {
-		ports := strings.FieldsFunc(udpPort, func(c rune) bool {
-			return unicode.IsSpace(c) || c == ',' || c == '-'
-		})
-		if len(ports) == 1 {
-			port, err := strconv.ParseUint(ports[0], 10, 16)
-			if err != nil {
-				warning("UdpPort %s is invalid: %v", udpPort, err)
-			} else {
-				buf.WriteString(fmt.Sprintf(" --port %d", port))
-			}
-		} else if len(ports) == 2 {
-			func() {
-				lowPort, err := strconv.ParseUint(ports[0], 10, 16)
-				if err != nil {
-					warning("UdpPort %s is invalid: %v", udpPort, err)
-					return
-				}
-				highPort, err := strconv.ParseUint(ports[1], 10, 16)
-				if err != nil {
-					warning("UdpPort %s is invalid: %v", udpPort, err)
-					return
-				}
-				buf.WriteString(fmt.Sprintf(" --port %d-%d", lowPort, highPort))
-			}()
-		} else {
-			warning("UdpPort %s is invalid", udpPort)
-		}
+		buf.WriteString(fmt.Sprintf("%d", connectTimeout/time.Second))
 	}
 
 	return buf.String()
+}
+
+func parseTsshdPortRanges(tsshdPort string) [][2]uint16 {
+	var ranges [][2]uint16
+
+	addPortRange := func(lowPort string, highPort *string) {
+		low, err := strconv.ParseUint(lowPort, 10, 16)
+		if err != nil || low == 0 {
+			warning("tsshd port [%s] invalid: port [%s] is not a value in [1, 65535]", tsshdPort, lowPort)
+			return
+		}
+		high := low
+		if highPort != nil {
+			high, err = strconv.ParseUint(*highPort, 10, 16)
+			if err != nil || high == 0 {
+				warning("tsshd port [%s] invalid: port [%s] is not a value in [1, 65535]", tsshdPort, *highPort)
+				return
+			}
+		}
+		if low > high {
+			warning("tsshd port [%s] invalid: port range [%d-%d] is invalid (low > high)", tsshdPort, low, high)
+			return
+		}
+		ranges = append(ranges, [2]uint16{uint16(low), uint16(high)})
+	}
+
+	for seg := range strings.SplitSeq(tsshdPort, ",") {
+		tokens := strings.Fields(seg)
+		k := -1
+		for i := 0; i < len(tokens); i++ {
+			token := tokens[i]
+			// Case 1: combined form like "8000-9000"
+			if strings.Contains(token, "-") && token != "-" {
+				parts := strings.Split(token, "-")
+				if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+					warning("tsshd port [%s] invalid: malformed port range [%s]", tsshdPort, token)
+					continue
+				}
+				addPortRange(parts[0], &parts[1])
+				continue
+			}
+			// Case 2: single "-"
+			if token == "-" {
+				if i == 0 || i+1 >= len(tokens) || i-1 <= k {
+					warning("tsshd port [%s] invalid: '-' must appear between two ports", tsshdPort)
+					i++
+					continue
+				}
+				addPortRange(tokens[i-1], &tokens[i+1])
+				k = i + 1
+				i++ // skip high
+				continue
+			}
+			// Case 3: part of a range: skip (handled by '-')
+			if i+1 < len(tokens) && tokens[i+1] == "-" {
+				continue
+			}
+			// Case 4: plain number
+			if i > 0 && tokens[i-1] == "-" {
+				warning("tsshd port [%s] invalid: malformed port range [- %s]", tsshdPort, token)
+				continue
+			}
+			addPortRange(token, nil)
+		}
+	}
+
+	return ranges
 }
 
 func readConsoleOutput(stream io.Reader) (string, error) {
@@ -489,8 +550,8 @@ func getUdpMode(args *sshArgs) udpModeType {
 	if udpMode := args.Option.get("UdpMode"); udpMode != "" {
 		switch strings.ToLower(udpMode) {
 		case "no":
-			if args.Udp {
-				warning("disable UDP since -oUdpMode=No")
+			if args.UDP || args.KCP {
+				warning("disable UDP mode since -oUdpMode=No")
 			}
 			return kUdpModeNo
 		case "yes":
@@ -502,6 +563,10 @@ func getUdpMode(args *sshArgs) udpModeType {
 		default:
 			warning("unknown UdpMode %s", udpMode)
 		}
+	}
+
+	if args.KCP {
+		return kUdpModeKcp
 	}
 
 	udpMode := getExConfig(args.Destination, "UdpMode")
@@ -518,7 +583,7 @@ func getUdpMode(args *sshArgs) udpModeType {
 		warning("unknown UdpMode %s", udpMode)
 	}
 
-	if args.Udp {
+	if args.UDP {
 		return kUdpModeYes
 	}
 	return kUdpModeNo

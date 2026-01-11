@@ -84,8 +84,10 @@ type sshArgs struct {
 	Debug          bool        `arg:"--debug" help:"verbose mode for debugging, same as ssh's -vvv"`
 	Zmodem         bool        `arg:"--zmodem" help:"enable zmodem lrzsz ( rz / sz ) feature"`
 	Dns            string      `arg:"--dns" placeholder:"[udp://|tcp://]host[:port]" help:"custom DNS server"`
-	Udp            bool        `arg:"--udp" help:"ssh over UDP like mosh (default mode: QUIC)"`
+	UDP            bool        `arg:"--udp" help:"ssh over UDP like mosh (default: QUIC)"`
+	KCP            bool        `arg:"--kcp" help:"[udp] use KCP protocol for ssh over UDP"`
 	TsshdPath      string      `arg:"--tsshd-path" placeholder:"path" help:"[udp] tsshd absolute path on the server"`
+	TsshdPort      string      `arg:"--tsshd-port" placeholder:"low-high" help:"[udp] port range that tsshd listens on"`
 	NewHost        bool        `arg:"--new-host" help:"[tools] add new host to configuration"`
 	EncSecret      bool        `arg:"--enc-secret" help:"[tools] encode secret for configuration"`
 	ListHosts      bool        `arg:"--list-hosts" help:"[tools] list all hosts in configuration"`

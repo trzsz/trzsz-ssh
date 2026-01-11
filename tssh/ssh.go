@@ -175,11 +175,17 @@ type SshArgs struct {
 	// Debug causes ssh to print debugging messages about its progress
 	Debug bool
 
-	// Udp means using UDP protocol ( QUIC / KCP ) connection like mosh
-	Udp bool
+	// UDP indicates using a UDP-based transport for a mosh-like connection
+	UDP bool
 
-	// TsshdPath specifies the tsshd absolute path on the server
+	// KCP indicates using the KCP protocol for a mosh-like connection
+	KCP bool
+
+	// TsshdPath specifies the absolute path to the tsshd binary on the server
 	TsshdPath string
+
+	// TsshdPort specifies the port or port range that tsshd listens on
+	TsshdPort string
 }
 
 // SshLogin logs in to the remote server and creates a Client.
@@ -208,8 +214,10 @@ func SshLogin(args *SshArgs) (SshClient, error) {
 		ProxyJump:   args.ProxyJump,
 		Option:      sshOption{options},
 		Debug:       args.Debug,
-		Udp:         args.Udp,
+		UDP:         args.UDP,
+		KCP:         args.KCP,
 		TsshdPath:   args.TsshdPath,
+		TsshdPort:   args.TsshdPort,
 	})
 	if err != nil {
 		return nil, err
