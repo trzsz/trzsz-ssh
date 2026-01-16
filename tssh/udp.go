@@ -248,8 +248,8 @@ func udpLogin(param *sshParam, tcpClient SshClient) (SshClient, error) {
 	heartbeatTimeout := getUdpTimeoutConfig(args, "UdpHeartbeatTimeout", kDefaultUdpHeartbeatTimeout)
 	reconnectTimeout := getUdpTimeoutConfig(args, "UdpReconnectTimeout", kDefaultUdpReconnectTimeout)
 	// Ensure at least 10 keep-alive attempts before exiting on timeout,
-	// 3 attempts before reconnect, and at least one attempt every 3 seconds.
-	intervalTime := min(globalUdpAliveTimeout/10, min(heartbeatTimeout, reconnectTimeout)/3, 3*time.Second)
+	// and at least 3 attempts before reconnect or showing a connection lost notification.
+	intervalTime := min(globalUdpAliveTimeout/10, min(heartbeatTimeout, reconnectTimeout)/3)
 	debug("udp keep alive interval time [%v] for [%s]", intervalTime, args.Destination)
 
 	// new udp client
