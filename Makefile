@@ -17,7 +17,13 @@ else
 	TSSH := tssh
 endif
 
-GO_TEST := ${shell basename `which gotest 2>/dev/null` 2>/dev/null || echo go test}
+ifeq (${OS}, Windows_NT)
+	RM := PowerShell -Command Remove-Item -Force
+	GO_TEST := go test
+else
+	RM := rm -f
+	GO_TEST := ${shell basename `which gotest 2>/dev/null` 2>/dev/null || echo go test}
+endif
 
 .PHONY: all clean test install
 
@@ -27,11 +33,15 @@ ${BIN_DIR}/${TSSH}: $(wildcard ./cmd/tssh/*.go ./tssh/*.go) go.mod go.sum
 	go build -o ${BIN_DIR}/ ./cmd/tssh
 
 clean:
-	-rm -f ${BIN_DIR}/tssh ${BIN_DIR}/tssh.exe
+	$(foreach f, $(wildcard ${BIN_DIR}/*), $(RM) $(f);)
 
 test:
 	${GO_TEST} -v -count=1 ./tssh
 
 install: all
-	mkdir -p ${DESTDIR}${BIN_DST}
+ifdef WIN_TARGET
+	@echo install target is not supported for Windows
+else
+	@mkdir -p ${DESTDIR}${BIN_DST}
 	cp ${BIN_DIR}/tssh ${DESTDIR}${BIN_DST}/
+endif
