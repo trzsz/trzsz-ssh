@@ -637,6 +637,10 @@ func getExOptionConfig(args *sshArgs, option string) string {
 	return getExConfig(args.Destination, option)
 }
 
+func getAllExOptionConfig(args *sshArgs, option string) []string {
+	return append(args.Option.getAll(option), getAllExConfig(args.Destination, option)...)
+}
+
 var secretEncodeKey = []byte("THE_UNSAFE_KEY_FOR_ENCODING_ONLY")
 
 func encodeSecret(secret []byte) (string, error) {

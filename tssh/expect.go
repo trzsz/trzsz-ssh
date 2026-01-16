@@ -144,7 +144,7 @@ func (s *expectSender) decodeText(text string) []*expectSendText {
 }
 
 func (s *expectSender) getExpectPsssSleep() (bool, bool) {
-	passSleep := getExConfig(s.expect.param.args.Destination, fmt.Sprintf("%sExpectPassSleep", s.expect.pre))
+	passSleep := getExOptionConfig(s.expect.param.args, fmt.Sprintf("%sExpectPassSleep", s.expect.pre))
 	switch strings.ToLower(passSleep) {
 	case "each":
 		return true, false
@@ -156,7 +156,7 @@ func (s *expectSender) getExpectPsssSleep() (bool, bool) {
 }
 
 func (s *expectSender) getExpectSleepTime() time.Duration {
-	expectSleepMS := getExConfig(s.expect.param.args.Destination, fmt.Sprintf("%sExpectSleepMS", s.expect.pre))
+	expectSleepMS := getExOptionConfig(s.expect.param.args, fmt.Sprintf("%sExpectSleepMS", s.expect.pre))
 	if expectSleepMS == "" {
 		return kDefaultExpectSleepMS * time.Millisecond
 	}
@@ -409,8 +409,7 @@ func (e *sshExpect) waitForPattern(pattern string, caseSends *caseSendList) (str
 }
 
 func (e *sshExpect) getExpectSender(idx int, question string) *expectSender {
-	dest := e.param.args.Destination
-	if pass := getExConfig(dest, fmt.Sprintf("%sExpectSendPass%d", e.pre, idx)); pass != "" {
+	if pass := getExOptionConfig(e.param.args, fmt.Sprintf("%sExpectSendPass%d", e.pre, idx)); pass != "" {
 		secret, err := decodeSecret(pass)
 		if err != nil {
 			warning("decode %sExpectSendPass%d [%s] failed: %v", e.pre, idx, pass, err)
@@ -419,11 +418,11 @@ func (e *sshExpect) getExpectSender(idx int, question string) *expectSender {
 		return newPassSender(e, secret)
 	}
 
-	if text := getExConfig(dest, fmt.Sprintf("%sExpectSendText%d", e.pre, idx)); text != "" {
+	if text := getExOptionConfig(e.param.args, fmt.Sprintf("%sExpectSendText%d", e.pre, idx)); text != "" {
 		return newTextSender(e, text)
 	}
 
-	if encTotp := getExConfig(dest, fmt.Sprintf("%sExpectSendEncTotp%d", e.pre, idx)); encTotp != "" {
+	if encTotp := getExOptionConfig(e.param.args, fmt.Sprintf("%sExpectSendEncTotp%d", e.pre, idx)); encTotp != "" {
 		secret, err := decodeSecret(encTotp)
 		if err != nil {
 			warning("decode %sExpectSendEncTotp%d [%s] failed: %v", e.pre, idx, encTotp, err)
@@ -432,7 +431,7 @@ func (e *sshExpect) getExpectSender(idx int, question string) *expectSender {
 		return newPassSender(e, getTotpCode(secret))
 	}
 
-	if encOtp := getExConfig(dest, fmt.Sprintf("%sExpectSendEncOtp%d", e.pre, idx)); encOtp != "" {
+	if encOtp := getExOptionConfig(e.param.args, fmt.Sprintf("%sExpectSendEncOtp%d", e.pre, idx)); encOtp != "" {
 		command, err := decodeSecret(encOtp)
 		if err != nil {
 			warning("decode %sExpectSendEncOtp%d [%s] failed: %v", e.pre, idx, encOtp, err)
@@ -441,11 +440,11 @@ func (e *sshExpect) getExpectSender(idx int, question string) *expectSender {
 		return newPassSender(e, getOtpCommandOutput(command, question))
 	}
 
-	if secret := getExConfig(dest, fmt.Sprintf("%sExpectSendTotp%d", e.pre, idx)); secret != "" {
+	if secret := getExOptionConfig(e.param.args, fmt.Sprintf("%sExpectSendTotp%d", e.pre, idx)); secret != "" {
 		return newPassSender(e, getTotpCode(secret))
 	}
 
-	if command := getExConfig(dest, fmt.Sprintf("%sExpectSendOtp%d", e.pre, idx)); command != "" {
+	if command := getExOptionConfig(e.param.args, fmt.Sprintf("%sExpectSendOtp%d", e.pre, idx)); command != "" {
 		return newPassSender(e, getOtpCommandOutput(command, question))
 	}
 
@@ -453,21 +452,20 @@ func (e *sshExpect) getExpectSender(idx int, question string) *expectSender {
 }
 
 func (e *sshExpect) execInteractions(writer io.Writer, expectCount int) {
-	dest := e.param.args.Destination
 	for idx := 1; idx <= expectCount; idx++ {
-		pattern := getExConfig(dest, fmt.Sprintf("%sExpectPattern%d", e.pre, idx))
+		pattern := getExOptionConfig(e.param.args, fmt.Sprintf("%sExpectPattern%d", e.pre, idx))
 		if pattern != "" {
 			debug("expect %d pattern: %s", idx, pattern)
 		} else {
 			warning("expect %d pattern is empty, no output will be matched", idx)
 		}
 		caseSends := &caseSendList{e, writer, nil}
-		for _, cfg := range getAllExConfig(dest, fmt.Sprintf("%sExpectCaseSendPass%d", e.pre, idx)) {
+		for _, cfg := range getAllExOptionConfig(e.param.args, fmt.Sprintf("%sExpectCaseSendPass%d", e.pre, idx)) {
 			if err := caseSends.addCaseSendPass(cfg); err != nil {
 				warning("Invalid ExpectCaseSendPass%d: %v", idx, err)
 			}
 		}
-		for _, cfg := range getAllExConfig(dest, fmt.Sprintf("%sExpectCaseSendText%d", e.pre, idx)) {
+		for _, cfg := range getAllExOptionConfig(e.param.args, fmt.Sprintf("%sExpectCaseSendText%d", e.pre, idx)) {
 			if err := caseSends.addCaseSendText(cfg); err != nil {
 				warning("Invalid ExpectCaseSendText%d: %v", idx, err)
 			}
