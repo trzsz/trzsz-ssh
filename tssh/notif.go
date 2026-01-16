@@ -72,6 +72,14 @@ func showConnectionLostNotif(client *sshUdpClient) {
 		time.Sleep(200 * time.Millisecond)
 	}
 	notif.renderView(false, true)
+
+	// clear the area below the cursor before redrawing the screen
+	if tmuxPaneId != "" {
+		writeTmuxOutput([]byte(ansi.EraseScreenBelow), tmuxPaneId)
+	} else {
+		_, _ = os.Stderr.WriteString(ansi.EraseScreenBelow)
+	}
+
 	_, _ = doWithTimeout(func() (int, error) {
 		client.debug("requesting screen redraw")
 		client.sshConn.Load().session.RedrawScreen()
@@ -166,7 +174,9 @@ func (m *notifModel) renderView(exiting, redrawing bool) {
 		return
 	}
 
+	width := m.getWidth()
 	var buf bytes.Buffer
+	buf.WriteString(ansi.ResetModeAutoWrap)
 	buf.WriteString(ansi.HideCursor)
 	if m.client.notifInterceptor.noticeOnTop {
 		if m.cursorPos == nil {
@@ -209,6 +219,7 @@ func (m *notifModel) renderView(exiting, redrawing bool) {
 	} else if !m.client.isReconnectTimeout() || exiting {
 		buf.WriteString(ansi.ShowCursor)
 	}
+	buf.WriteString(ansi.SetModeAutoWrap)
 
 	if exiting {
 		buf.WriteString("\r\n")
@@ -218,6 +229,13 @@ func (m *notifModel) renderView(exiting, redrawing bool) {
 	if m.tmuxPaneId != "" {
 		writeTmuxOutput(buf.Bytes(), m.tmuxPaneId)
 	} else {
+		if width != m.getWidth() {
+			// Terminal column changed, skip this render to avoid misaligned output
+			// Note: due to asynchronous terminal size changes (e.g., lock screen or resize),
+			// This only reduces misalignment risk; it can't guarantee 100% correct output.
+			m.client.debug("skipping render: column changed from %d to %d", width, m.getWidth())
+			return
+		}
 		_, _ = os.Stderr.Write(buf.Bytes())
 	}
 }
@@ -424,7 +442,10 @@ func (ni *notifInterceptor) forwardOutput(reader io.Reader, writer io.WriteClose
 				buf := buffer[:n]
 				if ni.filterESC6n.Load() {
 					if enableDebugLogging {
-						ni.client.debug("filtered %d ESC[6n sequence(s) from live output", bytes.Count(buf, []byte("\x1b[6n")))
+						n := bytes.Count(buf, []byte("\x1b[6n"))
+						if n > 0 {
+							ni.client.debug("filtered %d ESC[6n sequence(s) from live output", n)
+						}
 					}
 					buf = bytes.ReplaceAll(buf, []byte("\x1b[6n"), []byte(""))
 				}
