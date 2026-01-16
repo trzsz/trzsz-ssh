@@ -290,6 +290,7 @@ func (m *notifModel) getWidth() int {
 type notifInterceptor struct {
 	client        *sshUdpClient
 	inputBufChan  chan []byte
+	inputBufChMu  sync.Mutex
 	noticeOnTop   bool
 	showFullNotif atomic.Bool
 	interceptFlag atomic.Bool
@@ -349,8 +350,13 @@ func (ni *notifInterceptor) handleUserInput(input []byte) {
 
 func (ni *notifInterceptor) forwardInput(reader io.Reader, writer io.WriteCloser) {
 	ni.inputBufChan = make(chan []byte, 10)
-	defer close(ni.inputBufChan)
-	defer close(ni.interceptChan)
+	defer func() {
+		close(ni.interceptChan)
+		ni.inputBufChMu.Lock()
+		defer ni.inputBufChMu.Unlock()
+		close(ni.inputBufChan)
+		ni.inputBufChan = nil
+	}()
 
 	go func() {
 		defer func() { _ = writer.Close() }()
@@ -402,6 +408,12 @@ func (ni *notifInterceptor) forwardInput(reader io.Reader, writer io.WriteCloser
 }
 
 func (ni *notifInterceptor) discardPendingInput(discardMarker []byte) []byte {
+	ni.inputBufChMu.Lock()
+	defer ni.inputBufChMu.Unlock()
+	if ni.inputBufChan == nil {
+		return nil
+	}
+
 	if ni.client == ni.client.sshConn.Load().client { // the last ssh client is udp client
 		defer func() { ni.inputBufChan <- discardMarker }()
 	}
