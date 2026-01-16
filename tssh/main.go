@@ -160,6 +160,10 @@ func TsshMain(argv []string) int {
 		return kExitCodeArgsInvalid
 	}
 
+	if args.VerDetailed {
+		return printVersionDetailed()
+	}
+
 	// debug log
 	if args.Debug {
 		enableDebugLogging = true

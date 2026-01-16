@@ -93,7 +93,7 @@ func printVersionShort() int {
 	return 0
 }
 
-func printVersionDetailed() (int, bool) {
+func printVersionDetailed() int {
 	fmt.Println(getTsshVersion())
-	return 0, true
+	return 0
 }

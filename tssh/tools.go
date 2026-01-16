@@ -519,8 +519,6 @@ func isFileNotExistOrEmpty(path string) bool {
 // return false to continue ssh login
 func execLocalTools(args *sshArgs) (int, bool) {
 	switch {
-	case args.VerDetailed:
-		return printVersionDetailed()
 	case args.EncSecret:
 		return execEncodeSecret()
 	case args.NewHost || args.Destination == "" && isFileNotExistOrEmpty(userConfig.configPath):
