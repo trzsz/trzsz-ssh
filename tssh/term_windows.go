@@ -35,7 +35,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	"github.com/muesli/termenv"
 	"golang.org/x/sys/windows"
 	"golang.org/x/term"

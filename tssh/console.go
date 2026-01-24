@@ -32,8 +32,8 @@ import (
 	"strings"
 	"sync/atomic"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -119,9 +119,9 @@ func (m *menuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *menuModel) View() string {
+func (m *menuModel) View() tea.View {
 	if m.quitting {
-		return ""
+		return tea.NewView("")
 	}
 	var builder strings.Builder
 	m.writeLine(&builder, m.renderBlankLine())
@@ -131,7 +131,7 @@ func (m *menuModel) View() string {
 	m.renderMenuItems(&builder)
 	m.writeLine(&builder, m.footerStyle.Render(getText("console/notes")))
 	builder.WriteString(m.backgroundStyle.Render(m.renderBlankLine()))
-	return builder.String()
+	return tea.NewView(builder.String())
 }
 
 func (m *menuModel) renderMenuItems(builder *strings.Builder) {

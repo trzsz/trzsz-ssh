@@ -26,10 +26,9 @@ package tssh
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	"github.com/trzsz/trzsz-ssh/internal/table"
 )
 
@@ -272,8 +271,7 @@ func (t *tableTheme) renderDetails(item any) string {
 }
 
 func getTableTheme() *promptTheme {
-	renderer := lipgloss.NewRenderer(os.Stderr)
-	baseStyle := renderer.NewStyle()
+	baseStyle := lipgloss.NewStyle()
 	cellStyle := baseStyle.Padding(0, 1)
 	table := tableTheme{
 		tableHeaderStyle:    cellStyle.Foreground(lipgloss.Color(getThemeColor("table_header"))),

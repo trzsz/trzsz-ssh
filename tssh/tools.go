@@ -34,13 +34,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/textinput"
+	"charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/muesli/cancelreader"
 )
 
-const (
+var (
 	redColor     = lipgloss.Color("1")
 	greenColor   = lipgloss.Color("2")
 	yellowColor  = lipgloss.Color("3")
@@ -197,15 +197,15 @@ func (m *textInputModel) Init() tea.Cmd {
 
 func (m *textInputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		switch msg.Type {
-		case tea.KeyCtrlC:
+	case tea.KeyPressMsg:
+		switch keypress := msg.String(); keypress {
+		case "ctrl+c":
 			m.quit = true
 			return m, tea.Quit
-		case tea.KeyCtrlW:
+		case "ctrl+w":
 			m.textInput.SetValue("")
 			return m, nil
-		case tea.KeyEnter:
+		case "enter":
 			err := m.validator.validate(m.getValue())
 			if err != nil {
 				m.err = err
@@ -213,7 +213,7 @@ func (m *textInputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.done = true
 			return m, tea.Quit
-		case tea.KeyRunes, tea.KeySpace:
+		default:
 			m.err = nil
 		}
 	case error:
@@ -226,10 +226,10 @@ func (m *textInputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m *textInputModel) View() string {
+func (m *textInputModel) View() tea.View {
 	if m.done {
-		return fmt.Sprintf("%s%s%s\n\n", lipgloss.NewStyle().Foreground(greenColor).Render(m.promptLabel),
-			lipgloss.NewStyle().Faint(true).Render(": "), m.getValue())
+		return tea.NewView(fmt.Sprintf("%s%s%s\n\n", lipgloss.NewStyle().Foreground(greenColor).Render(m.promptLabel),
+			lipgloss.NewStyle().Faint(true).Render(": "), m.getValue()))
 	}
 
 	var builder strings.Builder
@@ -248,7 +248,7 @@ func (m *textInputModel) View() string {
 	} else if m.helpMessage != "" {
 		builder.WriteString(lipgloss.NewStyle().Faint(true).Render(m.helpMessage))
 	}
-	return builder.String()
+	return tea.NewView(builder.String())
 }
 
 func (m *textInputModel) getValue() string {
@@ -339,15 +339,15 @@ func (m *passwordModel) Init() tea.Cmd {
 
 func (m *passwordModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		switch msg.Type {
-		case tea.KeyCtrlC:
+	case tea.KeyPressMsg:
+		switch keypress := msg.String(); keypress {
+		case "ctrl+c":
 			m.quit = true
 			return m, tea.Quit
-		case tea.KeyCtrlW:
+		case "ctrl+w":
 			m.passwordInput = ""
 			return m, nil
-		case tea.KeyEnter:
+		case "enter":
 			err := m.validator.validate(m.passwordInput)
 			if err != nil {
 				m.err = err
@@ -355,14 +355,12 @@ func (m *passwordModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.done = true
 			return m, tea.Quit
-		case tea.KeyBackspace:
+		case "backspace":
 			if len(m.passwordInput) > 0 {
 				m.passwordInput = m.passwordInput[:len(m.passwordInput)-1]
 			}
-		case tea.KeyRunes, tea.KeySpace:
-			if len(msg.Runes) > 0 && msg.Runes[0] != 0 {
-				m.passwordInput += string(msg.Runes)
-			}
+		default:
+			m.passwordInput += msg.Key().Text
 			m.err = nil
 		}
 	case error:
@@ -375,10 +373,10 @@ func (m *passwordModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *passwordModel) View() string {
+func (m *passwordModel) View() tea.View {
 	if m.done {
-		return fmt.Sprintf("%s%s%s\n\n", lipgloss.NewStyle().Foreground(greenColor).Render(m.promptLabel),
-			lipgloss.NewStyle().Faint(true).Render(": "), strings.Repeat("*", len(m.passwordInput)))
+		return tea.NewView(fmt.Sprintf("%s%s%s\n\n", lipgloss.NewStyle().Foreground(greenColor).Render(m.promptLabel),
+			lipgloss.NewStyle().Faint(true).Render(": "), strings.Repeat("*", len(m.passwordInput))))
 	}
 
 	var builder strings.Builder
@@ -398,7 +396,7 @@ func (m *passwordModel) View() string {
 	} else if m.helpMessage != "" {
 		builder.WriteString(lipgloss.NewStyle().Faint(true).Render(m.helpMessage))
 	}
-	return builder.String()
+	return tea.NewView(builder.String())
 }
 
 func promptPassword(promptLabel, helpMessage string, validator *inputValidator) string {
@@ -437,7 +435,7 @@ func (m *listModel) Init() tea.Cmd {
 
 func (m *listModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch keypress := msg.String(); keypress {
 		case "q", "ctrl+c":
 			m.quit = true
@@ -460,9 +458,9 @@ func (m *listModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *listModel) View() string {
+func (m *listModel) View() tea.View {
 	if m.done {
-		return ""
+		return tea.NewView("")
 	}
 	var builder strings.Builder
 	builder.WriteString(lipgloss.NewStyle().Foreground(cyanColor).Render(m.promptLabel+":") + "\n")
@@ -479,7 +477,7 @@ func (m *listModel) View() string {
 	}
 	builder.WriteString(lipgloss.NewStyle().Faint(true).
 		Render("Use ↓ ↑ j k or tab to navigate, Enter to choose.") + "\n")
-	return builder.String()
+	return tea.NewView(builder.String())
 }
 
 func promptList(promptLabel, helpMessage string, listItems []string) string {

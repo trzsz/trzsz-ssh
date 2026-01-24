@@ -27,7 +27,7 @@ package tssh
 import (
 	"fmt"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 func execEncodeSecret() (int, bool) {
