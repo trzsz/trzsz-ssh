@@ -37,7 +37,7 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	"charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/muesli/cancelreader"
+	"github.com/charmbracelet/colorprofile"
 )
 
 var (
@@ -94,13 +94,16 @@ func (r *teaStdinReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
-func newTeaStdinInput(fallbackFn func([]byte)) (tea.ProgramOption, func()) {
-	cancelReader, err := cancelreader.NewReader(os.Stdin)
-	if err != nil {
-		trr := &teaStdinReader{fallbackFn: fallbackFn}
-		return tea.WithInput(trr), func() { trr.cancelled.Store(true) }
+func newTeaOptions(fallbackFn func([]byte)) ([]tea.ProgramOption, func()) {
+	if !isRunningOnOldWindows.Load() {
+		return []tea.ProgramOption{tea.WithInput(os.Stdin)}, func() {}
 	}
-	return tea.WithInput(cancelReader), func() { cancelReader.Cancel() }
+
+	trr := &teaStdinReader{fallbackFn: fallbackFn}
+	return []tea.ProgramOption{
+		tea.WithInput(trr),
+		tea.WithColorProfile(colorprofile.ANSI256),
+	}, func() { trr.cancelled.Store(true) }
 }
 
 type toolsProgress struct {
@@ -260,7 +263,7 @@ func (m *textInputModel) getValue() string {
 }
 
 func promptTextInput(promptLabel, defaultValue, helpMessage string, validator *inputValidator) string {
-	teaInput, cancelReader := newTeaStdinInput(nil)
+	teaOpts, cancelReader := newTeaOptions(nil)
 	defer cancelReader()
 
 	textInput := textinput.New()
@@ -272,7 +275,7 @@ func promptTextInput(promptLabel, defaultValue, helpMessage string, validator *i
 		helpMessage:  helpMessage,
 		textInput:    textInput,
 		validator:    validator,
-	}, teaInput).Run()
+	}, teaOpts...).Run()
 
 	if model, ok := m.(*textInputModel); err == nil && ok {
 		if model.quit {
@@ -400,14 +403,14 @@ func (m *passwordModel) View() tea.View {
 }
 
 func promptPassword(promptLabel, helpMessage string, validator *inputValidator) string {
-	teaInput, cancelReader := newTeaStdinInput(nil)
+	teaOpts, cancelReader := newTeaOptions(nil)
 	defer cancelReader()
 
 	m, err := tea.NewProgram(&passwordModel{
 		promptLabel: promptLabel,
 		helpMessage: helpMessage,
 		validator:   validator,
-	}, teaInput).Run()
+	}, teaOpts...).Run()
 
 	if model, ok := m.(*passwordModel); err == nil && ok {
 		if model.quit {
@@ -481,14 +484,14 @@ func (m *listModel) View() tea.View {
 }
 
 func promptList(promptLabel, helpMessage string, listItems []string) string {
-	teaInput, cancelReader := newTeaStdinInput(nil)
+	teaOpts, cancelReader := newTeaOptions(nil)
 	defer cancelReader()
 
 	m, err := tea.NewProgram(&listModel{
 		promptLabel: promptLabel,
 		helpMessage: helpMessage,
 		items:       listItems,
-	}, teaInput).Run()
+	}, teaOpts...).Run()
 
 	if model, ok := m.(*listModel); err == nil && ok {
 		if model.quit {

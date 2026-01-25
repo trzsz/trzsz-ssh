@@ -35,8 +35,6 @@ import (
 	"time"
 	"unsafe"
 
-	"charm.land/lipgloss/v2"
-	"github.com/muesli/termenv"
 	"golang.org/x/sys/windows"
 	"golang.org/x/term"
 )
@@ -165,7 +163,6 @@ func setupVirtualTerminal() error {
 		}
 
 		isRunningOnOldWindows.Store(true)
-		lipgloss.SetColorProfile(termenv.ANSI256)
 
 		if userConfig.promptCursorIcon == "" {
 			promptCursorIcon = ">>"
@@ -197,7 +194,6 @@ func makeStdinRaw() (*stdinState, error) {
 	}
 
 	isRunningOnOldWindows.Store(true)
-	lipgloss.SetColorProfile(termenv.ANSI256)
 
 	settings, err := sttySettings()
 	if err != nil {
