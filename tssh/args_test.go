@@ -175,9 +175,9 @@ func TestForwardArgs(t *testing.T) {
 	assertLRForwardNil := func(argument string, bindAddr *string, bindPort int, destHost string, destPort int) {
 		t.Helper()
 		assertLRFwd("-L", argument, sshArgs{LocalForward: forwardArgs{[]*forwardCfg{
-			{argument, bindAddr, bindPort, destHost, destPort}}}})
+			{false, argument, bindAddr, bindPort, destHost, destPort}}}})
 		assertLRFwd("-R", argument, sshArgs{RemoteForward: forwardArgs{[]*forwardCfg{
-			{argument, bindAddr, bindPort, destHost, destPort}}}})
+			{false, argument, bindAddr, bindPort, destHost, destPort}}}})
 	}
 	assertLRForward := func(argument string, bindAddr string, bindPort int, destHost string, destPort int) {
 		t.Helper()

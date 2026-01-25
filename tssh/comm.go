@@ -29,9 +29,11 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -473,4 +475,60 @@ func isRunningInRemoteSsh() bool {
 		runningInRemoteSshFlag.Store(isRemoteSshEnv(os.Getpid()))
 	})
 	return runningInRemoteSshFlag.Load()
+}
+
+func convertSshTime(str string) (uint32, error) {
+	if str == "" {
+		return 0, fmt.Errorf("empty time string")
+	}
+
+	var total uint32
+	for i := 0; i < len(str); {
+		start := i
+		// parse integer
+		for i < len(str) && str[i] >= '0' && str[i] <= '9' {
+			i++
+		}
+		if start == i {
+			return 0, fmt.Errorf("invalid char '%c' at position %d", str[i], i)
+		}
+
+		val64, err := strconv.ParseUint(str[start:i], 10, 32)
+		if err != nil {
+			return 0, fmt.Errorf("value overflow at position %d", start)
+		}
+		val := uint32(val64)
+
+		// determine multiplier
+		multiplier := uint32(1)
+		if i < len(str) {
+			switch str[i] {
+			case 's', 'S':
+				multiplier = 1
+			case 'm', 'M':
+				multiplier = 60
+			case 'h', 'H':
+				multiplier = 60 * 60
+			case 'd', 'D':
+				multiplier = 24 * 60 * 60
+			case 'w', 'W':
+				multiplier = 7 * 24 * 60 * 60
+			default:
+				return 0, fmt.Errorf("invalid time unit '%c'", str[i])
+			}
+			i++
+		}
+
+		// check overflow
+		if val != 0 && multiplier > math.MaxUint32/val {
+			return 0, fmt.Errorf("time value overflow")
+		}
+		val *= multiplier
+		if total > math.MaxUint32-val {
+			return 0, fmt.Errorf("total seconds overflow")
+		}
+		total += val
+	}
+
+	return total, nil
 }

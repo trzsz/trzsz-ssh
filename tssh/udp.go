@@ -89,6 +89,10 @@ func (c *sshUdpClient) DialTimeout(network, addr string, timeout time.Duration) 
 	return c.SshUdpClient.DialTimeout(network, addr, timeout)
 }
 
+func (c *sshUdpClient) DialUDP(network, addr string, timeout time.Duration) (PacketConn, error) {
+	return c.SshUdpClient.DialUDP(network, addr, timeout)
+}
+
 func (c *sshUdpClient) Close() error {
 	err := c.SshUdpClient.Close()
 	if c.waitCloseChan != nil {
@@ -534,7 +538,7 @@ func getUdpTimeoutConfig(args *sshArgs, timeoutOption string, defaultTimeout tim
 	if timeoutConfig == "" {
 		return defaultTimeout
 	}
-	timeoutSeconds, err := strconv.ParseUint(timeoutConfig, 10, 32)
+	timeoutSeconds, err := convertSshTime(timeoutConfig)
 	if err != nil {
 		warning("%s [%s] invalid: %v", timeoutOption, timeoutConfig, err)
 		return defaultTimeout

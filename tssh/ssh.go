@@ -44,6 +44,24 @@ const (
 	kAgentRequestName = "auth-agent-req@openssh.com"
 )
 
+// PacketConn represents a connection capable of sending and receiving packet-based data.
+type PacketConn interface {
+
+	// Close closes the connection and releases any associated resources.
+	Close() error
+
+	// Write sends a single packet over the connection.
+	// The implementation may append an additional 8-byte identifier or metadata to the payload.
+	Write([]byte) error
+
+	// Read reads a single packet from the connection into the provided buffer.
+	Read([]byte) (int, error)
+
+	// Consume repeatedly reads packets from the connection and passes each packet to the
+	// provided consumeFn callback until an error occurs.
+	Consume(consumeFn func([]byte) error) error
+}
+
 // SshClient implements a traditional SSH client that supports shells,
 // subprocesses, TCP port/streamlocal forwarding and tunneled dialing.
 type SshClient interface {
@@ -70,6 +88,9 @@ type SshClient interface {
 
 	// SendRequest sends a global request, and returns the reply.
 	SendRequest(name string, wantReply bool, payload []byte) (bool, []byte, error)
+
+	// DialUDP initiates a logical UDP connection to the addr from the remote host
+	DialUDP(network, addr string, timeout time.Duration) (PacketConn, error)
 }
 
 // SshSession represents a connection to a remote command or shell.
@@ -409,6 +430,10 @@ func (c *sshClientWrapper) HandleChannelOpen(channelType string) <-chan ssh.NewC
 
 func (c *sshClientWrapper) SendRequest(name string, wantReply bool, payload []byte) (bool, []byte, error) {
 	return c.client.SendRequest(name, wantReply, payload)
+}
+
+func (c *sshClientWrapper) DialUDP(network, addr string, timeout time.Duration) (PacketConn, error) {
+	return nil, fmt.Errorf("DialUDP requires UDP mode")
 }
 
 func sshNewClient(c ssh.Conn, chans <-chan ssh.NewChannel, reqs <-chan *ssh.Request) SshClient {
