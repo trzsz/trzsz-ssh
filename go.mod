@@ -4,9 +4,10 @@ go 1.25
 
 require (
 	charm.land/bubbles/v2 v2.0.0-rc.1.0.20260109112849-ae99f46cec66
-	charm.land/bubbletea/v2 v2.0.0-rc.2.0.20260113195831-7ae2c09f32c3
+	charm.land/bubbletea/v2 v2.0.0-rc.2.0.20260126225716-76f2e6d81219
 	charm.land/lipgloss/v2 v2.0.0-beta.3.0.20251205162909-7869489d8971
 	github.com/Microsoft/go-winio v0.6.2
+	github.com/charmbracelet/colorprofile v0.4.1
 	github.com/charmbracelet/x/ansi v0.11.4
 	github.com/chzyer/readline v1.5.1
 	github.com/creack/pty v1.1.24
@@ -16,7 +17,6 @@ require (
 	github.com/mattn/go-isatty v0.0.20
 	github.com/mattn/go-runewidth v0.0.19
 	github.com/mitchellh/go-homedir v1.1.0
-	github.com/muesli/termenv v0.16.0
 	github.com/pquerna/otp v1.5.0
 	github.com/quic-go/quic-go v0.59.0
 	github.com/skeema/knownhosts v1.3.2
@@ -41,16 +41,14 @@ require (
 	github.com/alexflint/go-scalar v1.2.0 // indirect
 	github.com/andybrewer/mack v0.0.0-20251024001139-afd410b36447 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
-	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/boombuler/barcode v1.1.0 // indirect
-	github.com/charmbracelet/colorprofile v0.4.1 // indirect
 	github.com/charmbracelet/ultraviolet v0.0.0-20251212194010-b927aa605560 // indirect
 	github.com/charmbracelet/x/term v0.2.2 // indirect
 	github.com/charmbracelet/x/termios v0.1.1 // indirect
 	github.com/charmbracelet/x/windows v0.2.2 // indirect
-	github.com/clipperhouse/displaywidth v0.7.0 // indirect
+	github.com/clipperhouse/displaywidth v0.8.0 // indirect
 	github.com/clipperhouse/stringish v0.1.1 // indirect
-	github.com/clipperhouse/uax29/v2 v2.3.1 // indirect
+	github.com/clipperhouse/uax29/v2 v2.4.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dchest/jsmin v1.0.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
@@ -74,7 +72,7 @@ require (
 	github.com/tjfoc/gmsm v1.4.1 // indirect
 	github.com/trzsz/smux v1.6.0 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
-	github.com/xtaci/kcp-go/v5 v5.6.61 // indirect
+	github.com/xtaci/kcp-go/v5 v5.6.66 // indirect
 	golang.org/x/image v0.35.0 // indirect
 	golang.org/x/net v0.49.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect

@@ -99,9 +99,16 @@ func newTeaOptions(fallbackFn func([]byte)) ([]tea.ProgramOption, func()) {
 		return []tea.ProgramOption{tea.WithInput(os.Stdin)}, func() {}
 	}
 
+	width, height, err := getTerminalSize()
+	if err != nil {
+		warning("get terminal size failed: %v", err)
+		width, height = 80, 40
+	}
+
 	trr := &teaStdinReader{fallbackFn: fallbackFn}
 	return []tea.ProgramOption{
 		tea.WithInput(trr),
+		tea.WithWindowSize(width, height),
 		tea.WithColorProfile(colorprofile.ANSI256),
 	}, func() { trr.cancelled.Store(true) }
 }
