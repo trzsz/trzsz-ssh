@@ -34,6 +34,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/trzsz/tsshd/tsshd"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -44,23 +45,11 @@ const (
 	kAgentRequestName = "auth-agent-req@openssh.com"
 )
 
-// PacketConn represents a connection capable of sending and receiving packet-based data.
-type PacketConn interface {
+// PacketConn is an alias of tsshd.PacketConn.
+type PacketConn = tsshd.PacketConn
 
-	// Close closes the connection and releases any associated resources.
-	Close() error
-
-	// Write sends a single packet over the connection.
-	// The implementation may append an additional 8-byte identifier or metadata to the payload.
-	Write([]byte) error
-
-	// Read reads a single packet from the connection into the provided buffer.
-	Read([]byte) (int, error)
-
-	// Consume repeatedly reads packets from the connection and passes each packet to the
-	// provided consumeFn callback until an error occurs.
-	Consume(consumeFn func([]byte) error) error
-}
+// PacketListener is an alias of tsshd.PacketListener.
+type PacketListener = tsshd.PacketListener
 
 // SshClient implements a traditional SSH client that supports shells,
 // subprocesses, TCP port/streamlocal forwarding and tunneled dialing.
@@ -78,8 +67,11 @@ type SshClient interface {
 	// DialTimeout initiates a connection to the addr from the remote host.
 	DialTimeout(network, addr string, timeout time.Duration) (net.Conn, error)
 
-	// Listen requests the remote peer open a listening socket on addr.
+	// Listen requests the remote peer to open a listening socket on addr.
 	Listen(network, addr string) (net.Listener, error)
+
+	// ListenUDP requests the remote peer to open a UDP listening endpoint on addr.
+	ListenUDP(network, addr string) (PacketListener, error)
 
 	// HandleChannelOpen returns a channel on which NewChannel requests
 	// for the given type are sent. If the type already is being handled,
@@ -422,6 +414,10 @@ func (c *sshClientWrapper) DialTimeout(network, addr string, timeout time.Durati
 
 func (c *sshClientWrapper) Listen(network, addr string) (net.Listener, error) {
 	return c.client.Listen(network, addr)
+}
+
+func (c *sshClientWrapper) ListenUDP(network, addr string) (PacketListener, error) {
+	return nil, fmt.Errorf("ListenUDP requires UDP mode")
 }
 
 func (c *sshClientWrapper) HandleChannelOpen(channelType string) <-chan ssh.NewChannel {

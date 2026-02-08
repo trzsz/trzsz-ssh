@@ -51,6 +51,7 @@ trzsz-ssh ( tssh ) offers additional useful features:
 |           [SSH Console](README.en.md#ssh-console)           |        [SSH 控制台](README.cn.md#ssh-%E6%8E%A7%E5%88%B6%E5%8F%B0)        |
 |        [Other Features](README.en.md#other-features)        |      [其他功能](README.cn.md#%E5%85%B6%E4%BB%96%E5%8A%9F%E8%83%BD)       |
 |         [UDP Mode ( mosh )](README.en.md#udp-mode)          |         [UDP 模式 ( mosh )](README.cn.md#udp-%E6%A8%A1%E5%BC%8F)         |
+|   [UDP Port Forwarding](README.en.md#udp-port-forwarding)   |  [UDP 端口转发](README.cn.md#udp-%E7%AB%AF%E5%8F%A3%E8%BD%AC%E5%8F%91)   |
 
 ### Installation
 

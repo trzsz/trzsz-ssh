@@ -181,8 +181,8 @@ github.com/trzsz/ssh_config v1.3.6 h1:+LBCg2uzhAgw2s19yqeUdD4YwW2z4kvlsXtKB6zDjm
 github.com/trzsz/ssh_config v1.3.6/go.mod h1:uSVHpGOTpBwE1FwyUrtnanlFuxZKt4dvdKFVKe41h58=
 github.com/trzsz/trzsz-go v1.2.0 h1:+sbjQ3WotjAzyfyxizFeVTVSalzrW18+rrjbxG1fhKM=
 github.com/trzsz/trzsz-go v1.2.0/go.mod h1:mWt4eBDupP4VadvHzm5niaXabuAADSl84nmDIesbXJE=
-github.com/trzsz/tsshd v0.1.7-0.20260125135324-348ee5b4ec22 h1:NnZjBsMNiH4K2PG4ekyga9UUMHR3zMx4wBLLVja1FSA=
-github.com/trzsz/tsshd v0.1.7-0.20260125135324-348ee5b4ec22/go.mod h1:ZdDBUpBLqgbN5CNFknkTxvNAhQoZ9ljWUJZFmw5Xov4=
+github.com/trzsz/tsshd v0.1.7-0.20260208110211-327f77bda87b h1:3df+S8L/JHhaZusMqd+y+EA1ZAFIXJEghvrTubYnkyg=
+github.com/trzsz/tsshd v0.1.7-0.20260208110211-327f77bda87b/go.mod h1:ZdDBUpBLqgbN5CNFknkTxvNAhQoZ9ljWUJZFmw5Xov4=
 github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e h1:JVG44RsyaB9T2KIHavMF/ppJZNG9ZpyihvCd0w101no=
 github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e/go.mod h1:RbqR21r5mrJuqunuUZ/Dhy/avygyECGrLceyNeo4LiM=
 github.com/xtaci/kcp-go/v5 v5.6.62 h1:xt9p6juu8lTdqsK7n3qDJp7uZCXnPLdeTG1T6FugRpQ=

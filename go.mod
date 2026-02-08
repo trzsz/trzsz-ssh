@@ -30,7 +30,7 @@ require (
 	github.com/trzsz/shellescape v1.6.0
 	github.com/trzsz/ssh_config v1.3.6
 	github.com/trzsz/trzsz-go v1.2.0
-	github.com/trzsz/tsshd v0.1.7-0.20260125135324-348ee5b4ec22
+	github.com/trzsz/tsshd v0.1.7-0.20260208110211-327f77bda87b
 	golang.org/x/crypto v0.47.0
 	golang.org/x/sys v0.40.0
 	golang.org/x/term v0.39.0

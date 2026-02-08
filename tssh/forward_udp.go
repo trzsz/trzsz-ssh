@@ -26,6 +26,7 @@ package tssh
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"strconv"
@@ -35,12 +36,16 @@ import (
 	"time"
 )
 
-var udpLocalForwarderList []*udpLocalForwarder
-var udpLocalForwarderOnce sync.Once
-var udpLocalForwarderMutex sync.Mutex
-
 const kWarnIntervalSeconds = 60
 const kDefaultForwardUdpTimeout = 5 * time.Minute
+
+var udpForwradTimeoutHandlerOnce sync.Once
+
+var udpLocalForwarderMutex sync.Mutex
+var udpLocalForwarderList []*udpLocalForwarder
+
+var udpRemoteForwarderMutex sync.Mutex
+var udpRemoteForwarderList []*udpRemoteForwarder
 
 type udpForwardSession struct {
 	remoteConn PacketConn
@@ -135,8 +140,10 @@ func (f *udpLocalForwarder) handlePacket(clientAddr net.Addr, data []byte) {
 			return
 		}
 		session = &udpForwardSession{remoteConn: conn}
+		session.lastActive.Store(time.Now().Unix())
 		f.fwdSessions[clientKey] = session
 
+		clonedClientAddr := cloneNetAddr(clientAddr)
 		go func() {
 			defer func() {
 				_ = session.remoteConn.Close()
@@ -146,7 +153,7 @@ func (f *udpLocalForwarder) handlePacket(clientAddr net.Addr, data []byte) {
 			}()
 			if err := conn.Consume(func(data []byte) error {
 				session.lastActive.Store(time.Now().Unix())
-				if _, err := f.localConn.WriteTo(data, clientAddr); err != nil {
+				if _, err := f.localConn.WriteTo(data, clonedClientAddr); err != nil {
 					f.warning("udp local forwarding [%v] write to [%s] failed: %v", f.fwdConfig, clientKey, err)
 				}
 				return nil
@@ -188,8 +195,102 @@ func (f *udpLocalForwarder) cleanupTimeout(fwdExpireBefore, warnExpireBefore int
 	f.warnMutex.Unlock()
 }
 
-func udpLocalForwarderCleanup(args *sshArgs) {
-	udpLocalForwarderOnce.Do(func() {
+type udpRemoteForwarder struct {
+	localConn  io.ReadWriteCloser
+	remoteConn PacketConn
+	fwdConfig  *forwardCfg
+	lastActive atomic.Int64
+	closed     atomic.Bool
+}
+
+func (f *udpRemoteForwarder) Close() {
+	if !f.closed.CompareAndSwap(false, true) {
+		return
+	}
+	_ = f.localConn.Close()
+	_ = f.remoteConn.Close()
+}
+
+func (f *udpRemoteForwarder) run() {
+	defer f.Close()
+
+	f.lastActive.Store(time.Now().Unix())
+
+	udpRemoteForwarderMutex.Lock()
+	udpRemoteForwarderList = append(udpRemoteForwarderList, f)
+	udpRemoteForwarderMutex.Unlock()
+
+	done1 := make(chan struct{})
+	done2 := make(chan struct{})
+
+	go func() {
+		defer close(done1)
+		var warnOnce sync.Once
+		_ = f.remoteConn.Consume(func(buf []byte) error {
+			f.lastActive.Store(time.Now().Unix())
+			if _, err := f.localConn.Write(buf); err != nil {
+				if isClosedError(err) {
+					debug("udp remote forwarding [%s] write to local closed: %v", f.fwdConfig, err)
+					return err
+				}
+				warnOnce.Do(func() {
+					warning("udp remote forwarding [%s] write to local failed: %v", f.fwdConfig, err)
+				})
+			}
+			return nil
+		})
+	}()
+
+	go func() {
+		defer close(done2)
+		buffer := make([]byte, 0xffff)
+		for {
+			n, err := f.localConn.Read(buffer)
+			if err != nil {
+				if isClosedError(err) {
+					debug("udp remote forwarding [%s] read from local closed: %v", f.fwdConfig, err)
+					return
+				}
+				warning("udp remote forwarding [%s] read from local failed: %v", f.fwdConfig, err)
+				return
+			}
+			f.lastActive.Store(time.Now().Unix())
+			if err := f.remoteConn.Write(buffer[:n]); err != nil {
+				if isClosedError(err) {
+					debug("udp remote forwarding [%s] write to remote closed: %v", f.fwdConfig, err)
+					return
+				}
+				warning("udp remote forwarding [%s] write to remote failed: %v", f.fwdConfig, err)
+				return
+			}
+		}
+	}()
+
+	select {
+	case <-done1:
+	case <-done2:
+	}
+
+	udpRemoteForwarderMutex.Lock()
+	for i, fwd := range udpRemoteForwarderList {
+		if fwd == f {
+			udpRemoteForwarderList[i] = udpRemoteForwarderList[len(udpRemoteForwarderList)-1]
+			udpRemoteForwarderList[len(udpRemoteForwarderList)-1] = nil
+			udpRemoteForwarderList = udpRemoteForwarderList[:len(udpRemoteForwarderList)-1]
+			break
+		}
+	}
+	udpRemoteForwarderMutex.Unlock()
+}
+
+func (f *udpRemoteForwarder) cleanupTimeout(fwdExpireBefore int64) {
+	if f.lastActive.Load() < fwdExpireBefore {
+		f.Close()
+	}
+}
+
+func udpForwarderCleanup(args *sshArgs) {
+	udpForwradTimeoutHandlerOnce.Do(func() {
 		var timeout time.Duration
 		if forwardUdpTimeout := getOptionConfig(args, "ForwardUdpTimeout"); forwardUdpTimeout != "" {
 			seconds, err := convertSshTime(forwardUdpTimeout)
@@ -210,18 +311,48 @@ func udpLocalForwarderCleanup(args *sshArgs) {
 				time.Sleep(sleepTime)
 
 				udpLocalForwarderMutex.Lock()
-				forwarders := append([]*udpLocalForwarder(nil), udpLocalForwarderList...)
+				localForwarders := append([]*udpLocalForwarder(nil), udpLocalForwarderList...)
 				udpLocalForwarderMutex.Unlock()
+
+				udpRemoteForwarderMutex.Lock()
+				remoteForwarders := append([]*udpRemoteForwarder(nil), udpRemoteForwarderList...)
+				udpRemoteForwarderMutex.Unlock()
 
 				now := time.Now().Unix()
 				fwdExpireBefore := now - fwdTimeoutSeconds
 				warnExpireBefore := now - kWarnIntervalSeconds
-				for _, fwd := range forwarders {
+				for _, fwd := range localForwarders {
 					fwd.cleanupTimeout(fwdExpireBefore, warnExpireBefore)
+				}
+				for _, fwd := range remoteForwarders {
+					fwd.cleanupTimeout(fwdExpireBefore)
 				}
 			}
 		}()
 	})
+}
+
+func cloneNetAddr(addr net.Addr) net.Addr {
+	switch v := addr.(type) {
+	case *net.UDPAddr:
+		return &net.UDPAddr{
+			IP:   append([]byte(nil), v.IP...),
+			Port: v.Port,
+			Zone: v.Zone,
+		}
+	case *net.IPAddr:
+		return &net.IPAddr{
+			IP:   append([]byte(nil), v.IP...),
+			Zone: v.Zone,
+		}
+	case *net.UnixAddr:
+		return &net.UnixAddr{
+			Name: v.Name,
+			Net:  v.Net,
+		}
+	default:
+		return addr
+	}
 }
 
 func listenOnLocalUDP(gateway bool, addr *string, port, name string) (conns []net.PacketConn) {
@@ -287,15 +418,142 @@ func localForwardUDP(sshConn *sshConnection, f *forwardCfg, gateway bool, timeou
 			lastWarn:    make(map[string]int64),
 		}
 		go forwarder.run()
-		udpLocalForwarderCleanup(sshConn.param.args)
+		udpForwarderCleanup(sshConn.param.args)
 	}
 }
 
-var warnOnce sync.Once
+func listenOnRemoteUDP(gateway bool, client SshClient, f *forwardCfg) (listeners []PacketListener) {
+	addr, port := f.bindAddr, strconv.Itoa(f.bindPort)
+	listen := func(network, address string) {
+		listener, err := client.ListenUDP(network, address)
+		if err != nil {
+			if network == "udp6" {
+				debug("remote forwarding [%v] listen on remote [%s] [%s] failed: %v", f, network, address, err)
+			} else if reason := forwardDeniedReason(err, network); reason != "" {
+				warning("The remote forwarding [%v] was denied. %s", f, reason)
+			} else {
+				warning("remote forwarding [%v] listen on remote [%s] [%s] failed: %v", f, network, address, err)
+			}
+		} else {
+			debug("remote forwarding [%v] listen on remote [%s] [%s] success", f, network, address)
+			listeners = append(listeners, listener)
+			addOnCloseFunc(func() { _ = listener.Close() })
+		}
+	}
+
+	if addr == nil && gateway || addr != nil && (*addr == "" || *addr == "*") {
+		listen("udp4", joinHostPort("0.0.0.0", port))
+		listen("udp6", joinHostPort("::", port))
+		return
+	}
+
+	if addr == nil {
+		listen("udp4", joinHostPort("127.0.0.1", port))
+		listen("udp6", joinHostPort("::1", port))
+		return
+	}
+
+	if strings.HasPrefix(*addr, "/") && port == "-1" {
+		listen("unixgram", *addr)
+		return
+	}
+
+	listen("udp", joinHostPort(*addr, port))
+	return
+}
 
 func remoteForwardUDP(sshConn *sshConnection, f *forwardCfg, gateway bool, timeout time.Duration) {
-	warnOnce.Do(func() {
-		warning("UDP remote forwarding has not been implemented yet") // TODO
-		_, _, _, _ = sshConn, f, gateway, timeout
-	})
+	var localNet, localAddr string
+	if f.destPort == -1 && strings.HasPrefix(f.destHost, "/") {
+		localNet = "unixgram"
+		localAddr = f.destHost
+	} else {
+		localNet = "udp"
+		localAddr = joinHostPort(f.destHost, strconv.Itoa(f.destPort))
+	}
+
+	for _, listener := range listenOnRemoteUDP(gateway, sshConn.client, f) {
+		udpForwarderCleanup(sshConn.param.args)
+
+		go func(listener PacketListener) {
+			defer func() { _ = listener.Close() }()
+			for {
+				remoteConn, err := listener.AcceptUDP()
+				if err != nil {
+					if isClosedError(err) {
+						debug("remote forwarding [%v] closed: %v", f, err)
+						break
+					}
+					warning("remote forwarding [%v] accept failed: %v", f, err)
+					break
+				}
+
+				localConn, err := dialUDP(localNet, localAddr, timeout)
+				if err != nil {
+					warning("remote forwarding [%v] dial [%s] [%s] failed: %v", f, localNet, localAddr, err)
+					_ = remoteConn.Close()
+					continue
+				}
+
+				forwarder := &udpRemoteForwarder{
+					localConn:  localConn,
+					remoteConn: remoteConn,
+					fwdConfig:  f,
+				}
+				go forwarder.run()
+			}
+		}(listener)
+	}
+}
+
+type unixgramConn struct {
+	io.ReadWriteCloser
+	localAddr string
+}
+
+func (c *unixgramConn) Close() error {
+	err := c.ReadWriteCloser.Close()
+	_ = os.Remove(c.localAddr)
+	return err
+}
+
+func dialUDP(network, address string, timeout time.Duration) (io.ReadWriteCloser, error) {
+	if network == "unixgram" {
+		tmpFile, err := os.CreateTemp("", "tssh_unixgram_*.sock")
+		if err != nil {
+			return nil, fmt.Errorf("create temp file failed: %v", err)
+		}
+		localAddr := tmpFile.Name()
+		if err := tmpFile.Close(); err != nil {
+			return nil, fmt.Errorf("close temp file failed: %v", err)
+		}
+		if err := os.Remove(localAddr); err != nil {
+			return nil, fmt.Errorf("remove temp file failed: %v", err)
+		}
+		laddr := &net.UnixAddr{Net: "unixgram", Name: localAddr}
+		raddr := &net.UnixAddr{Net: "unixgram", Name: address}
+		conn, err := net.DialUnix("unixgram", laddr, raddr)
+		if err != nil {
+			if _, err := os.Stat(localAddr); err == nil {
+				_ = os.Remove(localAddr)
+			}
+			return nil, err
+		}
+		return &unixgramConn{conn, localAddr}, nil
+	}
+
+	var err error
+	var addr *net.UDPAddr
+	if timeout > 0 {
+		addr, err = doWithTimeout(func() (*net.UDPAddr, error) {
+			return net.ResolveUDPAddr(network, address)
+		}, timeout)
+	} else {
+		addr, err = net.ResolveUDPAddr(network, address)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return net.DialUDP(network, nil, addr)
 }

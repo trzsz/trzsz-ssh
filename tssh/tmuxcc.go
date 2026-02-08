@@ -188,7 +188,7 @@ func handleAndDecodeTmuxInput(buf []byte) ([]byte, []byte, string, bool) {
 					if len(tokens) > 3 {
 						for _, hex := range tokens[3:] {
 							if strings.HasPrefix(hex, "0x") {
-								if char, err := strconv.ParseInt(string(hex[2:]), 16, 32); err == nil {
+								if char, err := strconv.ParseUint(string(hex[2:]), 16, 8); err == nil {
 									input = append(input, byte(char))
 								}
 							}
