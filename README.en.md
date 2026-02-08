@@ -903,21 +903,21 @@ Host xxx
 
 When running in UDP mode, UDP port forwarding is supported.
 
-- Command-line UDP port forwarding, The `-L` / `-R` options are extended with a `udp/` prefix (the `/` can also be replaced with `:`, `_`, or `-`):
+- Command-line `-L` / `-R` options are extended with a `udp/` prefix (the `/` can also be replaced with `:`, `_`, or `-`):
 
   ```
   -L udp/[bind_address:]port:host:hostport
-  -L udp:[bind_address:]port:remote*socket
-  -L udp*/local*socket:host:hostport
+  -L udp:[bind_address:]port:/remote_socket
+  -L udp_/local_socket:host:hostport
   -L udp-/local_socket:/remote_socket
 
   -R udp/[bind_address:]port:host:hostport
   -R udp:[bind_address:]port:/local_socket
-  -R udp*/remote_socket:host:hostport
+  -R udp_/remote_socket:host:hostport
   -R udp-/remote_socket:/local_socket
   ```
 
-- Configuration UDP port forwarding, Similar to `LocalForward` and `RemoteForward`, with an added `UDP` prefix (case-insensitive):
+- Configuration is similar to `LocalForward` and `RemoteForward`, with an added `UDP` prefix (case-insensitive):
 
   ```
   UdpLocalForward [bind_address:]port host:hostport

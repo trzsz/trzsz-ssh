@@ -906,13 +906,13 @@ Host xxx
 
   ```
   -L udp/[bind_address:]port:host:hostport
-  -L udp:[bind_address:]port:remote*socket
-  -L udp*/local*socket:host:hostport
+  -L udp:[bind_address:]port:/remote_socket
+  -L udp_/local_socket:host:hostport
   -L udp-/local_socket:/remote_socket
 
   -R udp/[bind_address:]port:host:hostport
   -R udp:[bind_address:]port:/local_socket
-  -R udp*/remote_socket:host:hostport
+  -R udp_/remote_socket:host:hostport
   -R udp-/remote_socket:/local_socket
   ```
 
