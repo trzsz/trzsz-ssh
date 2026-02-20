@@ -930,6 +930,8 @@ Host xxx
   UdpRemoteForward /remote_socket /local_socket
   ```
 
+- `ForwardUdpTimeout`: 设置 UDP 转发会话的空闲超时时间。在指定时间内无数据收发时将自动清理对应的转发会话以释放资源。默认 5 分钟。
+
 ## 故障排除
 
 - 在旧版本 Warp 终端，分块 Blocks 的功能需要将 `tssh` 重命名为 `ssh`，推荐建个软链接（ 对更新友好 ）：

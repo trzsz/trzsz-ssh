@@ -931,6 +931,8 @@ When running in UDP mode, UDP port forwarding is supported.
   UdpRemoteForward /remote_socket /local_socket
   ```
 
+- `ForwardUdpTimeout`: Sets the idle timeout for UDP forwarding sessions; the corresponding forwarding session will be cleared automatically if no data is sent or received within this period to free resources. Default is 5 minutes.
+
 ### Trouble shooting
 
 - In older versions of the Warp terminal, the features like blocks requires renaming `tssh` to `ssh`. It is recommended to create a soft link (friendly for updates):
