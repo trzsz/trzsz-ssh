@@ -220,6 +220,14 @@ func udpLogin(param *sshParam, tcpClient SshClient) (SshClient, error) {
 	}
 
 	mtu := uint16(0)
+	if udpMTU := getExOptionConfig(args, "UdpMTU"); udpMTU != "" {
+		if v, err := strconv.ParseUint(udpMTU, 10, 16); err != nil {
+			warning("UdpMTU [%s] invalid: %v", udpMTU, err)
+		} else {
+			mtu = uint16(v)
+		}
+	}
+
 	var proxyClient *sshUdpClient
 	if param.proxy != nil {
 		var ok bool
@@ -227,7 +235,9 @@ func udpLogin(param *sshParam, tcpClient SshClient) (SshClient, error) {
 		if !ok {
 			return nil, fmt.Errorf("proxy client [%T] for [%s] is not a udp client", param.proxy.client, args.Destination)
 		}
-		mtu = proxyClient.GetMaxDatagramSize()
+		if mtu == 0 {
+			mtu = proxyClient.GetMaxDatagramSize()
+		}
 	}
 
 	// start tsshd

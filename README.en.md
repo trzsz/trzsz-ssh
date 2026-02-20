@@ -879,6 +879,7 @@ Host xxx
     #!! ShowNotificationOnTop yes
     #!! ShowFullNotifications yes
     #!! UdpProxyMode UDP
+    #!! UdpMTU 1400
 ```
 
 - `UdpMode`: `No` (the default: tssh works in TCP mode), `Yes` (default protocol: `QUIC`), `QUIC` ([QUIC](https://github.com/quic-go/quic-go) protocol: faster speed), `KCP` ([KCP](https://github.com/xtaci/kcp-go) protocol: lower latency).
@@ -898,6 +899,8 @@ Host xxx
 - `ShowFullNotifications`: Whether to display the full notifications or a brief notification. The default is yes, which may output several lines to the screen. Set it to `No` will output only one line.
 
 - `UdpProxyMode`: The default transport protocol is `UDP`. If `UDP` traffic is blocked by firewalls in your network environment, you can set it to `TCP` to work around the restriction, though this may introduce additional latency.
+
+- `UdpMTU`: Sets the maximum transmission unit (MTU) for UDP packets. Default is 1400.
 
 ## UDP Port Forwarding
 
