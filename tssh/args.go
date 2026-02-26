@@ -84,6 +84,7 @@ type sshArgs struct {
 	Debug          bool        `arg:"--debug" help:"verbose mode for debugging, same as ssh's -vvv"`
 	Zmodem         bool        `arg:"--zmodem" help:"enable zmodem lrzsz ( rz / sz ) feature"`
 	Dns            string      `arg:"--dns" placeholder:"[udp://|tcp://]host[:port]" help:"custom DNS server"`
+	OpenSSHConfig  bool        `arg:"--openssh-config" help:"use OpenSSH 'ssh -G' to evaluate ~/.ssh/config (including Match blocks); when enabled, tssh trusts ssh -G output as the base config"`
 	UDP            bool        `arg:"--udp" help:"ssh over UDP like mosh (default: QUIC)"`
 	KCP            bool        `arg:"--kcp" help:"[udp] use KCP protocol for ssh over UDP"`
 	TsshdPath      string      `arg:"--tsshd-path" placeholder:"path" help:"[udp] tsshd absolute path on the server"`
@@ -101,6 +102,8 @@ type sshArgs struct {
 	UploadFile     multiStr    `arg:"--upload-file" placeholder:"path" help:"[tools] upload the local file to remote server"`
 	DownloadPath   string      `arg:"--download-path" placeholder:"path" help:"[tools] the local saving path for downloading"`
 	originalDest   string
+	effectiveCfg   *effectiveSshConfig
+	effectiveTried bool
 }
 
 func (sshArgs) Description() string {

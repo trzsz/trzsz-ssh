@@ -595,6 +595,12 @@ func getOptionConfig(args *sshArgs, option string) string {
 	if value := args.Option.get(option); value != "" {
 		return value
 	}
+	ensureEffectiveConfig(args)
+	if args.effectiveCfg != nil {
+		if value := args.effectiveCfg.get(option); value != "" {
+			return value
+		}
+	}
 	return getConfig(args.Destination, option)
 }
 
@@ -606,11 +612,29 @@ func getOptionConfigSplits(args *sshArgs, option string) []string {
 		}
 		return values
 	}
+	ensureEffectiveConfig(args)
+	if args.effectiveCfg != nil {
+		if value := args.effectiveCfg.get(option); value != "" {
+			values, err := shlex.Split(value)
+			if err != nil {
+				warning("split effective config [%s] value [%s] failed: %v", option, value, err)
+			} else if len(values) > 0 {
+				return values
+			}
+		}
+	}
 	return getConfigSplits(args.Destination, option)
 }
 
 func getAllOptionConfig(args *sshArgs, option string) []string {
-	return append(args.Option.getAll(option), getAllConfig(args.Destination, option)...)
+	all := append([]string{}, args.Option.getAll(option)...)
+	ensureEffectiveConfig(args)
+	if args.effectiveCfg != nil {
+		if values := args.effectiveCfg.getAll(option); len(values) > 0 {
+			return append(all, values...)
+		}
+	}
+	return append(all, getAllConfig(args.Destination, option)...)
 }
 
 func getAllOptionConfigSplits(args *sshArgs, option string) []string {
@@ -623,9 +647,21 @@ func getAllOptionConfigSplits(args *sshArgs, option string) []string {
 			all = append(all, values...)
 		}
 	}
-	values := getAllConfigSplits(args.Destination, option)
-	if len(values) > 0 {
-		all = append(all, values...)
+	ensureEffectiveConfig(args)
+	if args.effectiveCfg != nil {
+		for _, value := range args.effectiveCfg.getAll(option) {
+			values, err := shlex.Split(value)
+			if err != nil {
+				warning("split effective config [%s] value [%s] failed: %v", option, value, err)
+			} else if len(values) > 0 {
+				all = append(all, values...)
+			}
+		}
+	} else {
+		values := getAllConfigSplits(args.Destination, option)
+		if len(values) > 0 {
+			all = append(all, values...)
+		}
 	}
 	return all
 }

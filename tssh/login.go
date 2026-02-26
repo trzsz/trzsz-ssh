@@ -110,6 +110,8 @@ func parseDestination(dest string) (user, host, port string) {
 
 func getSshParam(args *sshArgs) (*sshParam, error) {
 	param := &sshParam{args: args}
+	// If enabled, evaluate the effective OpenSSH config once up-front.
+	ensureEffectiveConfig(args)
 
 	// login dest
 	destUser, destHost, destPort := parseDestination(args.Destination)
@@ -117,7 +119,8 @@ func getSshParam(args *sshArgs) (*sshParam, error) {
 
 	// login host
 	param.host = destHost
-	if hostName := getConfig(destHost, "HostName"); hostName != "" {
+	hostName := getOptionConfig(args, "HostName")
+	if hostName != "" {
 		var err error
 		param.host, err = expandTokens(hostName, param, "%h")
 		if err != nil {
@@ -131,7 +134,7 @@ func getSshParam(args *sshArgs) (*sshParam, error) {
 	} else if destUser != "" {
 		param.user = destUser
 	} else {
-		userName := getConfig(destHost, "User")
+		userName := getOptionConfig(args, "User")
 		if userName != "" {
 			param.user = userName
 		} else {
@@ -153,7 +156,7 @@ func getSshParam(args *sshArgs) (*sshParam, error) {
 	} else if destPort != "" {
 		param.port = destPort
 	} else {
-		port := getConfig(destHost, "Port")
+		port := getOptionConfig(args, "Port")
 		if port != "" {
 			param.port = port
 		} else {
@@ -223,13 +226,13 @@ func getProxyParam(param *sshParam) {
 		return
 	}
 
-	proxyJump = getConfig(args.Destination, "ProxyJump")
+	proxyJump = getOptionConfig(args, "ProxyJump")
 	if proxyJump != "" {
 		param.proxies = strings.Split(proxyJump, ",")
 		return
 	}
 
-	proxyCommand = getConfig(args.Destination, "ProxyCommand")
+	proxyCommand = getOptionConfig(args, "ProxyCommand")
 	if proxyCommand != "" {
 		param.command = proxyCommand
 		return

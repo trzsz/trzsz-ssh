@@ -190,31 +190,50 @@ func getSignerWithCert(dest string, path string) []ssh.Signer {
 		return nil
 	}
 	signers := []ssh.Signer{signer}
-	certPath := path + "-cert.pub"
-	if !isFileExist(certPath) {
-		return signers
+	return appendSignerCerts(path, signer, signers, nil)
+}
+
+func appendSignerCerts(identityPath string, signer ssh.Signer, signers []ssh.Signer, certFiles []string) []ssh.Signer {
+	tryAddCert := func(certPath string) {
+		if certPath == "" {
+			return
+		}
+		certPath = resolveHomeDir(certPath)
+		if !isFileExist(certPath) {
+			return
+		}
+		certBytes, err := os.ReadFile(certPath)
+		if err != nil {
+			warning("read public cert [%s] failed: %v", certPath, err)
+			return
+		}
+		certKey, _, _, _, err := ssh.ParseAuthorizedKey(certBytes)
+		if err != nil {
+			warning("parse public cert [%s] failed: %v", certPath, err)
+			return
+		}
+		cert, ok := certKey.(*ssh.Certificate)
+		if !ok {
+			warning("public cert [%s] can't be converted to ssh.Certificate", certPath)
+			return
+		}
+		certSigner, err := ssh.NewCertSigner(cert, signer)
+		if err != nil {
+			// Most commonly: cert doesn't match the private key. That's not fatal if
+			// multiple CertificateFile entries are configured.
+			debug("new cert signer [%s] failed: %v", certPath, err)
+			return
+		}
+		signers = append(signers, newSshSigner(identityPath, nil, certSigner.PublicKey(), certSigner))
 	}
-	certBytes, err := os.ReadFile(certPath)
-	if err != nil {
-		warning("read public cert [%s] failed: %v", certPath, err)
-		return signers
+
+	for _, certFile := range certFiles {
+		tryAddCert(certFile)
 	}
-	certKey, _, _, _, err := ssh.ParseAuthorizedKey(certBytes)
-	if err != nil {
-		warning("parse public cert [%s] failed: %v", certPath, err)
-		return signers
-	}
-	cert, ok := certKey.(*ssh.Certificate)
-	if !ok {
-		warning("public cert [%s] can't be converted to ssh.Certificate", certPath)
-		return signers
-	}
-	certSigner, err := ssh.NewCertSigner(cert, signer)
-	if err != nil {
-		warning("new cert singer [%s] failed: %v", certPath, err)
-		return signers
-	}
-	signers = append(signers, newSshSigner(path, nil, certSigner.PublicKey(), certSigner))
+
+	// OpenSSH's implicit certificate path convention: IdentityFile + "-cert.pub".
+	tryAddCert(identityPath + "-cert.pub")
+
 	return signers
 }
 
@@ -371,6 +390,16 @@ func getPublicKeysAuthMethod(param *sshParam) ssh.AuthMethod {
 		return nil
 	}
 
+	var certFiles []string
+	for _, certFile := range getAllOptionConfig(args, "CertificateFile") {
+		expandedCertFile, err := expandTokens(certFile, param, "%CdhijkLlnpru")
+		if err != nil {
+			warning("expand CertificateFile [%s] failed: %v", certFile, err)
+			continue
+		}
+		certFiles = append(certFiles, expandedCertFile)
+	}
+
 	var pubKeySigners []ssh.Signer
 	fingerprints := make(map[string]struct{})
 	addPubKeySigners := func(signers []ssh.Signer) {
@@ -418,9 +447,13 @@ func getPublicKeysAuthMethod(param *sshParam) ssh.AuthMethod {
 		addPubKeySigners(getDefaultSigners())
 	} else {
 		for _, identity := range identities {
-			if signer := getSignerWithCert(args.Destination, identity); len(signer) > 0 {
-				addPubKeySigners(signer)
+			signer := getSigner(args.Destination, identity)
+			if signer == nil {
+				continue
 			}
+			signers := []ssh.Signer{signer}
+			signers = appendSignerCerts(identity, signer, signers, certFiles)
+			addPubKeySigners(signers)
 		}
 	}
 
