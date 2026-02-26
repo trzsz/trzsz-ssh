@@ -469,6 +469,10 @@ func getConnectTimeout(args *sshArgs) time.Duration {
 	if connectTimeout == "" {
 		return kDefaultConnectTimeout
 	}
+	// OpenSSH allows "ConnectTimeout none" meaning no timeout.
+	if strings.EqualFold(connectTimeout, "none") {
+		return 0
+	}
 	value, err := strconv.ParseUint(connectTimeout, 10, 32)
 	if err != nil {
 		warning("ConnectTimeout [%s] invalid: %v", connectTimeout, err)
