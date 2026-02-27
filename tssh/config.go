@@ -665,8 +665,7 @@ func getOptionConfigSplits(args *sshArgs, option string) []string {
 }
 
 func getAllOptionConfig(args *sshArgs, option string) []string {
-	all := append([]string{}, args.Option.getAll(option)...)
-	return append(all, getAllConfig(args.Destination, option)...)
+	return append(args.Option.getAll(option), getAllConfig(args.Destination, option)...)
 }
 
 func getAllOptionConfigSplits(args *sshArgs, option string) []string {
