@@ -117,8 +117,7 @@ func getSshParam(args *sshArgs) (*sshParam, error) {
 
 	// login host
 	param.host = destHost
-	hostName := getOptionConfig(args, "HostName")
-	if hostName != "" {
+	if hostName := getConfig(destHost, "HostName"); hostName != "" {
 		var err error
 		param.host, err = expandTokens(hostName, param, "%h")
 		if err != nil {
@@ -132,7 +131,7 @@ func getSshParam(args *sshArgs) (*sshParam, error) {
 	} else if destUser != "" {
 		param.user = destUser
 	} else {
-		userName := getOptionConfig(args, "User")
+		userName := getConfig(destHost, "User")
 		if userName != "" {
 			param.user = userName
 		} else {
@@ -154,7 +153,7 @@ func getSshParam(args *sshArgs) (*sshParam, error) {
 	} else if destPort != "" {
 		param.port = destPort
 	} else {
-		port := getOptionConfig(args, "Port")
+		port := getConfig(destHost, "Port")
 		if port != "" {
 			param.port = port
 		} else {
@@ -224,13 +223,13 @@ func getProxyParam(param *sshParam) {
 		return
 	}
 
-	proxyJump = getOptionConfig(args, "ProxyJump")
+	proxyJump = getConfig(args.Destination, "ProxyJump")
 	if proxyJump != "" {
 		param.proxies = strings.Split(proxyJump, ",")
 		return
 	}
 
-	proxyCommand = getOptionConfig(args, "ProxyCommand")
+	proxyCommand = getConfig(args.Destination, "ProxyCommand")
 	if proxyCommand != "" {
 		param.command = proxyCommand
 		return
@@ -466,10 +465,6 @@ func getConnectTimeout(args *sshArgs) time.Duration {
 	connectTimeout := getOptionConfig(args, "ConnectTimeout")
 	if connectTimeout == "" {
 		return kDefaultConnectTimeout
-	}
-	// OpenSSH allows "ConnectTimeout none" meaning no timeout.
-	if strings.EqualFold(connectTimeout, "none") {
-		return 0
 	}
 	value, err := strconv.ParseUint(connectTimeout, 10, 32)
 	if err != nil {
