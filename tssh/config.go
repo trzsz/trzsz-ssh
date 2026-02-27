@@ -73,6 +73,7 @@ type tsshConfig struct {
 	configPath            string
 	sysConfigPath         string
 	exConfigPath          string
+	useOpenSSHConfig      bool
 	defaultUploadPath     string
 	defaultDownloadPath   string
 	dragFileUploadCommand string
@@ -163,6 +164,11 @@ func parseTsshConfig() {
 			userConfig.configPath = resolveHomeDir(value)
 		case name == "exconfigpath" && userConfig.exConfigPath == "":
 			userConfig.exConfigPath = resolveHomeDir(value)
+		case name == "useopensshconfig" && !userConfig.useOpenSSHConfig:
+			switch strings.ToLower(value) {
+			case "1", "true", "yes", "on":
+				userConfig.useOpenSSHConfig = true
+			}
 		case name == "defaultuploadpath" && userConfig.defaultUploadPath == "":
 			userConfig.defaultUploadPath = resolveHomeDir(value)
 		case name == "defaultdownloadpath" && userConfig.defaultDownloadPath == "":
@@ -218,6 +224,9 @@ func showTsshConfig() {
 	}
 	if userConfig.exConfigPath != "" {
 		debug("ExConfigPath = %s", userConfig.exConfigPath)
+	}
+	if userConfig.useOpenSSHConfig {
+		debug("UseOpenSSHConfig = true")
 	}
 	if userConfig.defaultUploadPath != "" {
 		debug("DefaultUploadPath = %s", userConfig.defaultUploadPath)
@@ -281,8 +290,6 @@ func initUserConfig(configFile string) (err error) {
 		if runtime.GOOS != "windows" {
 			userConfig.sysConfigPath = "/etc/ssh/ssh_config"
 		}
-	} else if strings.ToLower(userConfig.configPath) == "none" {
-		userConfig.configPath = ""
 	}
 
 	if userConfig.exConfigPath == "" {
@@ -351,6 +358,14 @@ func (c *tsshConfig) doLoadExConfig() {
 }
 
 func getConfig(alias, key string) string {
+	if useOpenSSHConfigEnabled {
+		if cfg := getOpenSSHEffectiveConfig(alias); cfg != nil {
+			if value := cfg.get(key); value != "" {
+				return value
+			}
+		}
+	}
+
 	userConfig.doLoadConfig()
 
 	if userConfig.config != nil {
@@ -375,6 +390,19 @@ func getConfig(alias, key string) string {
 }
 
 func getConfigSplits(alias, key string) []string {
+	if useOpenSSHConfigEnabled {
+		if cfg := getOpenSSHEffectiveConfig(alias); cfg != nil {
+			if value := cfg.get(key); value != "" {
+				values, err := shlex.Split(value)
+				if err != nil {
+					warning("split effective config [%s] value [%s] failed: %v", key, value, err)
+				} else if len(values) > 0 {
+					return values
+				}
+			}
+		}
+	}
+
 	userConfig.doLoadConfig()
 
 	if userConfig.config != nil {
@@ -408,6 +436,14 @@ func getConfigSplits(alias, key string) []string {
 }
 
 func getAllConfig(alias, key string) []string {
+	if useOpenSSHConfigEnabled {
+		if cfg := getOpenSSHEffectiveConfig(alias); cfg != nil {
+			if values := cfg.getAll(key); len(values) > 0 {
+				return values
+			}
+		}
+	}
+
 	userConfig.doLoadConfig()
 
 	var values []string
@@ -438,6 +474,23 @@ func getAllConfig(alias, key string) []string {
 }
 
 func getAllConfigSplits(alias, key string) []string {
+	if useOpenSSHConfigEnabled {
+		if cfg := getOpenSSHEffectiveConfig(alias); cfg != nil {
+			var values []string
+			for _, value := range cfg.getAll(key) {
+				vals, err := shlex.Split(value)
+				if err != nil {
+					warning("split effective config [%s] value [%s] failed: %v", key, value, err)
+				} else if len(vals) > 0 {
+					values = append(values, vals...)
+				}
+			}
+			if len(values) > 0 {
+				return values
+			}
+		}
+	}
+
 	userConfig.doLoadConfig()
 
 	var values []string
@@ -595,12 +648,6 @@ func getOptionConfig(args *sshArgs, option string) string {
 	if value := args.Option.get(option); value != "" {
 		return value
 	}
-	ensureEffectiveConfig(args)
-	if args.effectiveCfg != nil {
-		if value := args.effectiveCfg.get(option); value != "" {
-			return value
-		}
-	}
 	return getConfig(args.Destination, option)
 }
 
@@ -612,28 +659,11 @@ func getOptionConfigSplits(args *sshArgs, option string) []string {
 		}
 		return values
 	}
-	ensureEffectiveConfig(args)
-	if args.effectiveCfg != nil {
-		if value := args.effectiveCfg.get(option); value != "" {
-			values, err := shlex.Split(value)
-			if err != nil {
-				warning("split effective config [%s] value [%s] failed: %v", option, value, err)
-			} else if len(values) > 0 {
-				return values
-			}
-		}
-	}
 	return getConfigSplits(args.Destination, option)
 }
 
 func getAllOptionConfig(args *sshArgs, option string) []string {
 	all := append([]string{}, args.Option.getAll(option)...)
-	ensureEffectiveConfig(args)
-	if args.effectiveCfg != nil {
-		if values := args.effectiveCfg.getAll(option); len(values) > 0 {
-			return append(all, values...)
-		}
-	}
 	return append(all, getAllConfig(args.Destination, option)...)
 }
 
@@ -647,21 +677,9 @@ func getAllOptionConfigSplits(args *sshArgs, option string) []string {
 			all = append(all, values...)
 		}
 	}
-	ensureEffectiveConfig(args)
-	if args.effectiveCfg != nil {
-		for _, value := range args.effectiveCfg.getAll(option) {
-			values, err := shlex.Split(value)
-			if err != nil {
-				warning("split effective config [%s] value [%s] failed: %v", option, value, err)
-			} else if len(values) > 0 {
-				all = append(all, values...)
-			}
-		}
-	} else {
-		values := getAllConfigSplits(args.Destination, option)
-		if len(values) > 0 {
-			all = append(all, values...)
-		}
+	values := getAllConfigSplits(args.Destination, option)
+	if len(values) > 0 {
+		all = append(all, values...)
 	}
 	return all
 }

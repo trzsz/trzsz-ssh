@@ -184,7 +184,7 @@ trzsz-ssh ( tssh ) with [tsshd](https://github.com/trzsz/tsshd) also supports in
 
 - For how to configure `~/.ssh/config`, please refer to the documentation of [openssh](https://manpages.debian.org/bookworm/openssh-client/ssh_config.5.en.html).
 
-  - Note: When running `tssh` with `--openssh-config`, it uses `ssh -G` to evaluate OpenSSH config.
+  - Note: When `UseOpenSSHConfig=yes` is set in `tssh.conf`, `tssh` uses `ssh -G` to evaluate OpenSSH config.
 
 - Running `tssh` without arguments will open the login prompt. If there are arguments except destination will also open the login prompt.
 

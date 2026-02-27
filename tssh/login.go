@@ -110,8 +110,6 @@ func parseDestination(dest string) (user, host, port string) {
 
 func getSshParam(args *sshArgs) (*sshParam, error) {
 	param := &sshParam{args: args}
-	// If enabled, evaluate the effective OpenSSH config once up-front.
-	ensureEffectiveConfig(args)
 
 	// login dest
 	destUser, destHost, destPort := parseDestination(args.Destination)

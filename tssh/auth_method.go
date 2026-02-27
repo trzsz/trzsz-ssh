@@ -32,7 +32,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/term"
@@ -182,15 +181,6 @@ func getSigner(dest string, path string) ssh.Signer {
 		}
 	}
 	return newSshSigner(path, nil, signer.PublicKey(), signer)
-}
-
-func getSignerWithCert(dest string, path string) []ssh.Signer {
-	signer := getSigner(dest, path)
-	if signer == nil {
-		return nil
-	}
-	signers := []ssh.Signer{signer}
-	return appendSignerCerts(path, signer, signers, nil)
 }
 
 func appendSignerCerts(identityPath string, signer ssh.Signer, signers []ssh.Signer, certFiles []string) []ssh.Signer {
@@ -364,24 +354,23 @@ func getKeyboardInteractiveAuthMethod(args *sshArgs, host, user string) ssh.Auth
 		}), 3)
 }
 
-var getDefaultSigners = func() func() []ssh.Signer {
-	var once sync.Once
+func getDefaultSigners(dest string, certFiles []string) []ssh.Signer {
 	var signers []ssh.Signer
-	return func() []ssh.Signer {
-		once.Do(func() {
-			for _, name := range []string{"id_rsa", "id_ecdsa", "id_ecdsa_sk", "id_ed25519", "id_ed25519_sk", "identity"} {
-				path := filepath.Join(userHomeDir, ".ssh", name)
-				if !isFileExist(path) {
-					continue
-				}
-				if signer := getSignerWithCert(name, path); len(signer) > 0 {
-					signers = append(signers, signer...)
-				}
-			}
-		})
-		return signers
+	for _, name := range []string{"id_rsa", "id_ecdsa", "id_ecdsa_sk", "id_ed25519", "id_ed25519_sk", "identity"} {
+		path := filepath.Join(userHomeDir, ".ssh", name)
+		if !isFileExist(path) {
+			continue
+		}
+		signer := getSigner(dest, path)
+		if signer == nil {
+			continue
+		}
+		ss := []ssh.Signer{signer}
+		ss = appendSignerCerts(path, signer, ss, certFiles)
+		signers = append(signers, ss...)
 	}
-}()
+	return signers
+}
 
 func getPublicKeysAuthMethod(param *sshParam) ssh.AuthMethod {
 	args := param.args
@@ -444,7 +433,7 @@ func getPublicKeysAuthMethod(param *sshParam) ssh.AuthMethod {
 	}
 
 	if len(identities) == 0 {
-		addPubKeySigners(getDefaultSigners())
+		addPubKeySigners(getDefaultSigners(args.Destination, certFiles))
 	} else {
 		for _, identity := range identities {
 			signer := getSigner(args.Destination, identity)
