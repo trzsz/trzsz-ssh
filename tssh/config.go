@@ -290,6 +290,8 @@ func initUserConfig(configFile string) (err error) {
 		if runtime.GOOS != "windows" {
 			userConfig.sysConfigPath = "/etc/ssh/ssh_config"
 		}
+	} else if strings.ToLower(userConfig.configPath) == "none" {
+		userConfig.configPath = ""
 	}
 
 	if userConfig.exConfigPath == "" {
