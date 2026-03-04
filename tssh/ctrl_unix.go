@@ -35,8 +35,6 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -221,42 +219,6 @@ func (c *controlMaster) quit(exitCh <-chan struct{}) {
 	case <-exitCh:
 	}
 	timer.Stop()
-}
-
-func getRealPath(path string) string {
-	realPath, err := filepath.EvalSymlinks(path)
-	if err != nil {
-		return path
-	}
-	return realPath
-}
-
-func getOpenSSH() (string, int, int, error) {
-	sshPath := "/usr/bin/ssh"
-	tsshPath, err := os.Executable()
-	if err != nil {
-		return "", 0, 0, err
-	}
-	if getRealPath(tsshPath) == getRealPath(sshPath) {
-		return "", 0, 0, fmt.Errorf("%s is the current program", sshPath)
-	}
-	out, err := exec.Command(sshPath, "-V").CombinedOutput()
-	if err != nil {
-		return "", 0, 0, err
-	}
-	re := regexp.MustCompile(`OpenSSH_(\d+)\.(\d+)`)
-	matches := re.FindStringSubmatch(string(out))
-	majorVersion := -1
-	minorVersion := -1
-	if len(matches) > 2 {
-		if v, err := strconv.ParseUint(matches[1], 10, 32); err == nil {
-			majorVersion = int(v)
-		}
-		if v, err := strconv.ParseUint(matches[2], 10, 32); err == nil {
-			minorVersion = int(v)
-		}
-	}
-	return sshPath, majorVersion, minorVersion, nil
 }
 
 func startControlMaster(param *sshParam, sshPath string) error {

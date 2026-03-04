@@ -115,6 +115,24 @@ func getSshParam(args *sshArgs) (*sshParam, error) {
 	destUser, destHost, destPort := parseDestination(args.Destination)
 	args.Destination = destHost
 
+	// Preload effective OpenSSH configuration using `ssh -G`, allowing getConfig()
+	// to evaluate Match blocks and other complex OpenSSH rules.
+	if userConfig.useOpenSSHConfig {
+		user := ""
+		if args.LoginName != "" {
+			user = args.LoginName
+		} else if destUser != "" {
+			user = destUser
+		}
+		port := ""
+		if args.Port > 0 {
+			port = strconv.Itoa(args.Port)
+		} else if destPort != "" {
+			port = destPort
+		}
+		_ = getOpenSSHEffectiveConfig(args.Destination, user, port)
+	}
+
 	// login host
 	param.host = destHost
 	if hostName := getConfig(destHost, "HostName"); hostName != "" {

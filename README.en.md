@@ -182,7 +182,7 @@ trzsz-ssh ( tssh ) with [tsshd](https://github.com/trzsz/tsshd) also supports in
 
 - Before use, you need to configure `~/.ssh/config` (for Windows, it is `C:\Users\xxx\.ssh\config`, replace `xxx` with your username).
 
-- For how to configure `~/.ssh/config`, please refer to the documentation of [openssh](https://manpages.debian.org/bookworm/openssh-client/ssh_config.5.en.html) ( `Match` section is not supported yet ).
+- For how to configure `~/.ssh/config`, please refer to the documentation of [openssh](https://manpages.debian.org/bookworm/openssh-client/ssh_config.5.en.html) ( `Match` requires enabling `UseOpenSSHConfig` below ).
 
 - Running `tssh` without arguments will open the login prompt. If there are arguments except destination will also open the login prompt.
 
@@ -674,6 +674,8 @@ trzsz-ssh ( tssh ) with [tsshd](https://github.com/trzsz/tsshd) also supports in
 ### Custom Configuration
 
 - The following custom configurations are supported in `$XDG_CONFIG_HOME/tssh/tssh.conf` ( or `~/.tssh.conf`, `C:\Users\your_name\.tssh.conf` on Windows):
+
+  - Note: When `UseOpenSSHConfig=yes` is set in `tssh.conf`, `tssh` uses `ssh -G` to evaluate OpenSSH config (including `Match` blocks).
 
   ```
   # SSH configuration path, the default is ~/.ssh/config
