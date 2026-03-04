@@ -354,7 +354,7 @@ func getKeyboardInteractiveAuthMethod(args *sshArgs, host, user string) ssh.Auth
 		}), 3)
 }
 
-func getDefaultSigners(dest string, certFiles []string) []ssh.Signer {
+func getDefaultSigners(dest string) []ssh.Signer {
 	var signers []ssh.Signer
 	for _, name := range []string{"id_rsa", "id_ecdsa", "id_ecdsa_sk", "id_ed25519", "id_ed25519_sk", "identity"} {
 		path := filepath.Join(userHomeDir, ".ssh", name)
@@ -365,9 +365,7 @@ func getDefaultSigners(dest string, certFiles []string) []ssh.Signer {
 		if signer == nil {
 			continue
 		}
-		ss := []ssh.Signer{signer}
-		ss = appendSignerCerts(path, signer, ss, certFiles)
-		signers = append(signers, ss...)
+		signers = append(signers, signer)
 	}
 	return signers
 }
@@ -433,7 +431,15 @@ func getPublicKeysAuthMethod(param *sshParam) ssh.AuthMethod {
 	}
 
 	if len(identities) == 0 {
-		addPubKeySigners(getDefaultSigners(args.Destination, certFiles))
+		for _, signer := range getDefaultSigners(args.Destination) {
+			identityPath := ""
+			if ss, ok := signer.(interface{ getPath() string }); ok {
+				identityPath = ss.getPath()
+			}
+			signers := []ssh.Signer{signer}
+			signers = appendSignerCerts(identityPath, signer, signers, certFiles)
+			addPubKeySigners(signers)
+		}
 	} else {
 		for _, identity := range identities {
 			signer := getSigner(args.Destination, identity)

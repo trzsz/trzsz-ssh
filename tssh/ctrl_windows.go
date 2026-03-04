@@ -25,58 +25,8 @@ SOFTWARE.
 package tssh
 
 import (
-	"fmt"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"regexp"
-	"strconv"
 	"strings"
 )
-
-func getRealPath(path string) string {
-	realPath, err := filepath.EvalSymlinks(path)
-	if err != nil {
-		return path
-	}
-	return realPath
-}
-
-// getOpenSSH returns a usable OpenSSH binary path and its (major, minor) version.
-// It tries hard to avoid returning the current program path (e.g. when tssh is
-// installed as "ssh" in PATH).
-func getOpenSSH() (string, int, int, error) {
-	tsshPath, err := os.Executable()
-	if err != nil {
-		return "", 0, 0, err
-	}
-
-	sshPath, err := exec.LookPath("ssh")
-	if err != nil {
-		return "", 0, 0, err
-	}
-	if getRealPath(sshPath) == getRealPath(tsshPath) {
-		return "", 0, 0, fmt.Errorf("no usable ssh found")
-	}
-
-	out, err := exec.Command(sshPath, "-V").CombinedOutput()
-	if err != nil {
-		return "", 0, 0, err
-	}
-	re := regexp.MustCompile(`OpenSSH_(\d+)\.(\d+)`)
-	matches := re.FindStringSubmatch(string(out))
-	majorVersion := -1
-	minorVersion := -1
-	if len(matches) > 2 {
-		if v, err := strconv.ParseUint(matches[1], 10, 32); err == nil {
-			majorVersion = int(v)
-		}
-		if v, err := strconv.ParseUint(matches[2], 10, 32); err == nil {
-			minorVersion = int(v)
-		}
-	}
-	return sshPath, majorVersion, minorVersion, nil
-}
 
 func connectViaControl(param *sshParam) SshClient {
 	ctrlMaster := getOptionConfig(param.args, "ControlMaster")

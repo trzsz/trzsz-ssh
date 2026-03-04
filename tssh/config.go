@@ -360,8 +360,8 @@ func (c *tsshConfig) doLoadExConfig() {
 }
 
 func getConfig(alias, key string) string {
-	if useOpenSSHConfigEnabled {
-		if cfg := getOpenSSHEffectiveConfig(alias); cfg != nil {
+	if userConfig.useOpenSSHConfig {
+		if cfg := getOpenSSHEffectiveConfig(alias, "", ""); cfg != nil {
 			if value := cfg.get(key); value != "" {
 				return value
 			}
@@ -392,8 +392,8 @@ func getConfig(alias, key string) string {
 }
 
 func getConfigSplits(alias, key string) []string {
-	if useOpenSSHConfigEnabled {
-		if cfg := getOpenSSHEffectiveConfig(alias); cfg != nil {
+	if userConfig.useOpenSSHConfig {
+		if cfg := getOpenSSHEffectiveConfig(alias, "", ""); cfg != nil {
 			if value := cfg.get(key); value != "" {
 				values, err := shlex.Split(value)
 				if err != nil {
@@ -438,8 +438,8 @@ func getConfigSplits(alias, key string) []string {
 }
 
 func getAllConfig(alias, key string) []string {
-	if useOpenSSHConfigEnabled {
-		if cfg := getOpenSSHEffectiveConfig(alias); cfg != nil {
+	if userConfig.useOpenSSHConfig {
+		if cfg := getOpenSSHEffectiveConfig(alias, "", ""); cfg != nil {
 			if values := cfg.getAll(key); len(values) > 0 {
 				return values
 			}
@@ -476,8 +476,8 @@ func getAllConfig(alias, key string) []string {
 }
 
 func getAllConfigSplits(alias, key string) []string {
-	if useOpenSSHConfigEnabled {
-		if cfg := getOpenSSHEffectiveConfig(alias); cfg != nil {
+	if userConfig.useOpenSSHConfig {
+		if cfg := getOpenSSHEffectiveConfig(alias, "", ""); cfg != nil {
 			var values []string
 			for _, value := range cfg.getAll(key) {
 				vals, err := shlex.Split(value)

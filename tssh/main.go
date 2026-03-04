@@ -187,8 +187,6 @@ func TsshMain(argv []string) int {
 	if err = initUserConfig(args.ConfigFile); err != nil {
 		return kExitCodeUserConfig
 	}
-	// Enable OpenSSH effective config mode via tssh.conf only.
-	useOpenSSHConfigEnabled = userConfig != nil && userConfig.useOpenSSHConfig
 
 	// setup virtual terminal on Windows
 	if isTerminal {

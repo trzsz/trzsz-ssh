@@ -4,9 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"os"
 	"os/exec"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -15,10 +13,6 @@ import (
 type effectiveSshConfig struct {
 	values map[string][]string // lower-case key -> values in order
 }
-
-// useOpenSSHConfigEnabled controls whether ssh -G is used as the base config.
-// It is set from tssh.conf in TsshMain.
-var useOpenSSHConfigEnabled bool
 
 var openSSHEffectiveCfgCache struct {
 	mu sync.Mutex
@@ -44,16 +38,7 @@ func (c *effectiveSshConfig) getAll(key string) []string {
 	if len(vals) == 0 {
 		return nil
 	}
-	out := make([]string, len(vals))
-	copy(out, vals)
-	return out
-}
-
-func devNullPath() string {
-	if runtime.GOOS == "windows" {
-		return "NUL"
-	}
-	return "/dev/null"
+	return vals
 }
 
 func parseOpenSSHConfigDump(out []byte) *effectiveSshConfig {
@@ -78,11 +63,12 @@ func parseOpenSSHConfigDump(out []byte) *effectiveSshConfig {
 	return cfg
 }
 
-func getOpenSSHEffectiveConfig(dest string) *effectiveSshConfig {
-	if !useOpenSSHConfigEnabled {
+func getOpenSSHEffectiveConfig(dest, user, port string) *effectiveSshConfig {
+	if userConfig == nil || !userConfig.useOpenSSHConfig {
 		return nil
 	}
-	if strings.TrimSpace(dest) == "" {
+	host := strings.TrimSpace(dest)
+	if host == "" {
 		return nil
 	}
 
@@ -90,22 +76,17 @@ func getOpenSSHEffectiveConfig(dest string) *effectiveSshConfig {
 	if openSSHEffectiveCfgCache.m == nil {
 		openSSHEffectiveCfgCache.m = make(map[string]*effectiveSshConfig)
 	}
-	if cfg, ok := openSSHEffectiveCfgCache.m[dest]; ok {
+	if cfg, ok := openSSHEffectiveCfgCache.m[host]; ok {
 		openSSHEffectiveCfgCache.mu.Unlock()
 		return cfg
 	}
 	// Mark as tried early to avoid repeated expensive calls.
-	openSSHEffectiveCfgCache.m[dest] = nil
+	openSSHEffectiveCfgCache.m[host] = nil
 	openSSHEffectiveCfgCache.mu.Unlock()
 
 	sshPath, _, _, err := getOpenSSH()
 	if err != nil {
 		debug("OpenSSH not available, skip ssh -G config evaluation: %v", err)
-		return nil
-	}
-
-	user, host, port := parseDestination(dest)
-	if host == "" {
 		return nil
 	}
 
@@ -118,11 +99,12 @@ func getOpenSSHEffectiveConfig(dest string) *effectiveSshConfig {
 		}
 	}
 
-	// Derive user/port from destination for correct token expansion.
-	if user != "" {
+	// If user/port are explicitly specified by args/destination, pass them to
+	// OpenSSH so token expansion matches tssh behavior.
+	if strings.TrimSpace(user) != "" {
 		cmdArgs = append(cmdArgs, "-l", user)
 	}
-	if port != "" {
+	if strings.TrimSpace(port) != "" {
 		cmdArgs = append(cmdArgs, "-p", port)
 	}
 
@@ -131,7 +113,6 @@ func getOpenSSHEffectiveConfig(dest string) *effectiveSshConfig {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, sshPath, cmdArgs...)
-	cmd.Env = os.Environ()
 	out, err := cmd.Output()
 	if err != nil {
 		debug("ssh -G failed for [%s]: %v", host, err)
@@ -139,13 +120,10 @@ func getOpenSSHEffectiveConfig(dest string) *effectiveSshConfig {
 	}
 
 	cfg := parseOpenSSHConfigDump(out)
-	if cfg == nil {
-		return nil
-	}
 
 	// Cache success.
 	openSSHEffectiveCfgCache.mu.Lock()
-	openSSHEffectiveCfgCache.m[dest] = cfg
+	openSSHEffectiveCfgCache.m[host] = cfg
 	openSSHEffectiveCfgCache.mu.Unlock()
 
 	if enableDebugLogging {
