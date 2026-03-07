@@ -216,15 +216,15 @@ func getHostKeyCallback(param *sshParam) (ssh.HostKeyCallback, []string, error) 
 		} else if knownhosts.IsHostUnknown(err) && primaryPath != "" {
 			ask := true
 			switch strictHostKeyChecking {
-			case "yes":
+			case "yes", "true":
 				return err
-			case "accept-new", "no", "off":
+			case "accept-new", "no", "off", "false":
 				ask = false
 			}
 			return addHostKey(primaryPath, host, key, ask)
 		}
 		switch strictHostKeyChecking {
-		case "no", "off":
+		case "no", "off", "false":
 			return nil
 		default:
 			return err

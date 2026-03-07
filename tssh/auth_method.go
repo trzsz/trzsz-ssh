@@ -385,7 +385,7 @@ var getDefaultSigners = func() func() []ssh.Signer {
 
 func getPublicKeysAuthMethod(param *sshParam) ssh.AuthMethod {
 	args := param.args
-	if strings.ToLower(getOptionConfig(args, "PubkeyAuthentication")) == "no" {
+	if v := strings.ToLower(getOptionConfig(args, "PubkeyAuthentication")); v == "no" || v == "false" {
 		debug("disable auth method: public key authentication")
 		return nil
 	}

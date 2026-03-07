@@ -35,7 +35,7 @@ func connectViaControl(param *sshParam) SshClient {
 	ctrlPath := getOptionConfig(param.args, "ControlPath")
 
 	switch strings.ToLower(ctrlMaster) {
-	case "auto", "yes", "ask", "autoask":
+	case "auto", "yes", "ask", "autoask", "true":
 		warning("ControlMaster is not supported on Windows")
 	}
 

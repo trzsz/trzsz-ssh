@@ -349,7 +349,7 @@ func connectViaControl(param *sshParam) SshClient {
 	socket = resolveHomeDir(socket)
 
 	switch strings.ToLower(ctrlMaster) {
-	case "yes", "ask":
+	case "yes", "ask", "true":
 		if isFileExist(socket) {
 			warning("control socket [%s] already exists, disabling multiplexing", socket)
 			return nil

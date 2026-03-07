@@ -384,7 +384,7 @@ func parseCmdAndTTY(param *sshParam) (cmd string, tty bool, err error) {
 	switch strings.ToLower(requestTTY) {
 	case "", "auto":
 		tty = isTerminal && (cmd == "")
-	case "no":
+	case "no", "false":
 		tty = false
 	case "force":
 		tty = true
