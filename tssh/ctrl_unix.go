@@ -45,6 +45,8 @@ import (
 	"github.com/creack/pty"
 )
 
+const kOpenSSH = "ssh"
+
 type controlMaster struct {
 	path    string
 	args    []string

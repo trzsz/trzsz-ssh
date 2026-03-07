@@ -87,24 +87,24 @@ func parseDestination(dest string) (user, host, port string) {
 	// user
 	idx := strings.Index(dest, "@")
 	if idx >= 0 {
-		user = dest[:idx]
+		user = strings.TrimSpace(dest[:idx])
 		dest = dest[idx+1:]
 	}
 
 	// port
 	idx = strings.Index(dest, "]:")
 	if idx > 0 && dest[0] == '[' { // ipv6 port
-		port = dest[idx+2:]
+		port = strings.TrimSpace(dest[idx+2:])
 		dest = dest[1:idx]
 	} else {
 		tokens := strings.Split(dest, ":")
 		if len(tokens) == 2 { // ipv4 port
-			port = tokens[1]
+			port = strings.TrimSpace(tokens[1])
 			dest = tokens[0]
 		}
 	}
 
-	host = dest
+	host = strings.TrimSpace(dest)
 	return
 }
 
@@ -113,24 +113,16 @@ func getSshParam(args *sshArgs) (*sshParam, error) {
 
 	// login dest
 	destUser, destHost, destPort := parseDestination(args.Destination)
+	if destHost == "" {
+		return nil, fmt.Errorf("invalid destination (empty host): %s", args.Destination)
+	}
+
 	args.Destination = destHost
 
 	// Preload effective OpenSSH configuration using `ssh -G`, allowing getConfig()
 	// to evaluate Match blocks and other complex OpenSSH rules.
 	if userConfig.useOpenSSHConfig {
-		user := ""
-		if args.LoginName != "" {
-			user = args.LoginName
-		} else if destUser != "" {
-			user = destUser
-		}
-		port := ""
-		if args.Port > 0 {
-			port = strconv.Itoa(args.Port)
-		} else if destPort != "" {
-			port = destPort
-		}
-		_ = getOpenSSHEffectiveConfig(args.Destination, user, port)
+		_ = getOpenSSHEffectiveConfig(args.Destination, args, destUser, destPort)
 	}
 
 	// login host
@@ -396,7 +388,7 @@ func parseCmdAndTTY(param *sshParam) (cmd string, tty bool, err error) {
 		tty = false
 	case "force":
 		tty = true
-	case "yes":
+	case "yes", "true":
 		tty = isTerminal
 	default:
 		err = fmt.Errorf("unknown RequestTTY option: %s", requestTTY)
@@ -486,7 +478,9 @@ func getConnectTimeout(args *sshArgs) time.Duration {
 	}
 	value, err := strconv.ParseUint(connectTimeout, 10, 32)
 	if err != nil {
-		warning("ConnectTimeout [%s] invalid: %v", connectTimeout, err)
+		if strings.ToLower(connectTimeout) != "none" {
+			warning("ConnectTimeout [%s] invalid: %v", connectTimeout, err)
+		}
 		return kDefaultConnectTimeout
 	}
 	if value <= 0 { // set a long time to avoid issue with 0
@@ -745,14 +739,14 @@ func keepAlive(sshConn *sshConnection) {
 }
 
 func sshConnect(args *sshArgs) (*sshConnection, error) {
-	// init log level
-	_ = setupLogLevel(args)
-
 	// init ssh param
 	param, err := getSshParam(args)
 	if err != nil {
 		return nil, err
 	}
+
+	// init log level
+	_ = setupLogLevel(args)
 
 	// parse cmd and tty
 	cmd, tty, err := parseCmdAndTTY(param)

@@ -91,7 +91,9 @@ func forwardInput(reader io.Reader, writer io.WriteCloser, win bool, escapeChar 
 				buf = bytes.ReplaceAll(buf, []byte("\r\n"), []byte("\n"))
 			}
 			if err := writeAll(writer, buf); err != nil {
-				warning("wrap input write failed: %v", err)
+				if !sshConn.closed.Load() {
+					warning("wrap input write failed: %v", err)
+				}
 				return
 			}
 		}

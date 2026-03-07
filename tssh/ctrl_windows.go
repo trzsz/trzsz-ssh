@@ -28,6 +28,8 @@ import (
 	"strings"
 )
 
+const kOpenSSH = "ssh.exe"
+
 func connectViaControl(param *sshParam) SshClient {
 	ctrlMaster := getOptionConfig(param.args, "ControlMaster")
 	ctrlPath := getOptionConfig(param.args, "ControlPath")

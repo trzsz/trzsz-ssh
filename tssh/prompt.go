@@ -644,6 +644,10 @@ func predictDestination(dest string) (string, bool, error) {
 		return dest, false, nil
 	}
 
+	if userConfig.useOpenSSHConfig {
+		return dest, false, nil
+	}
+
 	hosts := getAllHosts()
 	for _, host := range hosts {
 		if host.Alias == dest {
