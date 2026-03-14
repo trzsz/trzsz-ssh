@@ -189,6 +189,7 @@ func execNewHost(args *sshArgs) (int, bool) {
 	if err != nil {
 		toolsErrorExit("make stdin raw failed: %v", err)
 	}
+	defer resetStdin(state)
 	addOnExitFunc(func() { resetStdin(state) })
 
 	n := &newHostTool{}
@@ -211,7 +212,7 @@ func execNewHost(args *sshArgs) (int, bool) {
 
 	n.writeHost()
 
-	if n.loginImmediately() {
+	if !isRunningOnOldWindows.Load() && n.loginImmediately() {
 		if n.configPath != userConfig.configPath {
 			args.ConfigFile = n.configPath
 			if err := initUserConfig(args.ConfigFile); err != nil {

@@ -28,7 +28,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 var TableStyle = func(row, col int) lipgloss.Style {

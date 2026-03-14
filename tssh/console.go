@@ -32,8 +32,8 @@ import (
 	"strings"
 	"sync/atomic"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -119,9 +119,9 @@ func (m *menuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *menuModel) View() string {
+func (m *menuModel) View() tea.View {
 	if m.quitting {
-		return ""
+		return tea.NewView("")
 	}
 	var builder strings.Builder
 	m.writeLine(&builder, m.renderBlankLine())
@@ -131,7 +131,7 @@ func (m *menuModel) View() string {
 	m.renderMenuItems(&builder)
 	m.writeLine(&builder, m.footerStyle.Render(getText("console/notes")))
 	builder.WriteString(m.backgroundStyle.Render(m.renderBlankLine()))
-	return builder.String()
+	return tea.NewView(builder.String())
 }
 
 func (m *menuModel) renderMenuItems(builder *strings.Builder) {
@@ -214,7 +214,7 @@ func runConsole(escapeChar byte, writer io.WriteCloser, sshConn *sshConnection) 
 		return model, tea.Quit
 	}})
 
-	teaInput, cancelReader := newTeaStdinInput(func(buf []byte) {
+	teaOpts, cancelReader := newTeaOptions(func(buf []byte) {
 		if enableDebugLogging {
 			if ch := stdinInputChan.Load(); ch != nil {
 				*ch <- append([]byte(nil), buf...)
@@ -225,7 +225,7 @@ func runConsole(escapeChar byte, writer io.WriteCloser, sshConn *sshConnection) 
 	})
 	defer cancelReader()
 
-	p := tea.NewProgram(model, teaInput, tea.WithOutput(os.Stderr))
+	p := tea.NewProgram(model, append(teaOpts, tea.WithOutput(os.Stderr))...)
 	if _, err := p.Run(); err != nil {
 		warning("run escape console failed: %v", err)
 	}
