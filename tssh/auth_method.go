@@ -374,6 +374,10 @@ var getDefaultSigners = func() func() []ssh.Signer {
 				if !isFileExist(path) {
 					continue
 				}
+				if strings.HasSuffix(name, "_sk") {
+					debug("security key not supported yet: %s", path)
+					continue
+				}
 				if signer := getSigner(name, path); signer != nil {
 					signers = append(signers, signer)
 				}
@@ -444,6 +448,10 @@ func getPublicKeysAuthMethod(param *sshParam) ssh.AuthMethod {
 			expandedIdentity = resolveHomeDir(expandedIdentity)
 			if !isFileExist(expandedIdentity) {
 				debug("IdentityFile [%s] does not exist", expandedIdentity)
+				continue
+			}
+			if strings.HasSuffix(expandedIdentity, "_sk") {
+				debug("security key not supported yet: %s", expandedIdentity)
 				continue
 			}
 		}
