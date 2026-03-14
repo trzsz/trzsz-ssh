@@ -87,17 +87,25 @@ func newTextSender(expect *sshExpect, input string) *expectSender {
 }
 
 func (s *expectSender) newSendText(showText, sendText string) *expectSendText {
-	var err error
-	showText, err = expandTokens(showText, s.expect.param, "%hprnLlj")
-	if err != nil {
-		warning("expand send text [%s] failed: %v", showText, err)
-	} else {
-		sendText, err = expandTokens(sendText, s.expect.param, "%hprnLlj")
-		if err != nil {
-			warning("expand send text %s failed: %v", strconv.QuoteToASCII(sendText), strconv.QuoteToASCII(err.Error()))
+	est := &expectSendText{}
+
+	if enableDebugLogging {
+		if expanded, err := expandTokens(showText, s.expect.param, "%hprnLlj"); err != nil {
+			warning("expand send text [%s] failed: %v", showText, err)
+			est.showText = showText
+		} else {
+			est.showText = expanded
 		}
 	}
-	return &expectSendText{showText: showText, sendText: sendText}
+
+	if expanded, err := expandTokens(sendText, s.expect.param, "%hprnLlj"); err != nil {
+		warning("expand send text %s failed: %v", strconv.QuoteToASCII(sendText), strconv.QuoteToASCII(err.Error()))
+		est.sendText = sendText
+	} else {
+		est.sendText = expanded
+	}
+
+	return est
 }
 
 func (s *expectSender) decodeText(text string) []*expectSendText {

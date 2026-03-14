@@ -343,7 +343,7 @@ func connectViaControl(param *sshParam) SshClient {
 	}
 	socket, err := expandTokens(ctrlPath, param, tokens)
 	if err != nil {
-		warning("expand ControlPath [%s] failed: %v", socket, err)
+		warning("expand ControlPath [%s] failed: %v", ctrlPath, err)
 		return nil
 	}
 	socket = resolveHomeDir(socket)

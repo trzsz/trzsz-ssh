@@ -54,7 +54,6 @@ func TestExpandTokens(t *testing.T) {
 		result, err := expandTokens(original, param, "%hnpr")
 		if errMsg != "" {
 			require.NotNil(err)
-			assert.Equal(original, result)
 			assert.Equal(errMsg, err.Error())
 			return
 		}
@@ -69,8 +68,8 @@ func TestExpandTokens(t *testing.T) {
 	assertProxyCommand("%r", "penny", "")
 	assertProxyCommand("a_%%_%r_%p_%n_%h_Z", "a_%_penny_1337_dest_127.0.0.1_Z", "")
 
-	assertProxyCommand("%l", "%l", "token [%l] in [%l] is not supported")
-	assertProxyCommand("a_%h_%C", "a_127.0.0.1_%C", "token [%C] in [a_%h_%C] is not supported")
+	assertProxyCommand("%l", "", "token [%l] in [%l] is not supported")
+	assertProxyCommand("a_%h_%C", "", "token [%C] in [a_%h_%C] is not supported")
 
 	assertControlPath := func(original, expanded, errMsg string) {
 		t.Helper()
@@ -91,9 +90,9 @@ func TestExpandTokens(t *testing.T) {
 
 	assertControlPath("/A/%C/B", "/A/07f25c03a322b120bcaa54d2dd0a618f2673cb1c/B", "")
 
-	assertControlPath("%j", "%j", "token [%j] in [%j] is not supported")
-	assertControlPath("p_%h_%d", "p_127.0.0.1_%d", "token [%d] in [p_%h_%d] is not supported yet")
-	assertControlPath("h%", "h%", "[h%] ends with % is invalid")
+	assertControlPath("%j", "", "token [%j] in [%j] is not supported")
+	assertControlPath("p_%h_%d", "", "token [%d] in [p_%h_%d] is not supported yet")
+	assertControlPath("h%", "", "[h%] ends with % is invalid")
 }
 
 func TestProxyJumpToken(t *testing.T) {
@@ -144,7 +143,7 @@ func TestInvalidHost(t *testing.T) {
 		t.Helper()
 		_, err := expandTokens("%h", &sshParam{args: &sshArgs{}, host: host}, "%hnpr")
 		require.NotNil(err)
-		assert.Equal("hostname contains invalid characters", err.Error())
+		assert.Contains(err.Error(), "contains invalid characters")
 	}
 
 	assertInvalidHost("-invalidhostname")
@@ -183,7 +182,7 @@ func TestInvalidUser(t *testing.T) {
 		t.Helper()
 		_, err := expandTokens("%r", &sshParam{args: &sshArgs{}, user: user}, "%hnpr")
 		require.NotNil(err)
-		assert.Equal("remote username contains invalid characters", err.Error())
+		assert.Contains(err.Error(), "contains invalid characters")
 	}
 
 	assertInvalidUser("-invalidusername")

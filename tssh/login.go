@@ -128,11 +128,11 @@ func getSshParam(args *sshArgs) (*sshParam, error) {
 	// login host
 	param.host = destHost
 	if hostName := getConfig(destHost, "HostName"); hostName != "" {
-		var err error
-		param.host, err = expandTokens(hostName, param, "%h")
+		expandedHostName, err := expandTokens(hostName, param, "%h")
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("expand HostName [%s] failed: %v", hostName, err)
 		}
+		param.host = expandedHostName
 	}
 
 	// login user
@@ -190,18 +190,20 @@ func getSshParam(args *sshArgs) (*sshParam, error) {
 	getProxyParam(param)
 
 	// expand proxy
-	var err error
 	if param.command != "" {
-		param.command, err = expandTokens(param.command, param, "%hnpr")
+		expandedCommand, err := expandTokens(param.command, param, "%hnpr")
 		if err != nil {
 			return nil, fmt.Errorf("expand ProxyCommand [%s] failed: %v", param.command, err)
 		}
+		param.command = expandedCommand
 	}
 	for i := 0; i < len(param.proxies); i++ {
-		param.proxies[i], err = expandTokens(strings.TrimSpace(param.proxies[i]), param, "%hnpr")
+		proxy := strings.TrimSpace(param.proxies[i])
+		expandedProxy, err := expandTokens(proxy, param, "%hnpr")
 		if err != nil {
-			return nil, fmt.Errorf("expand ProxyJump [%s] failed: %v", param.proxies[i], err)
+			return nil, fmt.Errorf("expand ProxyJump [%s] failed: %v", proxy, err)
 		}
+		param.proxies[i] = expandedProxy
 	}
 
 	// udp mode
@@ -302,11 +304,7 @@ func (p *cmdPipe) Close() error {
 }
 
 func execProxyCommand(param *sshParam) (net.Conn, string, error) {
-	command, err := expandTokens(param.command, param, "%hnpr")
-	if err != nil {
-		return nil, param.command, err
-	}
-	command = resolveHomeDir(command)
+	command := resolveHomeDir(param.command)
 	debug("exec proxy command: %s", command)
 
 	argv, err := splitCommandLine(command)
