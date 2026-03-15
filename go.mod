@@ -28,8 +28,8 @@ require (
 	github.com/trzsz/promptui v0.10.8
 	github.com/trzsz/shellescape v1.6.0
 	github.com/trzsz/ssh_config v1.3.6
-	github.com/trzsz/trzsz-go v1.2.1-0.20260314231032-8aee2402a35c
-	github.com/trzsz/tsshd v0.1.7-0.20260220164351-65799ae3dd1c
+	github.com/trzsz/trzsz-go v1.2.1-0.20260315140926-68ccff6a8e82
+	github.com/trzsz/tsshd v0.1.7-0.20260315103531-cfdef821f776
 	golang.org/x/crypto v0.49.0
 	golang.org/x/sys v0.42.0
 	golang.org/x/term v0.41.0
