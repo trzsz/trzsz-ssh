@@ -209,6 +209,7 @@ func TsshMain(argv []string) int {
 			return kExitCodeNoDestHost
 		}
 		dest, quit, err = chooseAlias("")
+		args.NoSave = false
 	} else {
 		dest, quit, err = predictDestination(args.Destination)
 	}
@@ -260,6 +261,12 @@ func sshStart(args *sshArgs) (int, error) {
 
 	// handle signals
 	handleExitSignals(sshConn)
+
+	// save host configuration after successful login
+	if err := saveHostToConfig(args, sshConn); err != nil {
+		// Log warning but don't fail the connection
+		warning("failed to save host configuration: %v", err)
+	}
 
 	// stdio forward
 	if args.StdioForward != "" {

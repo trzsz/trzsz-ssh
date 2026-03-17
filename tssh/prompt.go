@@ -629,7 +629,10 @@ func chooseAlias(keywords string) (string, bool, error) {
 	if len(selectedHosts) > 1 && termMgr != nil {
 		termMgr.openTerminals(keywords, prompt.openType, selectedHosts)
 	}
-	return selectedHosts[0].Alias, false, nil
+
+	// Return the alias to let SSH config handle port and other settings
+	selected := selectedHosts[0]
+	return selected.Alias, false, nil
 }
 
 func fastLookupHost(host string) bool {

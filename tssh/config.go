@@ -86,6 +86,7 @@ type tsshConfig struct {
 	promptCursorIcon      string
 	promptSelectedIcon    string
 	setTerminalTitle      string
+	autoSaveHost          bool
 	loadConfig            sync.Once
 	loadExConfig          sync.Once
 	loadHosts             sync.Once
@@ -200,6 +201,8 @@ func parseTsshConfig() {
 			userConfig.promptSelectedIcon = value
 		case name == "setterminaltitle" && userConfig.setTerminalTitle == "":
 			userConfig.setTerminalTitle = value
+		case name == "autosavehost":
+			userConfig.autoSaveHost = strings.ToLower(value) != "no" && strings.ToLower(value) != "false"
 		}
 	}
 
@@ -264,10 +267,14 @@ func showTsshConfig() {
 	if userConfig.setTerminalTitle != "" {
 		debug("SetTerminalTitle = %s", userConfig.setTerminalTitle)
 	}
+	debug("AutoSaveHost = %v", userConfig.autoSaveHost)
 }
 
 func initUserConfig(configFile string) (err error) {
-	userConfig = &tsshConfig{}
+	userConfig = &tsshConfig{
+		// default set auto save host to true
+		autoSaveHost: true,
+	}
 	userHomeDir, err = os.UserHomeDir()
 	if err != nil {
 		debug("user home dir failed: %v", err)
@@ -328,6 +335,7 @@ func (c *tsshConfig) doLoadConfig() {
 	c.loadConfig.Do(func() {
 		ssh_config.SetDefault("LogLevel", "")
 		ssh_config.SetDefault("IdentityFile", "")
+		ssh_config.SetDefault("User", "root")
 
 		if c.configPath == "" {
 			debug("no ssh configuration file path")

@@ -258,7 +258,8 @@ func getPasswordAuthMethod(args *sshArgs, host, user string) ssh.AuthMethod {
 
 	idx := 0
 	rememberPassword := false
-	return ssh.RetryableAuthMethod(ssh.PasswordCallback(func() (string, error) {
+	var inputPassword string
+	authMethod := ssh.RetryableAuthMethod(ssh.PasswordCallback(func() (string, error) {
 		idx++
 		if idx == 1 {
 			password := args.Option.get("Password")
@@ -277,8 +278,19 @@ func getPasswordAuthMethod(args *sshArgs, host, user string) ssh.AuthMethod {
 		if err != nil {
 			return "", err
 		}
-		return string(secret), nil
+		inputPassword = string(secret)
+		return inputPassword, nil
 	}), 3)
+
+	if !args.NoSave {
+		addAfterLoginFunc(func() {
+			if inputPassword != "" {
+				savePasswordAfterLogin(args, inputPassword)
+			}
+		})
+	}
+
+	return authMethod
 }
 
 func readQuestionAnswerConfig(dest string, idx int, question string) string {
