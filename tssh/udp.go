@@ -173,20 +173,6 @@ func (c *sshUdpClient) notifyConnectionLost() {
 	showConnectionLostNotif(c)
 }
 
-func (c *sshUdpClient) discardPendingInput(discardMarker []byte) {
-	if c.notifInterceptor == nil {
-		return
-	}
-	if input := c.notifInterceptor.discardPendingInput(discardMarker); len(input) > 0 {
-		if enableDebugLogging {
-			c.debug("[client] discard input: %s", strconv.QuoteToASCII(string(input)))
-		}
-		if isRunningTmuxIntegration() {
-			handleTmuxDiscardedInput(input)
-		}
-	}
-}
-
 var lastJumpUdpClient *sshUdpClient
 var globalUdpAliveTimeout time.Duration
 
@@ -286,14 +272,7 @@ func udpLogin(param *sshParam, tcpClient SshClient) (SshClient, error) {
 		DebugFunc:        func(msec int64, msg string) { writeDebugLog(msec, args.Destination, msg) },
 		WarningFunc:      func(msg string) { warning("udp [%s] %s", args.Destination, msg) },
 		QuitCallback:     func(reason string) { quitCallback(args.Destination, reason) },
-		DiscardCallback: func(discardMarker, discardedInput []byte) {
-			if len(discardMarker) > 0 {
-				udpClient.discardPendingInput(discardMarker)
-			}
-			if len(discardedInput) > 0 && isRunningTmuxIntegration() {
-				handleTmuxDiscardedInput(discardedInput)
-			}
-		},
+		DiscardCallback:  handleTmuxDiscardedInput,
 	}
 
 	if param.proxy != nil {

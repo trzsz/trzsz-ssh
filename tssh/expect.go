@@ -99,7 +99,9 @@ func (s *expectSender) newSendText(showText, sendText string) *expectSendText {
 	}
 
 	if expanded, err := expandTokens(sendText, s.expect.param, "%hprnLlj"); err != nil {
-		warning("expand send text %s failed: %v", strconv.QuoteToASCII(sendText), strconv.QuoteToASCII(err.Error()))
+		if enableWarningLogging {
+			warning("expand send text %s failed: %v", strconv.QuoteToASCII(sendText), strconv.QuoteToASCII(err.Error()))
+		}
 		est.sendText = sendText
 	} else {
 		est.sendText = expanded
@@ -322,7 +324,9 @@ func (e *sshExpect) captureOutput(reader io.Reader, ch chan<- []byte) ([]byte, e
 			case <-e.ctx.Done():
 				return buf, nil
 			case ch <- buf:
-				debug("expect capture output: %s", strconv.QuoteToASCII(string(buf)))
+				if enableDebugLogging {
+					debug("expect capture output: %s", strconv.QuoteToASCII(string(buf)))
+				}
 			}
 		}
 		if err == io.EOF {

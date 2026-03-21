@@ -42,8 +42,7 @@ func isRemoteSshEnv(pid int) bool {
 
 		var path [windows.MAX_PATH]uint16
 		var pathLen uint32 = uint32(len(path))
-		err = windows.QueryFullProcessImageName(handle, 0, &path[0], &pathLen)
-		if err != nil {
+		if err := windows.QueryFullProcessImageName(handle, 0, &path[0], &pathLen); err != nil {
 			return false
 		}
 

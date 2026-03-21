@@ -289,8 +289,6 @@ func (m *notifModel) getWidth() int {
 
 type notifInterceptor struct {
 	client        *sshUdpClient
-	inputBufChan  chan []byte
-	inputBufChMu  sync.Mutex
 	noticeOnTop   bool
 	showFullNotif atomic.Bool
 	interceptFlag atomic.Bool
@@ -349,18 +347,12 @@ func (ni *notifInterceptor) handleUserInput(input []byte) {
 }
 
 func (ni *notifInterceptor) forwardInput(reader io.Reader, writer io.WriteCloser) {
-	ni.inputBufChan = make(chan []byte, 10)
-	defer func() {
-		close(ni.interceptChan)
-		ni.inputBufChMu.Lock()
-		defer ni.inputBufChMu.Unlock()
-		close(ni.inputBufChan)
-		ni.inputBufChan = nil
-	}()
+	inputBufChan := make(chan []byte, 10)
+	defer close(inputBufChan)
 
 	go func() {
 		defer func() { _ = writer.Close() }()
-		for buf := range ni.inputBufChan {
+		for buf := range inputBufChan {
 			if err := writeAll(writer, buf); err != nil {
 				warning("udp forward input failed: %v", err)
 			}
@@ -390,7 +382,7 @@ func (ni *notifInterceptor) forwardInput(reader io.Reader, writer io.WriteCloser
 		out:
 			for {
 				select {
-				case ni.inputBufChan <- buf:
+				case inputBufChan <- buf:
 					break out
 				default:
 					if ni.interceptFlag.Load() {
@@ -405,35 +397,6 @@ func (ni *notifInterceptor) forwardInput(reader io.Reader, writer io.WriteCloser
 			break
 		}
 	}
-}
-
-func (ni *notifInterceptor) discardPendingInput(discardMarker []byte) []byte {
-	ni.inputBufChMu.Lock()
-	defer ni.inputBufChMu.Unlock()
-	if ni.inputBufChan == nil {
-		return nil
-	}
-
-	if ni.client == ni.client.sshConn.Load().client { // the last ssh client is udp client
-		defer func() { ni.inputBufChan <- discardMarker }()
-	}
-
-	if len(ni.inputBufChan) == 0 {
-		return nil
-	}
-
-	var input []byte
-out:
-	for {
-		select {
-		case buf := <-ni.inputBufChan:
-			input = append(input, buf...)
-		case <-time.After(21 * time.Millisecond):
-			break out
-		}
-	}
-
-	return input
 }
 
 func (ni *notifInterceptor) forwardOutput(reader io.Reader, writer io.WriteCloser) {

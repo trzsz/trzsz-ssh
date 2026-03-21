@@ -28,8 +28,8 @@ require (
 	github.com/trzsz/promptui v0.10.8
 	github.com/trzsz/shellescape v1.6.0
 	github.com/trzsz/ssh_config v1.3.6
-	github.com/trzsz/trzsz-go v1.2.1-0.20260315140926-68ccff6a8e82
-	github.com/trzsz/tsshd v0.1.7-0.20260315103531-cfdef821f776
+	github.com/trzsz/trzsz-go v1.2.1-0.20260321175259-1b4edac9bfa1
+	github.com/trzsz/tsshd v0.1.7-rc2.0.20260321223557-7918c43b0025
 	golang.org/x/crypto v0.49.0
 	golang.org/x/sys v0.42.0
 	golang.org/x/term v0.41.0
@@ -42,7 +42,7 @@ require (
 	github.com/andybrewer/mack v0.0.0-20251024001139-afd410b36447 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/boombuler/barcode v1.1.0 // indirect
-	github.com/charmbracelet/ultraviolet v0.0.0-20260309091805-903bfd0cf188 // indirect
+	github.com/charmbracelet/ultraviolet v0.0.0-20260316091819-b93f6a3b8502 // indirect
 	github.com/charmbracelet/x/term v0.2.2 // indirect
 	github.com/charmbracelet/x/termios v0.1.1 // indirect
 	github.com/charmbracelet/x/windows v0.2.2 // indirect
@@ -58,7 +58,7 @@ require (
 	github.com/jcmturner/goidentity/v6 v6.0.1 // indirect
 	github.com/jcmturner/rpc/v2 v2.0.3 // indirect
 	github.com/josephspurrier/goversioninfo v1.5.0 // indirect
-	github.com/klauspost/compress v1.18.4 // indirect
+	github.com/klauspost/compress v1.18.5 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/klauspost/reedsolomon v1.13.3 // indirect
 	github.com/lucasb-eyer/go-colorful v1.3.0 // indirect

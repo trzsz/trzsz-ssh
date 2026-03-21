@@ -60,7 +60,7 @@ func isRunningTmuxIntegration() bool {
 
 	tmux, err := iterm2Session.IsTmuxIntegrationSession()
 	if err != nil {
-		if !iterm2Session.GetApp().IsClosed() {
+		if enableDebugLogging && !iterm2Session.GetApp().IsClosed() {
 			tmuxDebug("check tmux integration failed: %v", err)
 		}
 		return false
@@ -226,6 +226,10 @@ func handleAndDecodeTmuxInput(buf []byte) ([]byte, []byte, string, bool) {
 }
 
 func handleTmuxDiscardedInput(input []byte) {
+	if len(input) == 0 || !isRunningTmuxIntegration() {
+		return
+	}
+
 	// iTerm2 expects to receive the %begin %end block
 	now := time.Now().Unix()
 	ack := fmt.Appendf(nil, "%%begin %d 1 1\r\n%%end %d 1 1\r\n", now, now)
