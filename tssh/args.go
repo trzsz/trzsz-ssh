@@ -76,7 +76,7 @@ type sshArgs struct {
 	X11Forward     bool        `arg:"-X,--" help:"enables X11 forwarding"`
 	NoX11Forward   bool        `arg:"-x,--" help:"disables X11 forwarding"`
 	X11Trusted     bool        `arg:"-Y,--" help:"enables trusted X11 forwarding"`
-	Reconnect      bool        `arg:"--reconnect" help:"reconnect when background(-f) process exits"`
+	Reconnect      bool        `arg:"--reconnect" help:"reconnect or restart after process exits"`
 	DragFile       bool        `arg:"--dragfile" help:"enable drag files and directories to upload"`
 	TraceLog       bool        `arg:"--tracelog" help:"enable trzsz detect trace logs for debugging"`
 	Relay          bool        `arg:"--relay" help:"force trzsz run as a relay on the jump server"`

@@ -797,8 +797,6 @@ trzsz-ssh ( tssh ) with [tsshd](https://github.com/trzsz/tsshd) also supports in
 
 ### Other Features
 
-- Use `-f` to run in the background, you can add `--reconnect`, it will automatically reconnect when the background process exits.
-
 - Run `tssh --enc-secret`, enter the password or answer, and you can get the ciphertext for configuration (the encryption result for the same password is different each time):
 
   - The `remember password` and `remember answer` mentioned above can be configured as ciphertext by adding `enc` prefix to prevent screen snooping.
@@ -853,6 +851,14 @@ trzsz-ssh ( tssh ) with [tsshd](https://github.com/trzsz/tsshd) also supports in
   Host xxx
     #!! DnsSrvName myhost.mydomain.com
   ```
+
+### Reconnect Mode
+
+- In foreground mode (not `-f`), use `--reconnect` to be prompted to restart the tssh process and log in to the remote server when it exits.
+
+- In background mode (use `-f`), use `--reconnect` to automatically restart the tssh process and log in to the remote server when it exits.
+
+- **Note:** `--reconnect` only restarts the tssh process and logs in; it does **not** resume the previous SSH session. To resume an existing session, please use UDP mode described below.
 
 ### UDP Mode
 

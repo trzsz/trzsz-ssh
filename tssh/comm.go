@@ -59,6 +59,7 @@ const (
 	kExitCodeStdinFailed = 21
 	kExitCodeTrzszFailed = 22
 	kExitCodeOpenSession = 23
+	kExitCodeReconnect   = 24
 
 	kExitCodeToolsError  = 101
 	kExitCodeTrzPreError = 102

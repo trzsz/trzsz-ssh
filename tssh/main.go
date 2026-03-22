@@ -55,22 +55,9 @@ func background(args *sshArgs, dest string) (bool, error) {
 		env = append(env, "TRZSZ-SSH-BACKGROUND=TRUE")
 	}
 
-	newArgs := os.Args
-	if args.Destination == "" {
-		newArgs = append(newArgs, dest)
-	} else if args.Destination != dest {
-		idx := -1
-		count := 0
-		for i, arg := range newArgs {
-			if arg == args.Destination {
-				idx = i
-				count++
-			}
-		}
-		if count != 1 {
-			return true, fmt.Errorf("don't know how to replace the destination: %s => %s", args.Destination, dest)
-		}
-		newArgs[idx] = dest
+	newArgs, err := replaceOrAppendDest(os.Args, args.Destination, dest)
+	if err != nil {
+		return true, err
 	}
 
 	sleepTime := time.Duration(0)
@@ -95,6 +82,110 @@ func background(args *sshArgs, dest string) (bool, error) {
 			time.Sleep(sleepTime)
 		} else {
 			sleepTime = 0
+		}
+	}
+}
+
+// replaceOrAppendDest returns a new args slice where the destination is replaced or appended.
+// Returns an error if it cannot safely replace the existing destination.
+func replaceOrAppendDest(args []string, oldDest, newDest string) ([]string, error) {
+	newArgs := make([]string, len(args))
+	copy(newArgs, args)
+
+	if oldDest == "" {
+		// No existing destination, append the new one
+		newArgs = append(newArgs, newDest)
+	} else if oldDest != newDest {
+		// Replace old destination
+		idx := -1
+		count := 0
+		for i, arg := range newArgs {
+			if arg == oldDest {
+				idx = i
+				count++
+			}
+		}
+		if count != 1 {
+			return nil, fmt.Errorf("don't know how to replace the destination: %s => %s", oldDest, newDest)
+		}
+		newArgs[idx] = newDest
+	}
+
+	return newArgs, nil
+}
+
+func runWithReconnect(args *sshArgs, dest string) (err error) {
+	var newArgs []string
+	for _, arg := range os.Args {
+		if arg == "--reconnect" {
+			continue // skip --reconnect in child process
+		}
+		newArgs = append(newArgs, arg)
+	}
+
+	newArgs, err = replaceOrAppendDest(newArgs, args.Destination, dest)
+	if err != nil {
+		return err
+	}
+
+	for {
+		cmd := exec.Command(newArgs[0], newArgs[1:]...)
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+
+		if err := cmd.Start(); err != nil {
+			return fmt.Errorf("start child process failed: %v", err)
+		}
+
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGHUP, os.Interrupt)
+		go func() {
+			for sig := range sigChan {
+				if cmd.Process != nil {
+					_ = cmd.Process.Signal(sig)
+				}
+			}
+		}()
+
+		_ = cmd.Wait()
+		signal.Stop(sigChan)
+		close(sigChan)
+
+		if !waitForEnter(cmd.ProcessState.ExitCode()) {
+			return nil
+		}
+	}
+}
+
+func waitForEnter(code int) bool {
+	color := "\033[32m"
+	if code != 0 {
+		color = "\033[31m"
+	}
+
+	fmt.Printf("%s[tssh child process exited with code %d]\033[0m\r\n"+
+		"Press Enter to restart and log in again, or Ctrl+C to exit.\r\n",
+		color, code)
+
+	state, err := makeStdinRaw()
+	if err != nil {
+		fmt.Scanln()
+		return true
+	}
+	defer resetStdin(state)
+
+	var buf [1]byte
+	for {
+		n, err := os.Stdin.Read(buf[:])
+		if err != nil || n == 0 {
+			return false
+		}
+		switch buf[0] {
+		case '\r', '\n':
+			return true
+		case '\x03':
+			return false
 		}
 	}
 }
@@ -216,7 +307,10 @@ func TsshMain(argv []string) int {
 		err = nil
 		return 0
 	}
-	if err != nil {
+	if err != nil || dest == "" {
+		if err == nil {
+			err = fmt.Errorf("missing destination host")
+		}
 		return kExitCodeNoDestHost
 	}
 
@@ -231,14 +325,24 @@ func TsshMain(argv []string) int {
 			return 0
 		}
 	}
-	args.Destination = dest
-	args.originalDest = dest
 
+	// prompt user to restart the program after exit
+	if args.Reconnect && isTerminal {
+		err = runWithReconnect(&args, dest)
+		if err != nil {
+			return kExitCodeReconnect
+		}
+		return 0
+	}
+
+	// custom DNS server
 	if args.Dns != "" {
 		setDNS(args.Dns)
 	}
 
 	// start ssh program
+	args.Destination = dest
+	args.originalDest = dest
 	var code int
 	code, err = sshStart(&args)
 	return code
