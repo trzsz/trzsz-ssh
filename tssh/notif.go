@@ -211,7 +211,7 @@ func (m *notifModel) renderView(exiting, redrawing bool) {
 
 	if m.client.notifInterceptor.noticeOnTop {
 		if m.cursorPos != nil {
-			buf.WriteString(fmt.Sprintf("\x1b[%sH", *m.cursorPos))
+			fmt.Fprintf(&buf, "\x1b[%sH", *m.cursorPos)
 		} else {
 			buf.WriteString(ansi.RestoreCurrentCursorPosition)
 		}

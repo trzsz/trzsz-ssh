@@ -148,7 +148,7 @@ func expandTokens(str string, param *sshParam, tokens string) (string, error) {
 			if len(param.proxies) > 0 && strings.ContainsRune(tokens, 'j') {
 				hashStr += param.proxies[len(param.proxies)-1]
 			}
-			buf.WriteString(fmt.Sprintf("%x", sha1.Sum([]byte(hashStr))))
+			fmt.Fprintf(&buf, "%x", sha1.Sum([]byte(hashStr)))
 		case 'k':
 			if hostKeyAlias := getOptionConfig(param.args, "HostKeyAlias"); hostKeyAlias != "" {
 				if !isHostValid(hostKeyAlias) {

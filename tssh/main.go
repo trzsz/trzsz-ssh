@@ -170,7 +170,7 @@ func waitForEnter(code int) bool {
 
 	state, err := makeStdinRaw()
 	if err != nil {
-		fmt.Scanln()
+		_, _ = fmt.Scanln()
 		return true
 	}
 	defer resetStdin(state)

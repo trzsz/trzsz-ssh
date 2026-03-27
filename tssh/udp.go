@@ -335,7 +335,7 @@ func startTsshdServer(tcpClient SshClient, tsshdCmd string) (*tsshd.ServerInfo, 
 			builder.WriteString(errMsg)
 		}
 		if builder.Len() == 0 {
-			builder.WriteString(fmt.Sprintf("session wait failed: %v", err))
+			fmt.Fprintf(&builder, "session wait failed: %v", err)
 		}
 		return nil, fmt.Errorf("%s\r\n%s", builder.String(),
 			"\033[0;36mHint:\033[0m Have you installed tsshd on your server? You may need to specify the path to tsshd.")
@@ -409,7 +409,7 @@ func getTsshdCommand(param *sshParam, mtu uint16, connectTimeout time.Duration) 
 
 	if mtu > 0 {
 		buf.WriteString(" --mtu ")
-		buf.WriteString(fmt.Sprintf("%d", mtu))
+		fmt.Fprintf(&buf, "%d", mtu)
 	}
 
 	tsshdPort := args.TsshdPort
@@ -428,9 +428,9 @@ func getTsshdCommand(param *sshParam, mtu uint16, connectTimeout time.Duration) 
 					buf.WriteByte(',')
 				}
 				if r[0] == r[1] {
-					buf.WriteString(fmt.Sprintf("%d", r[0]))
+					fmt.Fprintf(&buf, "%d", r[0])
 				} else {
-					buf.WriteString(fmt.Sprintf("%d-%d", r[0], r[1]))
+					fmt.Fprintf(&buf, "%d-%d", r[0], r[1])
 				}
 			}
 		}
@@ -438,7 +438,7 @@ func getTsshdCommand(param *sshParam, mtu uint16, connectTimeout time.Duration) 
 
 	if connectTimeout != kDefaultConnectTimeout {
 		buf.WriteString(" --connect-timeout ")
-		buf.WriteString(fmt.Sprintf("%d", connectTimeout/time.Second))
+		fmt.Fprintf(&buf, "%d", connectTimeout/time.Second)
 	}
 
 	return buf.String()

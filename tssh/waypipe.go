@@ -177,7 +177,7 @@ func getWaypipeServerCmd(args *sshArgs, cmd, token string) (string, string) {
 	if hasOptionSpecified(serverOption, "--display") {
 		warning("option --display should not be specified in WaypipeServerOption: %s", serverOption)
 	}
-	buf.WriteString(fmt.Sprintf(" --display wayland-%s", token))
+	fmt.Fprintf(&buf, " --display wayland-%s", token)
 
 	if hasOptionSpecified(serverOption, "server") {
 		warning("option server should not be specified in WaypipeServerOption: %s", serverOption)

@@ -54,15 +54,15 @@ func getDefaultShortcutsTemplate() string {
 
 func getDefaultDetailsTemplate() string {
 	var builder strings.Builder
-	builder.WriteString(fmt.Sprintf(`{{ "--------- SSH Details ----------\n" | %s }}`, getThemeColor("details_title")))
+	fmt.Fprintf(&builder, `{{ "--------- SSH Details ----------\n" | %s }}`, getThemeColor("details_title"))
 	addItem := func(name string) {
-		builder.WriteString(fmt.Sprintf(`{{ if hasField . "%s" }}`+
+		fmt.Fprintf(&builder, `{{ if hasField . "%s" }}`+
 			`{{- if .%s }}{{ "%s:" | %s }}{{ "\t" }}{{ .%s | %s }}{{ "\n" }}{{ end }}`+
 			`{{ else }}{{ $value := getExConfig .Alias "%s" }}`+
 			`{{- if $value }}{{ "%s:" | %s }}{{ "\t" }}{{ $value | %s }}{{ "\n" }}{{ end }}`+
 			`{{ end }}`,
 			name, name, name, getThemeColor("details_name"), name, getThemeColor("details_value"),
-			name, name, getThemeColor("details_name"), getThemeColor("details_value")))
+			name, name, getThemeColor("details_name"), getThemeColor("details_value"))
 	}
 	for _, item := range getPromptDetailItems() {
 		switch strings.ToLower(item) {
@@ -71,9 +71,8 @@ func getDefaultDetailsTemplate() string {
 		case "host":
 			addItem("Host")
 		case "port":
-			builder.WriteString(fmt.Sprintf(
-				`{{- if ne .Port "22" }}{{ "Port:" | %s }}{{ "\t" }}{{ .Port | %s }}{{ "\n" }}{{ end }}`,
-				getThemeColor("details_name"), getThemeColor("details_value")))
+			fmt.Fprintf(&builder, `{{- if ne .Port "22" }}{{ "Port:" | %s }}{{ "\t" }}{{ .Port | %s }}{{ "\n" }}{{ end }}`,
+				getThemeColor("details_name"), getThemeColor("details_value"))
 		case "user":
 			addItem("User")
 		case "grouplabels":
