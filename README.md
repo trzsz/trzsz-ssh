@@ -1,4 +1,5 @@
-## trzsz-ssh ( tssh ) - an ssh client alternative that meets your needs
+## trzsz-ssh(tssh): Highly OpenSSH-compatible client with extended features
+
 
 [![MIT License](https://img.shields.io/badge/license-MIT-green.svg?style=flat)](https://choosealicense.com/licenses/mit/)
 [![GitHub Release](https://img.shields.io/github/v/release/trzsz/trzsz-ssh)](https://github.com/trzsz/trzsz-ssh/releases)

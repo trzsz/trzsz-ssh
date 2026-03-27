@@ -12,4 +12,4 @@ Vcs-Git: https://github.com/trzsz/trzsz-ssh.git
 Package: tssh
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}
-Description: simple ssh client with trzsz ( trz / tsz ) support.
+Description: tssh is a highly OpenSSH-compatible client with extended features.

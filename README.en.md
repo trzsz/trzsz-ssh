@@ -1,4 +1,4 @@
-## trzsz-ssh ( tssh ) - an ssh client alternative that meets your needs
+## trzsz-ssh(tssh): Highly OpenSSH-compatible client with extended features
 
 [![MIT License](https://img.shields.io/badge/license-MIT-green.svg?style=flat)](https://choosealicense.com/licenses/mit/)
 [![GitHub Release](https://img.shields.io/github/v/release/trzsz/trzsz-ssh)](https://github.com/trzsz/trzsz-ssh/releases)
@@ -138,7 +138,11 @@ trzsz-ssh ( tssh ) with [tsshd](https://github.com/trzsz/tsshd) also supports in
   <details><summary><code>go install github.com/trzsz/trzsz-ssh/cmd/tssh@latest</code></summary>
 
   ```sh
+  # latest release
   go install github.com/trzsz/trzsz-ssh/cmd/tssh@latest
+
+  # latest development version (main branch)
+  go install github.com/trzsz/trzsz-ssh/cmd/tssh@main
   ```
 
   The binaries are usually located in ~/go/bin/ ( C:\Users\your_name\go\bin\ on Windows ).
@@ -911,7 +915,7 @@ Host xxx
 
 - `UdpMTU`: Sets the maximum transmission unit (MTU) for UDP packets. Default is 1400.
 
-## UDP Port Forwarding
+### UDP Port Forwarding
 
 When running in UDP mode, UDP port forwarding is supported.
 
