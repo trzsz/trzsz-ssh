@@ -231,7 +231,7 @@ func udpLogin(param *sshParam, tcpClient SshClient) (SshClient, error) {
 	tsshdCmd := getTsshdCommand(param, mtu, connectTimeout)
 	debug("udp login to [%s] tsshd command: %s", args.Destination, tsshdCmd)
 
-	serverInfo, err := startTsshdServer(tcpClient, tsshdCmd)
+	serverInfo, err := startTsshdServer(args, tcpClient, tsshdCmd)
 	if err != nil {
 		return nil, fmt.Errorf("udp login to [%s] start tsshd on remote failed: %v", args.Destination, err)
 	}
@@ -301,7 +301,7 @@ func udpLogin(param *sshParam, tcpClient SshClient) (SshClient, error) {
 	return udpClient, nil
 }
 
-func startTsshdServer(tcpClient SshClient, tsshdCmd string) (*tsshd.ServerInfo, error) {
+func startTsshdServer(args *sshArgs, tcpClient SshClient, tsshdCmd string) (*tsshd.ServerInfo, error) {
 	session, err := tcpClient.NewSession()
 	if err != nil {
 		return nil, fmt.Errorf("new session failed: %v", err)
@@ -315,7 +315,13 @@ func startTsshdServer(tcpClient SshClient, tsshdCmd string) (*tsshd.ServerInfo, 
 	if err != nil {
 		return nil, fmt.Errorf("stderr pipe failed: %v", err)
 	}
-	if err := session.RequestPty("xterm-256color", 200, 800, ssh.TerminalModes{}); err != nil {
+
+	term, err := sendAndSetEnv(args, session)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := session.RequestPty(term, 200, 800, ssh.TerminalModes{}); err != nil {
 		return nil, fmt.Errorf("request pty for tsshd failed: %v", err)
 	}
 

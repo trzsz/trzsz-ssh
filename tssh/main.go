@@ -527,7 +527,7 @@ func openSession(sshConn *sshConnection) (err error) {
 	}
 
 	// send and set env
-	term, err := sendAndSetEnv(sshConn)
+	term, err := sendAndSetEnv(sshConn.param.args, sshConn.session)
 	if err != nil {
 		return err
 	}
@@ -541,12 +541,6 @@ func openSession(sshConn *sshConnection) (err error) {
 	width, height, err := getTerminalSize()
 	if err != nil {
 		return fmt.Errorf("get terminal size for [%s] failed: %v", sshConn.param.args.Destination, err)
-	}
-	if term == "" {
-		term = os.Getenv("TERM")
-		if term == "" {
-			term = "xterm-256color"
-		}
 	}
 	if err := sshConn.session.RequestPty(term, height, width, ssh.TerminalModes{}); err != nil {
 		return fmt.Errorf("request pty for [%s] failed: %v", sshConn.param.args.Destination, err)
