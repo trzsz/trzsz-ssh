@@ -108,7 +108,40 @@ func parseDestination(dest string) (user, host, port string) {
 	return
 }
 
-func getSshParam(args *sshArgs) (*sshParam, error) {
+func canonicalizeHost(args *sshArgs, host string) (string, error) {
+	maxDots := 1
+	if canonicalizeMaxDots := getConfig(host, "CanonicalizeMaxDots"); canonicalizeMaxDots != "" {
+		if val, err := strconv.ParseUint(canonicalizeMaxDots, 10, 16); err != nil {
+			warning("CanonicalizeMaxDots [%s] invalid: %v", canonicalizeMaxDots, err)
+		} else {
+			maxDots = int(val)
+		}
+	}
+	if dotCount := strings.Count(host, "."); dotCount >= maxDots {
+		return host, nil
+	}
+
+	domains := getConfigSplits(host, "CanonicalDomains")
+	if len(domains) == 0 {
+		return host, nil
+	}
+
+	timeout := getConnectTimeout(args)
+	for _, domain := range domains {
+		candidate := fmt.Sprintf("%s.%s", host, domain)
+		if _, err := lookupHostWithTimeout(candidate, timeout); err == nil {
+			return candidate, nil
+		}
+	}
+
+	if strings.ToLower(getConfig(host, "CanonicalizeFallbackLocal")) == "no" {
+		return "", fmt.Errorf("could not resolve canonical hostname for [%s]", host)
+	}
+
+	return host, nil
+}
+
+func getSshParam(args *sshArgs, proxy bool) (*sshParam, error) {
 	param := &sshParam{args: args}
 
 	// login dest
@@ -133,6 +166,14 @@ func getSshParam(args *sshArgs) (*sshParam, error) {
 			return nil, fmt.Errorf("expand HostName [%s] failed: %v", hostName, err)
 		}
 		param.host = expandedHostName
+	} else if canonicalize := strings.ToLower(getConfig(destHost, "CanonicalizeHostname")); canonicalize != "" {
+		if canonicalize == "always" || (!proxy && canonicalize == "yes") {
+			host, err := canonicalizeHost(args, destHost)
+			if err != nil {
+				return nil, err
+			}
+			param.host, destHost = host, host
+		}
 	}
 
 	// login user
@@ -610,7 +651,7 @@ func tcpLogin(param *sshParam, proxy *proxyJump, requireUDP udpModeType) (SshCli
 		udpModes[i] = udpMode
 	}
 	for i, proxyName := range param.proxies { // proxy login
-		proxyParam, err := getSshParam(&sshArgs{Destination: proxyName})
+		proxyParam, err := getSshParam(&sshArgs{Destination: proxyName}, true)
 		if err != nil {
 			return nil, err
 		}
@@ -738,7 +779,7 @@ func keepAlive(sshConn *sshConnection) {
 
 func sshConnect(args *sshArgs) (*sshConnection, error) {
 	// init ssh param
-	param, err := getSshParam(args)
+	param, err := getSshParam(args, false)
 	if err != nil {
 		return nil, err
 	}

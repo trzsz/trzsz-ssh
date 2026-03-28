@@ -30,6 +30,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -569,4 +570,15 @@ func getOpenSSH() (string, int, int, error) {
 	}
 
 	return "", 0, 0, fmt.Errorf("no usable ssh found in PATH")
+}
+
+func lookupHostWithTimeout(host string, timeout time.Duration) ([]string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	addrs, err := net.DefaultResolver.LookupHost(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	return addrs, nil
 }

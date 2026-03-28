@@ -28,7 +28,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"reflect"
 	"strings"
@@ -632,13 +631,6 @@ func chooseAlias(keywords string) (string, bool, error) {
 	return selectedHosts[0].Alias, false, nil
 }
 
-func fastLookupHost(host string) bool {
-	_, err := doWithTimeout(func() ([]string, error) {
-		return net.LookupHost(host)
-	}, 200*time.Millisecond)
-	return err == nil
-}
-
 func predictDestination(dest string) (string, bool, error) {
 	if !isTerminal || strings.ContainsAny(dest, ".:[]@") {
 		return dest, false, nil
@@ -673,7 +665,7 @@ func predictDestination(dest string) (string, bool, error) {
 		return dest, false, nil
 	}
 
-	if fastLookupHost(dest) {
+	if _, err := lookupHostWithTimeout(dest, 200*time.Millisecond); err == nil {
 		return dest, false, nil
 	}
 

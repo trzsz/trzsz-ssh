@@ -109,7 +109,7 @@ func (n *newHostTool) promptHostName() {
 			if name == "" {
 				return fmt.Errorf("empty host name")
 			}
-			if _, err := net.LookupHost(name); err != nil {
+			if _, err := lookupHostWithTimeout(name, 5*time.Second); err != nil {
 				return fmt.Errorf("lookup host failed: %v", err)
 			}
 			return nil
