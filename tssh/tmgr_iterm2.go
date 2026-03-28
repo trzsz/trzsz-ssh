@@ -29,16 +29,14 @@ package tssh
 import (
 	"fmt"
 	"os"
-	"sync"
 
 	"github.com/trzsz/iterm2"
 	"github.com/trzsz/shellescape"
 )
 
-var initIterm2Once sync.Once
-
 type iterm2Mgr struct {
-	keywords string
+	iterm2Session *iterm2.Session
+	keywords      string
 }
 
 func (m *iterm2Mgr) openTerminals(keywords string, openType int, hosts []*sshHost) {
@@ -93,9 +91,9 @@ func (m *iterm2Mgr) execCmd(session *iterm2.Session, alias string) error {
 }
 
 func (m *iterm2Mgr) openWindows(hosts []*sshHost) {
-	m.setTitle(iterm2Session, hosts[0].Alias)
+	m.setTitle(m.iterm2Session, hosts[0].Alias)
 	for _, host := range hosts[1:] {
-		_, session, err := iterm2Session.GetApp().CreateWindow()
+		_, session, err := m.iterm2Session.GetApp().CreateWindow()
 		if err != nil {
 			warning("iTerm2 create window failed: %v", err)
 			return
@@ -109,8 +107,8 @@ func (m *iterm2Mgr) openWindows(hosts []*sshHost) {
 }
 
 func (m *iterm2Mgr) openTabs(hosts []*sshHost) {
-	window := iterm2Session.GetWindow()
-	m.setTitle(iterm2Session, hosts[0].Alias)
+	window := m.iterm2Session.GetWindow()
+	m.setTitle(m.iterm2Session, hosts[0].Alias)
 	for _, host := range hosts[1:] {
 		_, session, err := window.CreateTab()
 		if err != nil {
@@ -126,12 +124,12 @@ func (m *iterm2Mgr) openTabs(hosts []*sshHost) {
 }
 
 func (m *iterm2Mgr) openPanes(hosts []*sshHost) {
-	m.setTitle(iterm2Session, hosts[0].Alias)
+	m.setTitle(m.iterm2Session, hosts[0].Alias)
 	matrix := getPanesMatrix(hosts)
 	sessions := make([]*iterm2.Session, len(matrix))
-	sessions[0] = iterm2Session
+	sessions[0] = m.iterm2Session
 	for i := len(matrix) - 1; i > 0; i-- {
-		pane, err := iterm2Session.SplitPane(iterm2.SplitPaneOptions{Vertical: false})
+		pane, err := m.iterm2Session.SplitPane(iterm2.SplitPaneOptions{Vertical: false})
 		if err != nil {
 			warning("iTerm2 split pane failed: %v", err)
 			return
@@ -164,35 +162,9 @@ func (m *iterm2Mgr) openPanes(hosts []*sshHost) {
 }
 
 func getIterm2Manager() terminalManager {
-	initIterm2Session()
+	iterm2Session := getIterm2Session()
 	if iterm2Session == nil {
 		return nil
 	}
-	return &iterm2Mgr{}
-}
-
-func initIterm2Session() {
-	initIterm2Once.Do(func() {
-		if os.Getenv("TMUX") != "" {
-			debug("running in tmux")
-			return
-		}
-
-		if os.Getenv("ITERM_SESSION_ID") == "" {
-			return
-		}
-		debug("running in iTerm2")
-
-		app, err := iterm2.NewApp("tssh")
-		if err != nil {
-			debug("new iTerm2 app failed: %v", err)
-			return
-		}
-		addOnExitFunc(func() { _ = app.Close() })
-
-		iterm2Session, err = app.GetCurrentHostSession()
-		if err != nil {
-			debug("get iTerm2 host session failed: %v", err)
-		}
-	})
+	return &iterm2Mgr{iterm2Session: iterm2Session}
 }

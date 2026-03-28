@@ -29,6 +29,7 @@ import (
 	"path/filepath"
 	"unsafe"
 
+	"github.com/trzsz/iterm2"
 	"golang.org/x/sys/windows"
 )
 
@@ -63,4 +64,8 @@ func isRemoteSshEnv(pid int) bool {
 
 func isNoGUI() bool {
 	return isRemoteSshEnv(os.Getppid())
+}
+
+func getIterm2Session() *iterm2.Session {
+	return nil
 }

@@ -27,7 +27,9 @@ package tssh
 import (
 	"bytes"
 	"os"
+	"sync"
 
+	"github.com/trzsz/iterm2"
 	"golang.org/x/sys/unix"
 )
 
@@ -64,4 +66,43 @@ func isNoGUI() bool {
 		return false
 	}
 	return isDockerEnv() || isRemoteSshEnv(os.Getppid()) || isSshTmuxEnv()
+}
+
+var initIterm2Once sync.Once
+var iterm2Session *iterm2.Session
+
+func getIterm2Session() *iterm2.Session {
+	initIterm2Once.Do(func() {
+		if os.Getenv("TMUX") != "" {
+			if enableDebugLogging {
+				go debug("running in tmux")
+			}
+			return
+		}
+
+		if os.Getenv("ITERM_SESSION_ID") == "" {
+			return
+		}
+		if enableDebugLogging {
+			go debug("running in iTerm2")
+		}
+
+		app, err := iterm2.NewApp("tssh")
+		if err != nil {
+			if enableDebugLogging {
+				go debug("new iTerm2 app failed: %v", err)
+			}
+			return
+		}
+		addOnExitFunc(func() { _ = app.Close() })
+
+		iterm2Session, err = app.GetCurrentHostSession()
+		if err != nil {
+			if enableDebugLogging {
+				go debug("get iTerm2 host session failed: %v", err)
+			}
+			return
+		}
+	})
+	return iterm2Session
 }

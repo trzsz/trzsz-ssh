@@ -261,9 +261,6 @@ func TsshMain(argv []string) int {
 		debug("tssh version: %s", getTsshVersion())
 	}
 
-	// init iterm2 session if necessary
-	initIterm2Session()
-
 	// cleanup on exit
 	defer cleanupOnExit()
 
