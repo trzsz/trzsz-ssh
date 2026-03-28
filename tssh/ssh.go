@@ -275,9 +275,27 @@ func (c *sshConnection) waitUntilExit() int {
 	done := make(chan int, 1)
 	go func() {
 		defer close(done)
-		_ = c.session.Wait()
+
+		if err := c.session.Wait(); err != nil && enableWarningLogging && !c.exited.Load() {
+			var msg string
+			switch e := err.(type) {
+			case *ssh.ExitError:
+				msg = e.String()
+			case *ssh.ExitMissingError:
+				msg = "Connection lost: possible network interruption"
+			default:
+				msg = fmt.Sprintf("Connection error: %v", err)
+			}
+
+			if isTerminal && c.tty {
+				_, _ = os.Stderr.Write([]byte("\n\r")) // make the top message still visible after exiting
+			}
+			warning("%s", msg)
+		}
+
 		done <- c.session.GetExitCode()
 	}()
+
 	select {
 	case code := <-c.exitChan:
 		debug("force exit with code: %d", code)
