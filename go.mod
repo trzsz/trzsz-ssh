@@ -3,7 +3,7 @@ module github.com/trzsz/trzsz-ssh
 go 1.25.0
 
 require (
-	charm.land/bubbles/v2 v2.0.0
+	charm.land/bubbles/v2 v2.1.0
 	charm.land/bubbletea/v2 v2.0.2
 	charm.land/lipgloss/v2 v2.0.2
 	github.com/Microsoft/go-winio v0.6.2
@@ -27,9 +27,9 @@ require (
 	github.com/trzsz/pageant v0.1.1
 	github.com/trzsz/promptui v0.10.8
 	github.com/trzsz/shellescape v1.6.0
-	github.com/trzsz/ssh_config v1.3.6
+	github.com/trzsz/ssh_config v1.3.7
 	github.com/trzsz/trzsz-go v1.2.1-0.20260321175259-1b4edac9bfa1
-	github.com/trzsz/tsshd v0.1.7-rc2.0.20260321223557-7918c43b0025
+	github.com/trzsz/tsshd v0.1.7-rc3
 	golang.org/x/crypto v0.49.0
 	golang.org/x/sys v0.42.0
 	golang.org/x/term v0.41.0
@@ -72,7 +72,7 @@ require (
 	github.com/trzsz/smux v1.6.0 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/xtaci/kcp-go/v5 v5.6.71 // indirect
-	golang.org/x/image v0.37.0 // indirect
+	golang.org/x/image v0.38.0 // indirect
 	golang.org/x/net v0.52.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/text v0.35.0 // indirect

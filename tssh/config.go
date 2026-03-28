@@ -327,7 +327,6 @@ func loadConfig(path string, system bool) *ssh_config.Config {
 func (c *tsshConfig) doLoadConfig() {
 	c.loadConfig.Do(func() {
 		ssh_config.SetDefault("LogLevel", "")
-		ssh_config.SetDefault("IdentityFile", "")
 
 		if c.configPath == "" {
 			debug("no ssh configuration file path")
