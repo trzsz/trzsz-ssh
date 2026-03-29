@@ -27,7 +27,7 @@ require (
 	github.com/trzsz/pageant v0.1.1
 	github.com/trzsz/promptui v0.10.8
 	github.com/trzsz/shellescape v1.6.0
-	github.com/trzsz/ssh_config v1.3.7
+	github.com/trzsz/ssh_config v1.3.8
 	github.com/trzsz/trzsz-go v1.2.1-0.20260321175259-1b4edac9bfa1
 	github.com/trzsz/tsshd v0.1.7-rc3
 	golang.org/x/crypto v0.49.0
@@ -61,7 +61,7 @@ require (
 	github.com/klauspost/compress v1.18.5 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/klauspost/reedsolomon v1.13.3 // indirect
-	github.com/lucasb-eyer/go-colorful v1.3.0 // indirect
+	github.com/lucasb-eyer/go-colorful v1.4.0 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/ncruces/zenity v0.10.14 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
