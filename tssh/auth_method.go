@@ -402,18 +402,18 @@ func getKeyboardInteractiveAuthMethod(args *sshArgs, host, user string) ssh.Auth
 var getDefaultSigners = func() func() []ssh.Signer {
 	var once sync.Once
 	var signers []ssh.Signer
-		return func() []ssh.Signer {
-			once.Do(func() {
-				for _, name := range []string{"id_rsa", "id_ecdsa", "id_ecdsa_sk", "id_ed25519", "id_ed25519_sk", "identity"} {
-					path := filepath.Join(userHomeDir, ".ssh", name)
-					if !isFileExist(path) {
-						continue
-					}
-					if signer := getSigner(name, path); signer != nil {
-						signers = append(signers, signer)
-					}
+	return func() []ssh.Signer {
+		once.Do(func() {
+			for _, name := range []string{"id_rsa", "id_ecdsa", "id_ecdsa_sk", "id_ed25519", "id_ed25519_sk", "identity"} {
+				path := filepath.Join(userHomeDir, ".ssh", name)
+				if !isFileExist(path) {
+					continue
 				}
-			})
+				if signer := getSigner(name, path); signer != nil {
+					signers = append(signers, signer)
+				}
+			}
+		})
 		return signers
 	}
 }()
@@ -462,15 +462,15 @@ func getPublicKeySigners(param *sshParam) []ssh.Signer {
 			warning("expand IdentityFile [%s] failed: %v", identity, err)
 			continue
 		}
-			if userConfig.useOpenSSHConfig {
-				expandedIdentity = resolveHomeDir(expandedIdentity)
-				if !isFileExist(expandedIdentity) {
-					debug("IdentityFile [%s] does not exist", expandedIdentity)
-					continue
-				}
+		if userConfig.useOpenSSHConfig {
+			expandedIdentity = resolveHomeDir(expandedIdentity)
+			if !isFileExist(expandedIdentity) {
+				debug("IdentityFile [%s] does not exist", expandedIdentity)
+				continue
 			}
-			identities = append(identities, expandedIdentity)
 		}
+		identities = append(identities, expandedIdentity)
+	}
 
 	var agentSigners []ssh.Signer
 	if agentClient := getAgentClient(param); agentClient != nil {
