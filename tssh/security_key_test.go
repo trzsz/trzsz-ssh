@@ -25,6 +25,8 @@ SOFTWARE.
 package tssh
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/elliptic"
@@ -199,7 +201,9 @@ func TestSecurityKeySignerEd25519(t *testing.T) {
 func TestSecurityKeySignerECDSA(t *testing.T) {
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
-	pubBytes := elliptic.Marshal(elliptic.P256(), privateKey.PublicKey.X, privateKey.PublicKey.Y)
+	ecdhPubKey, err := privateKey.PublicKey.ECDH()
+	require.NoError(t, err)
+	pubBytes := ecdhPubKey.Bytes()
 	pubKey := mustParseSKECDSAPublicKey(t, pubBytes, "ssh:")
 	skPrivateKey := marshalSKECDSAPrivateKey(t, pubBytes, "ssh:", sshSkUserPresenceRequired, []byte("ec-handle"))
 
@@ -229,6 +233,35 @@ func TestSecurityKeySignerECDSA(t *testing.T) {
 	sig, err := signer.Sign(rand.Reader, []byte("hello security key"))
 	require.NoError(t, err)
 	require.NoError(t, signer.PublicKey().Verify([]byte("hello security key"), sig))
+}
+
+func TestPassphraseProtectedSecurityKeySignerEd25519(t *testing.T) {
+	passphrase := []byte("s3cret")
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	pubKey := mustParseSKEd25519PublicKey(t, pub, "ssh:")
+	privateKey := marshalEncryptedSKEd25519PrivateKey(
+		t, pub, "ssh:", sshSkUserPresenceRequired|sshSkUserVerificationRequired, []byte("ed-handle"), passphrase,
+	)
+
+	signer := newSecurityKeySignerWithProvider("", privateKey, pubKey, passphrase, fakeSecurityKeyProvider(
+		func(algorithm, application string, flags byte, keyHandle, data []byte) (*securityKeySignResult, error) {
+			assert.Equal(t, ssh.KeyAlgoSKED25519, algorithm)
+			assert.Equal(t, "ssh:", application)
+			assert.Equal(t, []byte("ed-handle"), keyHandle)
+			payload := securityKeySignedPayload(application, flags, 9, data)
+			return &securityKeySignResult{
+				blob:    ed25519.Sign(priv, payload),
+				flags:   flags,
+				counter: 9,
+			}, nil
+		},
+	))
+	require.NotNil(t, signer)
+
+	sig, err := signer.Sign(rand.Reader, []byte("hello protected security key"))
+	require.NoError(t, err)
+	require.NoError(t, signer.PublicKey().Verify([]byte("hello protected security key"), sig))
 }
 
 func TestFindIdentityAgentSignerUsesSidecarPublicKey(t *testing.T) {
@@ -266,6 +299,7 @@ func TestExplicitIdentityDoesNotAddAllAgentSigners(t *testing.T) {
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "id_ed25519_sk")
+	require.NoError(t, os.WriteFile(path, marshalSKEd25519PrivateKey(t, matchPub, "ssh:", sshSkUserPresenceRequired, []byte("match-handle")), 0o600))
 	require.NoError(t, os.WriteFile(path+".pub", ssh.MarshalAuthorizedKey(matchPubKey), 0o600))
 
 	getAgentClientImpl = func(*sshParam) agent.ExtendedAgent {
@@ -282,6 +316,67 @@ func TestExplicitIdentityDoesNotAddAllAgentSigners(t *testing.T) {
 		args: &sshArgs{
 			Destination: "dest",
 			Identity:    multiStr{values: []string{path}},
+		},
+	}
+
+	signers := getPublicKeySigners(param)
+	require.Len(t, signers, 1)
+	assert.Equal(t, ssh.FingerprintSHA256(matchPubKey), ssh.FingerprintSHA256(signers[0].PublicKey()))
+}
+
+func TestOpenSSHConfigSecurityKeyIdentityUsesMatchingAgentSigner(t *testing.T) {
+	restoreAgentClient := getAgentClientImpl
+	defer func() { getAgentClientImpl = restoreAgentClient }()
+	oldUserConfig := userConfig
+	userConfig = &tsshConfig{useOpenSSHConfig: true}
+	defer func() { userConfig = oldUserConfig }()
+
+	openSSHEffectiveCfgCache.mu.Lock()
+	oldEffectiveCfg := openSSHEffectiveCfgCache.m
+	openSSHEffectiveCfgCache.m = make(map[string]*effectiveSshConfig)
+	openSSHEffectiveCfgCache.mu.Unlock()
+	defer func() {
+		openSSHEffectiveCfgCache.mu.Lock()
+		openSSHEffectiveCfgCache.m = oldEffectiveCfg
+		openSSHEffectiveCfgCache.mu.Unlock()
+	}()
+
+	otherPub, otherPriv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	otherSigner, err := ssh.NewSignerFromKey(otherPriv)
+	require.NoError(t, err)
+
+	matchPub, _, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	matchPubKey := mustParseSKEd25519PublicKey(t, matchPub, "ssh:")
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "id_ed25519_sk")
+	require.NoError(t, os.WriteFile(path, marshalSKEd25519PrivateKey(t, matchPub, "ssh:", sshSkUserPresenceRequired, []byte("match-handle")), 0o600))
+	require.NoError(t, os.WriteFile(path+".pub", ssh.MarshalAuthorizedKey(matchPubKey), 0o600))
+
+	openSSHEffectiveCfgCache.mu.Lock()
+	openSSHEffectiveCfgCache.m["dest"] = &effectiveSshConfig{
+		values: map[string][]string{
+			"identitiesonly": {"yes"},
+			"identityfile":   {path},
+		},
+	}
+	openSSHEffectiveCfgCache.mu.Unlock()
+
+	getAgentClientImpl = func(*sshParam) agent.ExtendedAgent {
+		return fakeExtendedAgent{
+			signers: []ssh.Signer{
+				staticSigner{pubKey: matchPubKey},
+				otherSigner,
+				staticSigner{pubKey: mustParseSKEd25519PublicKey(t, otherPub, "ssh:")},
+			},
+		}
+	}
+
+	param := &sshParam{
+		args: &sshArgs{
+			Destination: "dest",
 		},
 	}
 
@@ -368,6 +463,21 @@ func marshalSKEd25519PrivateKey(t *testing.T, pub []byte, application string, fl
 	})
 }
 
+func marshalEncryptedSKEd25519PrivateKey(
+	t *testing.T, pub []byte, application string, flags byte, keyHandle, passphrase []byte,
+) []byte {
+	t.Helper()
+	pubKey := mustParseSKEd25519PublicKey(t, pub, application)
+	return marshalEncryptedSKOpenSSHPrivateKey(t, pubKey, ssh.KeyAlgoSKED25519, openSSHSKEd25519PrivateKey{
+		Pub:         pub,
+		Application: application,
+		Flags:       flags,
+		KeyHandle:   keyHandle,
+		Comment:     "test",
+		Pad:         []byte{1, 2, 3, 4},
+	}, passphrase)
+}
+
 func marshalSKECDSAPrivateKey(t *testing.T, pub []byte, application string, flags byte, keyHandle []byte) []byte {
 	t.Helper()
 	pubKey := mustParseSKECDSAPublicKey(t, pub, application)
@@ -397,6 +507,45 @@ func marshalSKOpenSSHPrivateKey(t *testing.T, pubKey ssh.PublicKey, keyType stri
 		NumKeys:      1,
 		PubKey:       pubKey.Marshal(),
 		PrivKeyBlock: privBlock,
+	})...)
+	return pem.EncodeToMemory(&pem.Block{Type: "OPENSSH PRIVATE KEY", Bytes: encoded})
+}
+
+func marshalEncryptedSKOpenSSHPrivateKey(t *testing.T, pubKey ssh.PublicKey, keyType string, rest any, passphrase []byte) []byte {
+	t.Helper()
+
+	privBlock := ssh.Marshal(openSSHPrivateKey{
+		Check1:  0x01020304,
+		Check2:  0x01020304,
+		Keytype: keyType,
+		Rest:    ssh.Marshal(rest),
+	})
+
+	salt := []byte("0123456789abcdef")
+	rounds := uint32(16)
+	keyMaterial, err := bcryptPBKDFKey(passphrase, salt, int(rounds), 32+16)
+	require.NoError(t, err)
+
+	encrypted := append([]byte(nil), privBlock...)
+	block, err := aes.NewCipher(keyMaterial[:32])
+	require.NoError(t, err)
+	cipher.NewCTR(block, keyMaterial[32:]).XORKeyStream(encrypted, encrypted)
+
+	kdfOpts := ssh.Marshal(struct {
+		Salt   string
+		Rounds uint32
+	}{
+		Salt:   string(salt),
+		Rounds: rounds,
+	})
+
+	encoded := append([]byte(privateKeyAuthMagic), ssh.Marshal(openSSHEncryptedPrivateKey{
+		CipherName:   "aes256-ctr",
+		KdfName:      "bcrypt",
+		KdfOpts:      string(kdfOpts),
+		NumKeys:      1,
+		PubKey:       pubKey.Marshal(),
+		PrivKeyBlock: encrypted,
 	})...)
 	return pem.EncodeToMemory(&pem.Block{Type: "OPENSSH PRIVATE KEY", Bytes: encoded})
 }
