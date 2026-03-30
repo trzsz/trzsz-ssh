@@ -57,6 +57,10 @@ func getAgentAddr(param *sshParam) (string, error) {
 }
 
 func getAgentClient(param *sshParam) agent.ExtendedAgent {
+	return getAgentClientImpl(param)
+}
+
+var getAgentClientImpl = func(param *sshParam) agent.ExtendedAgent {
 	agentOnce.Do(func() {
 		addr, err := getAgentAddr(param)
 		if err != nil {

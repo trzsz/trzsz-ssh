@@ -27,6 +27,7 @@ package tssh
 import (
 	"crypto/x509"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -167,21 +168,55 @@ func getSigner(dest string, path string) ssh.Signer {
 		warning("read private key [%s] failed: %v", path, err)
 		return nil
 	}
+
+	// 1. Try parsing as an unencrypted private key.
 	signer, err := ssh.ParsePrivateKey(privateKey)
-	if err != nil {
-		if e, ok := err.(*ssh.PassphraseMissingError); ok {
-			if passphrase := getSecretConfig(dest, "Passphrase"); passphrase != "" {
-				signer, err = ssh.ParsePrivateKeyWithPassphrase(privateKey, []byte(passphrase))
-			} else {
-				return newPassphraseSigner(path, privateKey, e)
+	if err == nil {
+		return newSshSigner(path, nil, signer.PublicKey(), signer)
+	}
+
+	// 2. Handle passphrase-protected keys.
+	if e, ok := err.(*ssh.PassphraseMissingError); ok {
+		// 2a. SK key with missing passphrase — use the SK provider.
+		if isSecurityKeyPublicKey(e.PublicKey) {
+			if hasSecurityKeyProvider() {
+				return newSecurityKeySigner(path, privateKey, e.PublicKey, []byte(getSecretConfig(dest, "Passphrase")))
 			}
-		}
-		if err != nil {
-			warning("parse private key [%s] failed: %v", path, err)
 			return nil
 		}
+		// 2b. Try the configured passphrase.
+		if passphrase := getSecretConfig(dest, "Passphrase"); passphrase != "" {
+			signer, err = ssh.ParsePrivateKeyWithPassphrase(privateKey, []byte(passphrase))
+			if err == nil {
+				return newSshSigner(path, nil, signer.PublicKey(), signer)
+			}
+		} else {
+			return newPassphraseSigner(path, privateKey, e)
+		}
 	}
-	return newSshSigner(path, nil, signer.PublicKey(), signer)
+
+	// 3. Fallback: try parsing as a Security Key private key.
+	skKey, skErr := parseSecurityKeyPrivateKey(privateKey, nil)
+	if skErr == nil {
+		if hasSecurityKeyProvider() {
+			return newSecurityKeySigner(path, privateKey, skKey.publicKey, nil)
+		}
+		return nil
+	}
+	if missing, ok := skErr.(*ssh.PassphraseMissingError); ok && isSecurityKeyPublicKey(missing.PublicKey) {
+		if hasSecurityKeyProvider() {
+			return newSecurityKeySigner(path, privateKey, missing.PublicKey, []byte(getSecretConfig(dest, "Passphrase")))
+		}
+		return nil
+	}
+	if !errors.Is(skErr, errNotSecurityKeyPrivateKey) {
+		warning("parse private key [%s] failed: %v", path, skErr)
+		return nil
+	}
+
+	// 4. All attempts exhausted.
+	warning("parse private key [%s] failed: %v", path, err)
+	return nil
 }
 
 func appendSignerCerts(signer ssh.Signer, certFiles []string) []ssh.Signer {
@@ -367,27 +402,23 @@ func getKeyboardInteractiveAuthMethod(args *sshArgs, host, user string) ssh.Auth
 var getDefaultSigners = func() func() []ssh.Signer {
 	var once sync.Once
 	var signers []ssh.Signer
-	return func() []ssh.Signer {
-		once.Do(func() {
-			for _, name := range []string{"id_rsa", "id_ecdsa", "id_ecdsa_sk", "id_ed25519", "id_ed25519_sk", "identity"} {
-				path := filepath.Join(userHomeDir, ".ssh", name)
-				if !isFileExist(path) {
-					continue
+		return func() []ssh.Signer {
+			once.Do(func() {
+				for _, name := range []string{"id_rsa", "id_ecdsa", "id_ecdsa_sk", "id_ed25519", "id_ed25519_sk", "identity"} {
+					path := filepath.Join(userHomeDir, ".ssh", name)
+					if !isFileExist(path) {
+						continue
+					}
+					if signer := getSigner(name, path); signer != nil {
+						signers = append(signers, signer)
+					}
 				}
-				if strings.HasSuffix(name, "_sk") {
-					debug("security key not supported yet: %s", path)
-					continue
-				}
-				if signer := getSigner(name, path); signer != nil {
-					signers = append(signers, signer)
-				}
-			}
-		})
+			})
 		return signers
 	}
 }()
 
-func getPublicKeysAuthMethod(param *sshParam) ssh.AuthMethod {
+func getPublicKeySigners(param *sshParam) []ssh.Signer {
 	args := param.args
 	if v := strings.ToLower(getOptionConfig(args, "PubkeyAuthentication")); v == "no" || v == "false" {
 		debug("disable auth method: public key authentication")
@@ -424,19 +455,6 @@ func getPublicKeysAuthMethod(param *sshParam) ssh.AuthMethod {
 		}
 	}
 
-	if strings.ToLower(getOptionConfig(args, "IdentitiesOnly")) != "yes" {
-		if agentClient := getAgentClient(param); agentClient != nil {
-			signers, err := agentClient.Signers()
-			if err != nil {
-				warning("get ssh agent signers failed: %v", err)
-			} else {
-				for _, signer := range signers {
-					addPubKeySigners([]ssh.Signer{newSshSigner("ssh-agent", nil, signer.PublicKey(), signer)})
-				}
-			}
-		}
-	}
-
 	identities := args.Identity.values
 	for _, identity := range getAllOptionConfig(args, "IdentityFile") {
 		expandedIdentity, err := expandTokens(identity, param, "%CdhijkLlnpru")
@@ -444,18 +462,32 @@ func getPublicKeysAuthMethod(param *sshParam) ssh.AuthMethod {
 			warning("expand IdentityFile [%s] failed: %v", identity, err)
 			continue
 		}
-		if userConfig.useOpenSSHConfig {
-			expandedIdentity = resolveHomeDir(expandedIdentity)
-			if !isFileExist(expandedIdentity) {
-				debug("IdentityFile [%s] does not exist", expandedIdentity)
-				continue
+			if userConfig.useOpenSSHConfig {
+				expandedIdentity = resolveHomeDir(expandedIdentity)
+				if !isFileExist(expandedIdentity) {
+					debug("IdentityFile [%s] does not exist", expandedIdentity)
+					continue
+				}
 			}
-			if strings.HasSuffix(expandedIdentity, "_sk") {
-				debug("security key not supported yet: %s", expandedIdentity)
-				continue
+			identities = append(identities, expandedIdentity)
+		}
+
+	var agentSigners []ssh.Signer
+	if agentClient := getAgentClient(param); agentClient != nil {
+		signers, err := agentClient.Signers()
+		if err != nil {
+			warning("get ssh agent signers failed: %v", err)
+		} else {
+			agentSigners = signers
+			// When explicit identities are configured, restrict agent use to
+			// signers that match those identities. This avoids exhausting the
+			// server's auth-attempt budget with unrelated agent keys.
+			if len(identities) == 0 && strings.ToLower(getOptionConfig(args, "IdentitiesOnly")) != "yes" {
+				for _, signer := range signers {
+					addPubKeySigners([]ssh.Signer{newSshSigner("ssh-agent", nil, signer.PublicKey(), signer)})
+				}
 			}
 		}
-		identities = append(identities, expandedIdentity)
 	}
 
 	if len(identities) == 0 {
@@ -466,12 +498,27 @@ func getPublicKeysAuthMethod(param *sshParam) ssh.AuthMethod {
 		for _, identity := range identities {
 			signer := getSigner(args.Destination, identity)
 			if signer == nil {
+				if agentSigner, pubKey := findIdentityAgentSigner(identity, agentSigners); agentSigner != nil {
+					signer = agentSigner
+				} else if isSecurityKeyPublicKey(pubKey) && !hasSecurityKeyProvider() {
+					warning("security key identity [%s] requires a supported local platform provider or the key loaded in ssh-agent", identity)
+				}
+			}
+			if signer == nil {
 				continue
 			}
 			addPubKeySigners(appendSignerCerts(signer, certFiles))
 		}
 	}
 
+	if len(pubKeySigners) == 0 {
+		return nil
+	}
+	return pubKeySigners
+}
+
+func getPublicKeysAuthMethod(param *sshParam) ssh.AuthMethod {
+	pubKeySigners := getPublicKeySigners(param)
 	if len(pubKeySigners) == 0 {
 		return nil
 	}
