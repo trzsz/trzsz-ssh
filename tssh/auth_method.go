@@ -25,12 +25,14 @@ SOFTWARE.
 package tssh
 
 import (
+	"bytes"
 	"crypto/x509"
 	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
@@ -38,45 +40,50 @@ import (
 	"golang.org/x/term"
 )
 
-type sshSigner struct {
+type sshSigner interface {
+	ssh.Signer
+	getPath() string
+}
+
+type sshBaseSigner struct {
 	path   string
 	priKey []byte
 	pubKey ssh.PublicKey
 	signer ssh.Signer
 }
 
-type sshSignerWithAlgorithms struct {
-	*sshSigner
+type sshAlogSigner struct {
+	*sshBaseSigner
 	algos []string
 }
 
-func (s *sshSignerWithAlgorithms) Algorithms() []string {
+func (s *sshAlogSigner) Algorithms() []string {
 	return s.algos
 }
 
-func newSshSigner(path string, priKey []byte, pubKey ssh.PublicKey, signer ssh.Signer) ssh.Signer {
-	baseSigner := &sshSigner{path, priKey, pubKey, signer}
+func newSshSigner(path string, priKey []byte, pubKey ssh.PublicKey, signer ssh.Signer) sshSigner {
+	baseSigner := &sshBaseSigner{path, priKey, pubKey, signer}
 
 	if pubKey != nil {
 		keyFormat := pubKey.Type()
 		if keyFormat == ssh.KeyAlgoRSA || keyFormat == ssh.CertAlgoRSAv01 {
 			// prefer rsa-sha2-512 over rsa-sha2-256
-			return &sshSignerWithAlgorithms{baseSigner, []string{ssh.KeyAlgoRSASHA512, ssh.KeyAlgoRSASHA256, ssh.KeyAlgoRSA}}
+			return &sshAlogSigner{baseSigner, []string{ssh.KeyAlgoRSASHA512, ssh.KeyAlgoRSASHA256, ssh.KeyAlgoRSA}}
 		}
 	}
 
 	return baseSigner
 }
 
-func (s *sshSigner) getPath() string {
+func (s *sshBaseSigner) getPath() string {
 	return s.path
 }
 
-func (s *sshSigner) PublicKey() ssh.PublicKey {
+func (s *sshBaseSigner) PublicKey() ssh.PublicKey {
 	return s.pubKey
 }
 
-func (s *sshSigner) initSigner() error {
+func (s *sshBaseSigner) initSigner() error {
 	if s.signer != nil {
 		return nil
 	}
@@ -101,7 +108,7 @@ func (s *sshSigner) initSigner() error {
 	return fmt.Errorf("passphrase incorrect")
 }
 
-func (s *sshSigner) Sign(rand io.Reader, data []byte) (*ssh.Signature, error) {
+func (s *sshBaseSigner) Sign(rand io.Reader, data []byte) (*ssh.Signature, error) {
 	if err := s.initSigner(); err != nil {
 		return nil, err
 	}
@@ -116,7 +123,7 @@ func (s *sshSigner) Sign(rand io.Reader, data []byte) (*ssh.Signature, error) {
 	return signature, err
 }
 
-func (s *sshSigner) SignWithAlgorithm(rand io.Reader, data []byte, algorithm string) (*ssh.Signature, error) {
+func (s *sshBaseSigner) SignWithAlgorithm(rand io.Reader, data []byte, algorithm string) (*ssh.Signature, error) {
 	if err := s.initSigner(); err != nil {
 		return nil, err
 	}
@@ -142,25 +149,32 @@ func (s *sshSigner) SignWithAlgorithm(rand io.Reader, data []byte, algorithm str
 	return signature, err
 }
 
-func newPassphraseSigner(path string, priKey []byte, err *ssh.PassphraseMissingError) ssh.Signer {
+func parsePublicKey(path string) ssh.PublicKey {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		warning("read public key [%s] failed: %v", path, err)
+		return nil
+	}
+	key, _, _, _, err := ssh.ParseAuthorizedKey(data)
+	if err != nil {
+		warning("parse public key [%s] failed: %v", path, err)
+		return nil
+	}
+	return key
+}
+
+func newPassphraseSigner(path string, priKey []byte, err *ssh.PassphraseMissingError) sshSigner {
 	pubKey := err.PublicKey
 	if pubKey == nil {
-		pubPath := path + ".pub"
-		pubData, err := os.ReadFile(pubPath)
-		if err != nil {
-			warning("read public key [%s] failed: %v", pubPath, err)
-			return nil
-		}
-		pubKey, _, _, _, err = ssh.ParseAuthorizedKey(pubData)
-		if err != nil {
-			warning("parse public key [%s] failed: %v", pubPath, err)
+		pubKey = parsePublicKey(path + ".pub")
+		if pubKey == nil {
 			return nil
 		}
 	}
 	return newSshSigner(path, priKey, pubKey, nil)
 }
 
-func getSigner(dest string, path string) ssh.Signer {
+func getSigner(dest string, path string) sshSigner {
 	path = resolveHomeDir(path)
 	privateKey, err := os.ReadFile(path)
 	if err != nil {
@@ -184,13 +198,8 @@ func getSigner(dest string, path string) ssh.Signer {
 	return newSshSigner(path, nil, signer.PublicKey(), signer)
 }
 
-func appendSignerCerts(signer ssh.Signer, certFiles []string) []ssh.Signer {
-	signers := []ssh.Signer{signer}
-
-	path := ""
-	if s, ok := signer.(interface{ getPath() string }); ok {
-		path = s.getPath()
-	}
+func appendSignerCerts(path string, signer sshSigner, certFiles []string) []sshSigner {
+	signers := []sshSigner{signer}
 
 	tryAddCert := func(certPath string) {
 		if certPath == "" {
@@ -364,10 +373,10 @@ func getKeyboardInteractiveAuthMethod(args *sshArgs, host, user string) ssh.Auth
 		}), 3)
 }
 
-var getDefaultSigners = func() func() []ssh.Signer {
+var getDefaultSigners = func() func() []sshSigner {
 	var once sync.Once
-	var signers []ssh.Signer
-	return func() []ssh.Signer {
+	var signers []sshSigner
+	return func() []sshSigner {
 		once.Do(func() {
 			for _, name := range []string{"id_rsa", "id_ecdsa", "id_ecdsa_sk", "id_ed25519", "id_ed25519_sk", "identity"} {
 				path := filepath.Join(userHomeDir, ".ssh", name)
@@ -404,37 +413,23 @@ func getPublicKeysAuthMethod(param *sshParam) ssh.AuthMethod {
 		certFiles = append(certFiles, expandedCertFile)
 	}
 
+	var addedKeys [][]byte
 	var pubKeySigners []ssh.Signer
-	fingerprints := make(map[string]struct{})
-	addPubKeySigners := func(signers []ssh.Signer) {
+	addPubKeySigners := func(signers []sshSigner) {
 		for _, signer := range signers {
 			pubKey := signer.PublicKey()
-			fingerprint := ssh.FingerprintSHA256(pubKey)
-			if _, ok := fingerprints[fingerprint]; !ok {
+			keyBytes := pubKey.Marshal()
+			if !slices.ContainsFunc(addedKeys, func(e []byte) bool { return bytes.Equal(e, keyBytes) }) {
 				if enableDebugLogging {
-					var path string
-					if ss, ok := signer.(interface{ getPath() string }); ok {
-						path = ss.getPath() + " "
-					}
-					debug("will attempt key: %s%s %s", path, pubKey.Type(), fingerprint)
+					debug("will attempt key: %s %s %s", signer.getPath(), pubKey.Type(), ssh.FingerprintSHA256(pubKey))
 				}
-				fingerprints[fingerprint] = struct{}{}
+				addedKeys = append(addedKeys, keyBytes)
 				pubKeySigners = append(pubKeySigners, signer)
 			}
 		}
 	}
-
-	if strings.ToLower(getOptionConfig(args, "IdentitiesOnly")) != "yes" {
-		if agentClient := getAgentClient(param); agentClient != nil {
-			signers, err := agentClient.Signers()
-			if err != nil {
-				warning("get ssh agent signers failed: %v", err)
-			} else {
-				for _, signer := range signers {
-					addPubKeySigners([]ssh.Signer{newSshSigner("ssh-agent", nil, signer.PublicKey(), signer)})
-				}
-			}
-		}
+	addSignerWithCerts := func(path string, signer sshSigner) {
+		addPubKeySigners(appendSignerCerts(path, signer, certFiles))
 	}
 
 	identities := args.Identity.values
@@ -458,17 +453,52 @@ func getPublicKeysAuthMethod(param *sshParam) ssh.AuthMethod {
 		identities = append(identities, expandedIdentity)
 	}
 
-	if len(identities) == 0 {
-		for _, signer := range getDefaultSigners() {
-			addPubKeySigners(appendSignerCerts(signer, certFiles))
+	var agentSigners []ssh.Signer
+	if agentClient := getAgentClient(param); agentClient != nil {
+		var err error
+		agentSigners, err = agentClient.Signers()
+		if err != nil {
+			warning("get ssh agent signers failed: %v", err)
 		}
-	} else {
-		for _, identity := range identities {
-			signer := getSigner(args.Destination, identity)
+	}
+
+	if len(identities) > 0 {
+	out:
+		for _, path := range identities {
+			if strings.HasSuffix(path, ".pub") {
+				path = resolveHomeDir(path)
+				if pubKey := parsePublicKey(path); pubKey != nil {
+					for _, agentSigner := range agentSigners {
+						if bytes.Equal(pubKey.Marshal(), agentSigner.PublicKey().Marshal()) {
+							addSignerWithCerts("", newSshSigner(path+" (agent)", nil, pubKey, agentSigner))
+							continue out
+						}
+					}
+				}
+			}
+			signer := getSigner(args.Destination, path)
 			if signer == nil {
 				continue
 			}
-			addPubKeySigners(appendSignerCerts(signer, certFiles))
+			for _, agentSigner := range agentSigners {
+				if bytes.Equal(signer.PublicKey().Marshal(), agentSigner.PublicKey().Marshal()) {
+					addSignerWithCerts(signer.getPath(), newSshSigner(signer.getPath()+" (agent)", nil, signer.PublicKey(), agentSigner))
+					continue out
+				}
+			}
+			addSignerWithCerts(signer.getPath(), signer)
+		}
+	}
+
+	if strings.ToLower(getOptionConfig(args, "IdentitiesOnly")) != "yes" {
+		for _, signer := range agentSigners {
+			addSignerWithCerts("", newSshSigner("ssh-agent", nil, signer.PublicKey(), signer))
+		}
+	}
+
+	if len(identities) == 0 {
+		for _, signer := range getDefaultSigners() {
+			addSignerWithCerts(signer.getPath(), signer)
 		}
 	}
 
