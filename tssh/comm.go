@@ -582,3 +582,21 @@ func lookupHostWithTimeout(host string, timeout time.Duration) ([]string, error)
 	}
 	return addrs, nil
 }
+
+func wildcardToRegexp(pattern string) string {
+	var buf strings.Builder
+	for _, c := range pattern {
+		switch c {
+		case '*':
+			buf.WriteString(".*")
+		case '?':
+			buf.WriteByte('.')
+		case '(', ')', '[', ']', '{', '}', '.', '+', ',', '-', '^', '$', '|', '\\':
+			buf.WriteByte('\\')
+			buf.WriteRune(c)
+		default:
+			buf.WriteRune(c)
+		}
+	}
+	return buf.String()
+}

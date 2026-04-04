@@ -231,22 +231,6 @@ func (s *expectSender) sendInput(writer io.Writer, id string) bool {
 	return true
 }
 
-func quoteExpectPattern(pattern string) string {
-	var buf strings.Builder
-	for _, c := range pattern {
-		switch c {
-		case '*':
-			buf.WriteString(".*")
-		case '?', '(', ')', '[', ']', '{', '}', '.', '+', ',', '-', '^', '$', '|', '\\':
-			buf.WriteRune('\\')
-			buf.WriteRune(c)
-		default:
-			buf.WriteRune(c)
-		}
-	}
-	return buf.String()
-}
-
 func (c *caseSendList) splitConfig(config string) (string, string, error) {
 	index := strings.IndexFunc(config, unicode.IsSpace)
 	if index <= 0 {
@@ -273,7 +257,7 @@ func (c *caseSendList) addCaseSendPass(config string) error {
 	if err != nil {
 		return err
 	}
-	expr := quoteExpectPattern(pattern)
+	expr := wildcardToRegexp(pattern)
 	re, err := regexp.Compile(expr)
 	if err != nil {
 		return fmt.Errorf("compile expect expr [%s] failed: %v", expr, err)
@@ -291,7 +275,7 @@ func (c *caseSendList) addCaseSendText(config string) error {
 	if err != nil {
 		return err
 	}
-	expr := quoteExpectPattern(pattern)
+	expr := wildcardToRegexp(pattern)
 	re, err := regexp.Compile(expr)
 	if err != nil {
 		return fmt.Errorf("compile expect expr [%s] failed: %v", expr, err)
@@ -387,7 +371,7 @@ func drainOrClosed[T any](ch <-chan T) {
 }
 
 func (e *sshExpect) waitForPattern(pattern string, caseSends *caseSendList) (string, error) {
-	expr := quoteExpectPattern(pattern)
+	expr := wildcardToRegexp(pattern)
 	re, err := regexp.Compile(expr)
 	if err != nil {
 		warning("compile expect expr [%s] failed: %v", expr, err)

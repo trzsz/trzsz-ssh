@@ -36,44 +36,46 @@ type sshEnv struct {
 	value string
 }
 
+type sendEnvRule struct {
+	pattern string
+	negate  bool
+	re      *regexp.Regexp
+}
+
 func getSendEnvs(args *sshArgs) ([]*sshEnv, error) {
-	envSet := make(map[string]struct{})
+	var rules []sendEnvRule
 	for _, env := range getAllOptionConfigSplits(args, "SendEnv") {
-		if len(env) > 0 {
-			envSet[env] = struct{}{}
+		if len(env) == 0 {
+			continue
 		}
+
+		rule := sendEnvRule{}
+		if strings.HasPrefix(env, "-") {
+			rule.negate = true
+			rule.pattern = env[1:]
+		} else {
+			rule.pattern = env
+		}
+		if rule.pattern == "" {
+			continue
+		}
+
+		var buf strings.Builder
+		buf.WriteByte('^')
+		buf.WriteString(wildcardToRegexp(rule.pattern))
+		buf.WriteByte('$')
+
+		expr := buf.String()
+		re, err := regexp.Compile(expr)
+		if err != nil {
+			return nil, fmt.Errorf("compile SendEnv [%s] regexp [%s] failed: %v", env, expr, err)
+		}
+		rule.re = re
+		rules = append(rules, rule)
 	}
-	if len(envSet) == 0 {
+
+	if len(rules) == 0 {
 		return nil, nil
-	}
-
-	var buf strings.Builder
-	for env := range envSet {
-		if buf.Len() > 0 {
-			buf.WriteRune('|')
-		}
-		buf.WriteString("(^")
-		for _, c := range env {
-			switch c {
-			case '*':
-				buf.WriteString(".*")
-			case '?':
-				buf.WriteRune('.')
-			case '(', ')', '[', ']', '{', '}', '.', '+', ',', '-', '^', '$', '|', '\\':
-				buf.WriteRune('\\')
-				buf.WriteRune(c)
-			default:
-				buf.WriteRune(c)
-			}
-		}
-		buf.WriteString("$)")
-	}
-	expr := buf.String()
-	debug("send env regexp: %s", expr)
-
-	re, err := regexp.Compile(expr)
-	if err != nil {
-		return nil, fmt.Errorf("compile SendEnv regexp failed: %v", err)
 	}
 
 	var envs []*sshEnv
@@ -85,15 +87,24 @@ func getSendEnvs(args *sshArgs) ([]*sshEnv, error) {
 		} else {
 			name = strings.TrimSpace(env[:pos])
 		}
-		if !re.MatchString(name) {
-			continue
+
+		for _, rule := range rules {
+			if rule.re.MatchString(name) {
+				if rule.negate {
+					debug("ignored env: %s (matches rule: -%s)", name, rule.pattern)
+				} else {
+					debug("sending env: %s (matches rule: %s)", name, rule.pattern)
+					var value string
+					if pos >= 0 {
+						value = strings.TrimSpace(env[pos+1:])
+					}
+					envs = append(envs, &sshEnv{name, value})
+				}
+				break
+			}
 		}
-		var value string
-		if pos >= 0 {
-			value = strings.TrimSpace(env[pos+1:])
-		}
-		envs = append(envs, &sshEnv{name, value})
 	}
+
 	return envs, nil
 }
 

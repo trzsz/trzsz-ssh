@@ -51,19 +51,7 @@ func removeCiphersConfig(config *ssh.ClientConfig, cipherSpec string) error {
 			buf.WriteRune('|')
 		}
 		buf.WriteString("(^")
-		for _, c := range cipher {
-			switch c {
-			case '*':
-				buf.WriteString(".*")
-			case '?':
-				buf.WriteRune('.')
-			case '(', ')', '[', ']', '{', '}', '.', '+', ',', '-', '^', '$', '|', '\\':
-				buf.WriteRune('\\')
-				buf.WriteRune(c)
-			default:
-				buf.WriteRune(c)
-			}
-		}
+		buf.WriteString(wildcardToRegexp(cipher))
 		buf.WriteString("$)")
 	}
 	expr := buf.String()
