@@ -22,7 +22,7 @@ require (
 	github.com/skeema/knownhosts v1.3.2
 	github.com/stretchr/testify v1.11.1
 	github.com/trzsz/go-arg v1.5.4
-	github.com/trzsz/go-socks5 v0.1.0
+	github.com/trzsz/go-socks5 v0.1.1
 	github.com/trzsz/iterm2 v0.2.1
 	github.com/trzsz/pageant v0.1.1
 	github.com/trzsz/promptui v0.10.8

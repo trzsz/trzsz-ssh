@@ -24,9 +24,9 @@ trzsz-ssh ( tssh ) works exactly like the openssh client. The following common f
 |    Command     |                              `-s` `RemoteCommand` `LocalCommand` `PermitLocalCommand`                              |
 |  Known Hosts   |                        `UserKnownHostsFile` `GlobalKnownHostsFile` `StrictHostKeyChecking`                         |
 |   SSH Agent    |                     `-a` `-A` `ForwardAgent` `IdentityAgent` `IdentitiesOnly` `SSH_AUTH_SOCK`                      |
-|  Basic Login   |                   `-l` `-p` `-i` `-F` `HostName` `Port` `User` `IdentityFile` `SendEnv` `SetEnv`                   |
 |  X11 Forward   |                `-x` `-X` `-Y` `ForwardX11` `ForwardX11Trusted` `ForwardX11Timeout` `XAuthLocation`                 |
 |  Canonicalize  |            `CanonicalizeHostname` `CanonicalDomains` `CanonicalizeMaxDots` `CanonicalizeFallbackLocal`             |
+|  Basic Login   |          `-l` `-p` `-i` `-F` `HostName` `Port` `User` `IdentityFile` `CertificateFile` `SendEnv` `SetEnv`          |
 | Authentication |       `PubkeyAuthentication` `PasswordAuthentication` `KbdInteractiveAuthentication` `GSSAPIAuthentication`        |
 |  Port Forward  | `-g` `-f` `-N` `-L` `-R` `-D` `LocalForward` `RemoteForward` `DynamicForward` `GatewayPorts` `ClearAllForwardings` |
 |     Others     |                                                    `EscapeChar`                                                    |
@@ -168,7 +168,11 @@ trzsz-ssh ( tssh ) offers additional useful features:
   <details><summary><code>go install github.com/trzsz/trzsz-ssh/cmd/tssh@latest</code></summary>
 
   ```sh
+  # latest release
   go install github.com/trzsz/trzsz-ssh/cmd/tssh@latest
+
+  # latest development version (main branch)
+  go install github.com/trzsz/trzsz-ssh/cmd/tssh@main
   ```
 
   The binaries are usually located in ~/go/bin/ ( C:\Users\your_name\go\bin\ on Windows ).

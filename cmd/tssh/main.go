@@ -26,10 +26,24 @@ package main
 
 import (
 	"os"
+	"strings"
 
 	"github.com/trzsz/trzsz-ssh/tssh"
 )
 
 func main() {
-	os.Exit(tssh.TsshMain(os.Args[1:]))
+	argIdx := 1
+
+	if len(os.Args) > 1 {
+		// In Termux on Android, termux-exec may inject the absolute path of the
+		// executable as the first argument (os.Args[1]) due to W^X restrictions.
+		// We detect this by checking for termux-exec's specific environment variable
+		// and verifying if the first argument points to the Termux file system.
+		if exe := os.Getenv("TERMUX_EXEC__PROC_SELF_EXE"); exe != "" &&
+			strings.HasPrefix(os.Args[1], "/data/data/com.termux/files/") {
+			argIdx = 2
+		}
+	}
+
+	os.Exit(tssh.TsshMain(os.Args[argIdx:]))
 }

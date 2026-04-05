@@ -59,10 +59,12 @@ func background(args *sshArgs, dest string) (bool, error) {
 	if err != nil {
 		return true, err
 	}
+	exePath := getExePath(newArgs[0])
 
 	sleepTime := time.Duration(0)
 	for {
-		cmd := exec.Command(newArgs[0], newArgs[1:]...)
+		cmd := exec.Command(exePath, newArgs[1:]...)
+		cmd.Args = newArgs
 		cmd.Env = env
 		cmd.Stderr = os.Stderr
 
@@ -84,6 +86,13 @@ func background(args *sshArgs, dest string) (bool, error) {
 			sleepTime = 0
 		}
 	}
+}
+
+func getExePath(defaultPath string) string {
+	if path, err := os.Executable(); err == nil {
+		return path
+	}
+	return defaultPath
 }
 
 // replaceOrAppendDest returns a new args slice where the destination is replaced or appended.
@@ -127,9 +136,11 @@ func runWithReconnect(args *sshArgs, dest string) (err error) {
 	if err != nil {
 		return err
 	}
+	exePath := getExePath(newArgs[0])
 
 	for {
-		cmd := exec.Command(newArgs[0], newArgs[1:]...)
+		cmd := exec.Command(exePath, newArgs[1:]...)
+		cmd.Args = newArgs
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr

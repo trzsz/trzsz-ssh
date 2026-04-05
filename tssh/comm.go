@@ -148,9 +148,6 @@ func writeDebugLog(msec int64, host, log string) {
 		if _, err := debugLogFile.WriteString(line); err != nil {
 			return false, fmt.Errorf("write debug log to [%s] failed: %v", debugLogFileName, err)
 		}
-		if err := debugLogFile.Sync(); err != nil {
-			return false, fmt.Errorf("sync debug log to [%s] failed: %v", debugLogFileName, err)
-		}
 		return true, nil
 	}()
 
