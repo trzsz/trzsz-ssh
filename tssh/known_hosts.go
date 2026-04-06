@@ -95,7 +95,7 @@ func addHostKey(path, host string, key ssh.PublicKey, ask bool) error {
 	if ask {
 		fingerprint := ssh.FingerprintSHA256(key)
 		fmt.Fprintf(os.Stderr, "The authenticity of host '%s' can't be established.\r\n"+
-			"%s key fingerprint is %s.\r\n", host, key.Type(), fingerprint)
+			"%s key fingerprint is %s.\r\n", host, shortKeyType(key.Type()), fingerprint)
 
 		stdin, closer, err := getKeyboardInput()
 		if err != nil {
@@ -131,7 +131,7 @@ func addHostKey(path, host string, key ssh.PublicKey, ask bool) error {
 		return nil
 	}
 
-	warning("Permanently added '%s' (%s) to the list of known hosts.", host, key.Type())
+	warning("Permanently added '%s' (%s) to the list of known hosts.", host, shortKeyType(key.Type()))
 	return nil
 }
 
@@ -212,7 +212,7 @@ func getHostKeyCallback(param *sshParam) (ssh.HostKeyCallback, []string, error) 
 				"%s\r\n"+
 				"Please contact your system administrator.\r\n"+
 				"Add correct host key in %s to get rid of this message.\r\n",
-				key.Type(), ssh.FingerprintSHA256(key), path)
+				shortKeyType(key.Type()), ssh.FingerprintSHA256(key), path)
 		} else if knownhosts.IsHostUnknown(err) && primaryPath != "" {
 			ask := true
 			switch strictHostKeyChecking {

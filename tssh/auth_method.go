@@ -96,9 +96,12 @@ func (s *sshBaseSigner) initSigner() error {
 		if len(secret) == 0 {
 			continue
 		}
-		s.signer, err = ssh.ParsePrivateKeyWithPassphrase(s.priKey, secret)
+		s.signer, err = parsePrivateKeyWithPassphrase(s.priKey, secret)
 		if err == x509.IncorrectPasswordError {
 			continue
+		}
+		if skErr, ok := err.(*unhandledSecurityKeyError); ok {
+			s.signer, err = parseSecurityKey(s.path, skErr)
 		}
 		if err != nil {
 			return err
@@ -181,14 +184,17 @@ func getSigner(dest string, path string) sshSigner {
 		warning("read private key [%s] failed: %v", path, err)
 		return nil
 	}
-	signer, err := ssh.ParsePrivateKey(privateKey)
+	signer, err := parsePrivateKey(privateKey)
 	if err != nil {
 		if e, ok := err.(*ssh.PassphraseMissingError); ok {
 			if passphrase := getSecretConfig(dest, "Passphrase"); passphrase != "" {
-				signer, err = ssh.ParsePrivateKeyWithPassphrase(privateKey, []byte(passphrase))
+				signer, err = parsePrivateKeyWithPassphrase(privateKey, []byte(passphrase))
 			} else {
 				return newPassphraseSigner(path, privateKey, e)
 			}
+		}
+		if skErr, ok := err.(*unhandledSecurityKeyError); ok {
+			signer, err = parseSecurityKey(path, skErr)
 		}
 		if err != nil {
 			warning("parse private key [%s] failed: %v", path, err)
@@ -383,10 +389,6 @@ var getDefaultSigners = func() func() []sshSigner {
 				if !isFileExist(path) {
 					continue
 				}
-				if strings.HasSuffix(name, "_sk") {
-					debug("security key not supported yet: %s", path)
-					continue
-				}
 				if signer := getSigner(name, path); signer != nil {
 					signers = append(signers, signer)
 				}
@@ -421,7 +423,7 @@ func getPublicKeysAuthMethod(param *sshParam) ssh.AuthMethod {
 			keyBytes := pubKey.Marshal()
 			if !slices.ContainsFunc(addedKeys, func(e []byte) bool { return bytes.Equal(e, keyBytes) }) {
 				if enableDebugLogging {
-					debug("will attempt key: %s %s %s", signer.getPath(), pubKey.Type(), ssh.FingerprintSHA256(pubKey))
+					debug("will attempt key: %s %s %s", signer.getPath(), shortKeyType(pubKey.Type()), ssh.FingerprintSHA256(pubKey))
 				}
 				addedKeys = append(addedKeys, keyBytes)
 				pubKeySigners = append(pubKeySigners, signer)
@@ -443,10 +445,6 @@ func getPublicKeysAuthMethod(param *sshParam) ssh.AuthMethod {
 			expandedIdentity = resolveHomeDir(expandedIdentity)
 			if !isFileExist(expandedIdentity) {
 				debug("IdentityFile [%s] does not exist", expandedIdentity)
-				continue
-			}
-			if strings.HasSuffix(expandedIdentity, "_sk") {
-				debug("security key not supported yet: %s", expandedIdentity)
 				continue
 			}
 		}
