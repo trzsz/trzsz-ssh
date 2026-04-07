@@ -83,6 +83,7 @@ type sshArgs struct {
 	TraceLog       bool        `arg:"--tracelog" help:"enable trzsz detect trace logs for debugging"`
 	Relay          bool        `arg:"--relay" help:"force trzsz run as a relay on the jump server"`
 	Client         bool        `arg:"--client" help:"force trzsz run as a client on the jump server"`
+	Yes            bool        `arg:"-y,--yes" help:"automatic yes to prompts; assume 'yes' as answer to all prompts"`
 	Debug          bool        `arg:"--debug" help:"verbose mode for debugging, same as ssh's -vvv"`
 	Zmodem         bool        `arg:"--zmodem" help:"enable zmodem lrzsz ( rz / sz ) feature"`
 	Dns            string      `arg:"--dns" placeholder:"[udp://|tcp://]host[:port]" help:"custom DNS server"`
@@ -91,6 +92,7 @@ type sshArgs struct {
 	TsshdPath      string      `arg:"--tsshd-path" placeholder:"path" help:"[udp] tsshd absolute path on the server"`
 	TsshdPort      string      `arg:"--tsshd-port" placeholder:"low-high" help:"[udp] port range that tsshd listens on"`
 	NewHost        bool        `arg:"--new-host" help:"[tools] add new host to configuration"`
+	RemoveHost     string      `arg:"--remove-host" placeholder:"alias" help:"[tools] remove host and saved password from configuration"`
 	EncSecret      bool        `arg:"--enc-secret" help:"[tools] encode secret for configuration"`
 	ListHosts      bool        `arg:"--list-hosts" help:"[tools] list all hosts in configuration"`
 	InstallTrzsz   bool        `arg:"--install-trzsz" help:"[tools] install trzsz to the remote server"`

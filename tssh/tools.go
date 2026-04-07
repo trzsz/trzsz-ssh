@@ -529,10 +529,12 @@ func execLocalTools(args *sshArgs) (int, bool) {
 	switch {
 	case args.EncSecret:
 		return execEncodeSecret()
-	case args.NewHost || args.Destination == "" && isFileNotExistOrEmpty(userConfig.configPath):
-		return execNewHost(args)
+	case args.RemoveHost != "":
+		return execRemoveHost(args)
 	case args.ListHosts:
 		return execListHosts()
+	case args.NewHost || args.Destination == "" && isFileNotExistOrEmpty(userConfig.configPath):
+		return execNewHost(args)
 	default:
 		return 0, false
 	}
