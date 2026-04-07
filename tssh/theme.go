@@ -45,7 +45,7 @@ type promptTheme struct {
 }
 
 func getDefaultHelpTipsTemplate() string {
-	return fmt.Sprintf(`{{ "Use ← ↓ ↑ → h j k l to navigate, / toggles search, ? toggles help" | %s }}`, getThemeColor("help_tips"))
+	return fmt.Sprintf(`{{ "Use ← ↓ ↑ → h j k l to navigate, 0-9 jumps within page, / toggles search, ? toggles help" | %s }}`, getThemeColor("help_tips"))
 }
 
 func getDefaultShortcutsTemplate() string {
@@ -94,6 +94,7 @@ func getDefaultDetailsTemplate() string {
 }
 
 func getTinyTheme() *promptTheme {
+	line := newLineTheme(true)
 	return &promptTheme{
 		Label: fmt.Sprintf(`{{ "? " | %s }}{{ . | %s }}{{ ":" | %s }}`,
 			getThemeColor("label_icon"), getThemeColor("label_text"), getThemeColor("label_text")),
@@ -105,13 +106,15 @@ func getTinyTheme() *promptTheme {
 			`{{ .Alias | %s }} ({{ .Host | %s }}){{ "\t" }}{{ .GroupLabels | %s }}`,
 			getThemeColor("inactive_selected"),
 			getThemeColor("inactive_alias"), getThemeColor("inactive_host"), getThemeColor("inactive_group")),
-		Details:   getDefaultDetailsTemplate(),
-		Help:      getDefaultHelpTipsTemplate(),
-		Shortcuts: getDefaultShortcutsTemplate(),
+		Details:       getDefaultDetailsTemplate(),
+		Help:          getDefaultHelpTipsTemplate(),
+		ItemsRenderer: line.renderItems,
+		Shortcuts:     getDefaultShortcutsTemplate(),
 	}
 }
 
 func getSimpleTheme() *promptTheme {
+	line := newLineTheme(false)
 	return &promptTheme{
 		Label: fmt.Sprintf(`{{ "? " | %s }}{{ . | %s }}{{ ":\n" | %s }}`,
 			getThemeColor("label_icon"), getThemeColor("label_text"), getThemeColor("label_text")),
@@ -123,10 +126,146 @@ func getSimpleTheme() *promptTheme {
 			`{{ .Alias | %s }}{{ "\t" }}{{ .Host | %s }}{{ "\t" }}{{ .GroupLabels | %s }}`+
 			`{{ "\n\t\t" }}`, getThemeColor("inactive_selected"),
 			getThemeColor("inactive_alias"), getThemeColor("inactive_host"), getThemeColor("inactive_group")),
-		Details:   getDefaultDetailsTemplate(),
-		Help:      getDefaultHelpTipsTemplate(),
-		Shortcuts: getDefaultShortcutsTemplate(),
+		Details:       getDefaultDetailsTemplate(),
+		Help:          getDefaultHelpTipsTemplate(),
+		ItemsRenderer: line.renderItems,
+		Shortcuts:     getDefaultShortcutsTemplate(),
 	}
+}
+
+type lineTheme struct {
+	tiny                bool
+	activeCursorStyle   lipgloss.Style
+	activeNumberStyle   lipgloss.Style
+	inactiveNumberStyle lipgloss.Style
+	activeSelectedStyle lipgloss.Style
+	inactiveSelectStyle lipgloss.Style
+	activeAliasStyle    lipgloss.Style
+	inactiveAliasStyle  lipgloss.Style
+	activeHostStyle     lipgloss.Style
+	inactiveHostStyle   lipgloss.Style
+	activeGroupStyle    lipgloss.Style
+	inactiveGroupStyle  lipgloss.Style
+}
+
+func newLineTheme(tiny bool) *lineTheme {
+	return &lineTheme{
+		tiny:                tiny,
+		activeCursorStyle:   getPromptLineStyle(getThemeColor("cursor_icon")),
+		activeNumberStyle:   getPromptLineStyle("blue|bold"),
+		inactiveNumberStyle: getPromptLineStyle("blue"),
+		activeSelectedStyle: getPromptLineStyle(getThemeColor("active_selected")),
+		inactiveSelectStyle: getPromptLineStyle(getThemeColor("inactive_selected")),
+		activeAliasStyle:    getPromptLineStyle(getThemeColor("active_alias")),
+		inactiveAliasStyle:  getPromptLineStyle(getThemeColor("inactive_alias")),
+		activeHostStyle:     getPromptLineStyle(getThemeColor("active_host")),
+		inactiveHostStyle:   getPromptLineStyle(getThemeColor("inactive_host")),
+		activeGroupStyle:    getPromptLineStyle(getThemeColor("active_group")),
+		inactiveGroupStyle:  getPromptLineStyle(getThemeColor("inactive_group")),
+	}
+}
+
+func getPromptLineStyle(spec string) lipgloss.Style {
+	style := lipgloss.NewStyle()
+	for _, token := range strings.Split(spec, "|") {
+		switch strings.TrimSpace(token) {
+		case "", "default":
+			continue
+		case "bold":
+			style = style.Bold(true)
+		case "faint":
+			style = style.Faint(true)
+		case "underline":
+			style = style.Underline(true)
+		case "black":
+			style = style.Foreground(lipgloss.Color("0"))
+		case "red":
+			style = style.Foreground(lipgloss.Color("1"))
+		case "green":
+			style = style.Foreground(lipgloss.Color("2"))
+		case "yellow":
+			style = style.Foreground(lipgloss.Color("3"))
+		case "blue":
+			style = style.Foreground(lipgloss.Color("4"))
+		case "magenta":
+			style = style.Foreground(lipgloss.Color("5"))
+		case "cyan":
+			style = style.Foreground(lipgloss.Color("6"))
+		case "white":
+			style = style.Foreground(lipgloss.Color("7"))
+		default:
+			style = style.Foreground(lipgloss.Color(token))
+		}
+	}
+	return style
+}
+
+func (t *lineTheme) renderItems(items []any, idx int) string {
+	view := getPromptPageView(items, idx, promptStrictPagingEnabled)
+	var builder strings.Builder
+	for i, host := range view.hosts {
+		active := i == view.activeIdx
+		if active {
+			builder.WriteString(t.activeCursorStyle.Render(promptCursorIcon))
+			builder.WriteString(" ")
+		} else {
+			builder.WriteString("   ")
+		}
+		number := fmt.Sprintf("%d", host.Index-view.displayStart)
+		if active {
+			builder.WriteString(t.activeNumberStyle.Render(number))
+		} else {
+			builder.WriteString(t.inactiveNumberStyle.Render(number))
+		}
+		builder.WriteString(" ")
+
+		selectIcon := "  "
+		if host.Selected {
+			selectIcon = "✔ "
+		}
+		if active {
+			builder.WriteString(t.activeSelectedStyle.Render(selectIcon))
+		} else {
+			builder.WriteString(t.inactiveSelectStyle.Render(selectIcon))
+		}
+
+		if active {
+			builder.WriteString(t.activeAliasStyle.Render(host.Alias))
+		} else {
+			builder.WriteString(t.inactiveAliasStyle.Render(host.Alias))
+		}
+
+		if t.tiny {
+			builder.WriteString(" (")
+			if active {
+				builder.WriteString(t.activeHostStyle.Render(host.Host))
+			} else {
+				builder.WriteString(t.inactiveHostStyle.Render(host.Host))
+			}
+			builder.WriteString(")")
+		} else {
+			builder.WriteString("\t")
+			if active {
+				builder.WriteString(t.activeHostStyle.Render(host.Host))
+			} else {
+				builder.WriteString(t.inactiveHostStyle.Render(host.Host))
+			}
+		}
+
+		if host.GroupLabels != "" {
+			builder.WriteString("\t")
+			if active {
+				builder.WriteString(t.activeGroupStyle.Render(host.GroupLabels))
+			} else {
+				builder.WriteString(t.inactiveGroupStyle.Render(host.GroupLabels))
+			}
+		}
+
+		if i < len(view.hosts)-1 {
+			builder.WriteByte('\n')
+		}
+	}
+	return builder.String()
 }
 
 type tableTheme struct {
@@ -150,25 +289,25 @@ func (t *tableTheme) cellStyle(host *sshHost, row, col int) lipgloss.Style {
 	if row == 0 {
 		return t.tableHeaderStyle
 	}
-	if col == 0 {
+	if col == 1 {
 		return t.selectedIconStyle
 	}
 	if host.Selected {
 		switch col {
-		case 1:
+		case 0, 2:
 			return t.selectedAliasStyle
-		case 2:
-			return t.selectedHostStyle
 		case 3:
+			return t.selectedHostStyle
+		case 4:
 			return t.selectedGrouplStyle
 		}
 	} else {
 		switch col {
-		case 1:
+		case 0, 2:
 			return t.defaultAliasStyle
-		case 2:
-			return t.defaultHostStyle
 		case 3:
+			return t.defaultHostStyle
+		case 4:
 			return t.defaultGroupStyle
 		}
 	}
@@ -196,26 +335,26 @@ func (t *tableTheme) borderStyle(idx, row, col int, borderType table.BorderType)
 }
 
 func (t *tableTheme) renderItems(items []any, idx int) string {
+	view := getPromptPageView(items, idx, promptStrictPagingEnabled)
 	var data [][]string
-	for _, item := range items {
-		host := item.(*sshHost)
+	for _, host := range view.hosts {
 		icon := " "
 		if host.Selected {
 			icon = "✔"
 		}
-		data = append(data, []string{icon, host.Alias, host.Host, host.GroupLabels})
+		data = append(data, []string{fmt.Sprintf("%d", host.Index-view.displayStart), icon, host.Alias, host.Host, host.GroupLabels})
 	}
 	tbl := table.New().BorderRow(true).
-		Headers("", "Alias", "Host Name", "Group Labels").Rows(data...).
+		Headers("No.", "", "Alias", "Host Name", "Group Labels").Rows(data...).
 		StyleFunc(func(row, col int) lipgloss.Style {
 			var host *sshHost
 			if row > 0 {
-				host = items[row-1].(*sshHost)
+				host = view.hosts[row-1]
 			}
 			return t.cellStyle(host, row, col)
 		}).
 		BorderStyleFunc(func(row, col int, borderType table.BorderType) lipgloss.Style {
-			return t.borderStyle(idx, row, col, borderType)
+			return t.borderStyle(view.activeIdx, row, col, borderType)
 		})
 	result := tbl.String()
 	t.tableWidth = tbl.GetTotalWidth()

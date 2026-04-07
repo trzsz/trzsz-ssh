@@ -56,6 +56,7 @@ func resolveHomeDir(path string) string {
 }
 
 type sshHost struct {
+	Index         int `json:"-"`
 	Alias         string
 	Host          string
 	Port          string
@@ -584,6 +585,9 @@ func getAllHosts() []*sshHost {
 		}
 		if userConfig.sysConfig != nil {
 			userConfig.allHosts = append(userConfig.allHosts, recursiveGetHosts(userConfig.sysConfig.Hosts)...)
+		}
+		for i, host := range userConfig.allHosts {
+			host.Index = i
 		}
 		addAfterLoginFunc(func() { userConfig.allHosts = nil; userConfig.wildcardPatterns = nil })
 	})

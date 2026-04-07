@@ -100,6 +100,7 @@ type sshShortcuts struct {
 var normalShortcuts = []sshShortcuts{
 	{actionName: "Confirm  ", globalKeys: []string{"Enter"}, nonSearchKeys: nil},
 	{actionName: "Quit/Exit", globalKeys: []string{"Ctrl+C", "Ctrl+Q"}, nonSearchKeys: []string{"q", "Q"}},
+	{actionName: "Jump 0-9 ", globalKeys: nil, nonSearchKeys: []string{"0..9"}},
 	{actionName: "Move Prev", globalKeys: []string{"Ctrl+K", "Shift+Tab", "↑"}, nonSearchKeys: []string{"k", "K"}},
 	{actionName: "Move Next", globalKeys: []string{"Ctrl+J", "Tab      ", "↓"}, nonSearchKeys: []string{"j", "J"}},
 	{actionName: "Page   Up", globalKeys: []string{"Ctrl+H", "Ctrl+U", "Ctrl+B", "PageUp  ", "←"}, nonSearchKeys: []string{"h", "H", "u", "U", "b", "B"}},
@@ -434,6 +435,149 @@ func (p *sshPrompt) eraseKeywords(buf []byte) bool {
 	}
 }
 
+func getVisibleHostTarget(visibleSize int, input byte) (int, bool) {
+	if input < '0' || input > '9' {
+		return 0, false
+	}
+	targetOffset := int(input - '0')
+	if targetOffset >= visibleSize {
+		return 0, false
+	}
+	return targetOffset, true
+}
+
+func (p *sshPrompt) strictPagingEnabled() bool {
+	return !p.search && p.selector.GetVisibleSize() == len(p.hosts)
+}
+
+func (p *sshPrompt) currentPageStart() int {
+	currentIndex := p.selector.GetCurrentIndex()
+	if currentIndex < 0 {
+		return 0
+	}
+	return (currentIndex / getPromptPageSize()) * getPromptPageSize()
+}
+
+func (p *sshPrompt) currentLastPageStart() int {
+	pageSize := getPromptPageSize()
+	total := len(p.hosts)
+	if total <= pageSize {
+		return 0
+	}
+	return ((total - 1) / pageSize) * pageSize
+}
+
+func (p *sshPrompt) hasPartialLastPage() bool {
+	total := len(p.hosts)
+	pageSize := getPromptPageSize()
+	return total > pageSize && total%pageSize != 0
+}
+
+func (p *sshPrompt) getPageUpCommand() []byte {
+	if !p.strictPagingEnabled() {
+		return []byte{readline.CharBackward}
+	}
+	pageStart := p.currentPageStart()
+	if pageStart == 0 {
+		return []byte{promptui.KeyRefresh}
+	}
+	return bytes.Repeat([]byte{readline.CharPrev}, p.selector.GetCurrentIndex()-(pageStart-getPromptPageSize()))
+}
+
+func (p *sshPrompt) getPageDownCommand() []byte {
+	if !p.strictPagingEnabled() {
+		return []byte{readline.CharForward}
+	}
+	pageSize := getPromptPageSize()
+	pageStart := p.currentPageStart()
+	nextPageStart := pageStart + pageSize
+	if nextPageStart >= len(p.hosts) {
+		return []byte{promptui.KeyRefresh}
+	}
+	return bytes.Repeat([]byte{readline.CharNext}, nextPageStart-p.selector.GetCurrentIndex())
+}
+
+func (p *sshPrompt) getMovePrevCommand() []byte {
+	if !p.strictPagingEnabled() {
+		return []byte{readline.CharPrev}
+	}
+	if p.selector.GetCurrentIndex() <= 0 {
+		return []byte{promptui.KeyRefresh}
+	}
+	return []byte{readline.CharPrev}
+}
+
+func (p *sshPrompt) getMoveNextCommand() []byte {
+	if !p.strictPagingEnabled() {
+		return []byte{readline.CharNext}
+	}
+	if p.selector.GetCurrentIndex() >= len(p.hosts)-1 {
+		return []byte{promptui.KeyRefresh}
+	}
+	return []byte{readline.CharNext}
+}
+
+func (p *sshPrompt) getGotoEndCommand() []byte {
+	if !p.strictPagingEnabled() {
+		return bytes.Repeat([]byte{readline.CharForward}, p.getPageCount())
+	}
+	currentPageStart := p.currentPageStart()
+	lastPageStart := p.currentLastPageStart()
+	if currentPageStart >= lastPageStart {
+		return []byte{promptui.KeyRefresh}
+	}
+	command := bytes.Repeat([]byte{readline.CharNext}, lastPageStart-p.selector.GetCurrentIndex())
+	if len(command) == 0 {
+		return []byte{promptui.KeyRefresh}
+	}
+	return command
+}
+
+func (p *sshPrompt) jumpToVisibleHost(buf []byte) []byte {
+	if p.search || len(buf) != 1 {
+		return nil
+	}
+	if buf[0] < '0' || buf[0] > '9' {
+		return nil
+	}
+	currentIndex := p.selector.GetCurrentIndex()
+	if currentIndex < 0 {
+		return []byte{promptui.KeyRefresh}
+	}
+	currentHost := p.hosts[currentIndex]
+	visibleItems := p.selector.GetVisibleItems()
+	activeIdx := -1
+	for i, item := range visibleItems {
+		if host, ok := item.(*sshHost); ok && host == currentHost {
+			activeIdx = i
+			break
+		}
+	}
+	view := getPromptPageView(visibleItems, activeIdx, p.strictPagingEnabled())
+	targetOffset, ok := getVisibleHostTarget(len(view.hosts), buf[0])
+	if !ok {
+		return []byte{promptui.KeyRefresh}
+	}
+	host := view.hosts[targetOffset]
+	targetIndex := -1
+	for i, h := range p.hosts {
+		if h == host {
+			targetIndex = i
+			break
+		}
+	}
+	if targetIndex < 0 {
+		return []byte{promptui.KeyRefresh}
+	}
+	if targetIndex == currentIndex {
+		return []byte{promptui.KeyRefresh}
+	}
+	if targetIndex > currentIndex {
+		return bytes.Repeat([]byte{readline.CharNext}, targetIndex-currentIndex)
+	}
+	return bytes.Repeat([]byte{readline.CharPrev}, currentIndex-targetIndex)
+}
+
 func (p *sshPrompt) userConfirm(buf []byte) bool {
 	if len(buf) != 1 {
 		return false
@@ -487,17 +631,25 @@ func (p *sshPrompt) wrapStdin() {
 			p.quit = true
 			return
 		case p.movePrev(buf):
-			buf = []byte{readline.CharPrev}
+			buf = p.getMovePrevCommand()
 		case p.moveNext(buf):
-			buf = []byte{readline.CharNext}
+			buf = p.getMoveNextCommand()
 		case p.pageUp(buf):
-			buf = []byte{readline.CharBackward}
+			buf = p.getPageUpCommand()
 		case p.pageDown(buf):
-			buf = []byte{readline.CharForward}
+			buf = p.getPageDownCommand()
 		case p.gotoHome(buf):
 			buf = bytes.Repeat([]byte{readline.CharBackward}, p.getPageCount())
 		case p.gotoEnd(buf):
-			buf = bytes.Repeat([]byte{readline.CharForward}, p.getPageCount())
+			buf = p.getGotoEndCommand()
+		case func() bool {
+			jump := p.jumpToVisibleHost(buf)
+			if jump == nil {
+				return false
+			}
+			buf = jump
+			return true
+		}():
 		case p.toggleSelect(buf):
 			buf = []byte{promptui.KeyRefresh}
 			if idx := p.selector.GetCurrentIndex(); idx >= 0 {
@@ -536,6 +688,7 @@ func (p *sshPrompt) wrapStdin() {
 			// avoid Ctrl+Space causing quit unexpectedly
 			buf = []byte{promptui.KeyRefresh}
 		}
+		promptStrictPagingEnabled = p.strictPagingEnabled()
 		p.selector.Shortcuts = p.getShortcuts()
 		_, _ = p.pipeOut.Write(buf)
 	}
@@ -579,6 +732,7 @@ func chooseAlias(keywords string) (string, bool, error) {
 	}
 
 	pipeIn, pipeOut := io.Pipe()
+	promptStrictPagingEnabled = true
 	prompt := sshPrompt{
 		selector: &promptui.Select{
 			Label: "SSH Alias",

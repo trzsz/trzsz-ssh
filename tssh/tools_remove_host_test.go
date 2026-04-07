@@ -65,3 +65,19 @@ func TestRemoveAliasBlockContentNotFound(t *testing.T) {
 		t.Fatalf("expected content to remain unchanged")
 	}
 }
+
+func TestGetVisibleHostTarget(t *testing.T) {
+	target, ok := getVisibleHostTarget(10, '1')
+	if !ok {
+		t.Fatalf("expected target to be found")
+	}
+	if target != 1 {
+		t.Fatalf("target = %d, want 1", target)
+	}
+}
+
+func TestGetVisibleHostTargetOutOfRange(t *testing.T) {
+	if _, ok := getVisibleHostTarget(2, '9'); ok {
+		t.Fatalf("expected target to be out of range")
+	}
+}
