@@ -307,6 +307,16 @@ func startTsshdServer(args *sshArgs, tcpClient SshClient, tsshdCmd string) (*tss
 		return nil, fmt.Errorf("new session failed: %v", err)
 	}
 	defer func() { _ = session.Close() }()
+
+	// Some Windows SSH servers treat a missing stdin as EOF, which may
+	// cause the remote command to exit prematurely and prevent tsshd
+	// from starting. Attach a stdin pipe to avoid this.
+	serverIn, err := session.StdinPipe()
+	if err != nil {
+		return nil, fmt.Errorf("stdin pipe failed: %v", err)
+	}
+	defer func() { _ = serverIn.Close() }()
+
 	serverOut, err := session.StdoutPipe()
 	if err != nil {
 		return nil, fmt.Errorf("stdout pipe failed: %v", err)

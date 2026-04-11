@@ -213,6 +213,9 @@ func (s *skSigner) SignWithAlgorithm(rand io.Reader, data []byte, algorithm stri
 		switch resp.RespType {
 		case 0: // SSH_SK_HELPER_ERROR
 			code := binary.BigEndian.Uint32(resp.Rest)
+			if code == 60 { // SSH_ERR_DEVICE_NOT_FOUND = -60
+				return nil, fmt.Errorf("device not found")
+			}
 			if code == 43 { // SSH_ERR_KEY_WRONG_PASSPHRASE = -43
 				continue
 			}

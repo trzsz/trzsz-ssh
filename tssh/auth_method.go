@@ -117,11 +117,11 @@ func (s *sshBaseSigner) Sign(rand io.Reader, data []byte) (*ssh.Signature, error
 	}
 
 	if enableDebugLogging {
-		debug("sign with key: %s", ssh.FingerprintSHA256(s.pubKey))
+		debug("sign with key: %s %s", s.path, ssh.FingerprintSHA256(s.pubKey))
 	}
 	signature, err := s.signer.Sign(rand, data)
 	if err != nil {
-		warning("sign with [%s] failed: %v", ssh.FingerprintSHA256(s.pubKey), err)
+		warning("sign with [%s] failed: %v", s.path, err)
 	}
 	return signature, err
 }
@@ -133,23 +133,16 @@ func (s *sshBaseSigner) SignWithAlgorithm(rand io.Reader, data []byte, algorithm
 
 	if signer, ok := s.signer.(ssh.AlgorithmSigner); ok {
 		if enableDebugLogging {
-			debug("sign with algorithm [%s] key: %s", algorithm, ssh.FingerprintSHA256(s.pubKey))
+			debug("sign with key: %s %s %s", s.path, algorithm, ssh.FingerprintSHA256(s.pubKey))
 		}
 		signature, err := signer.SignWithAlgorithm(rand, data, algorithm)
 		if err != nil {
-			warning("sign with algorithm [%s] [%s] failed: %v", algorithm, ssh.FingerprintSHA256(s.pubKey), err)
+			warning("sign with [%s] failed: %v", s.path, err)
 		}
 		return signature, err
 	}
 
-	if enableDebugLogging {
-		debug("sign without algorithm [%s] key: %s", algorithm, ssh.FingerprintSHA256(s.pubKey))
-	}
-	signature, err := s.signer.Sign(rand, data)
-	if err != nil {
-		warning("sign without algorithm [%s] [%s] failed: %v", algorithm, ssh.FingerprintSHA256(s.pubKey), err)
-	}
-	return signature, err
+	return s.Sign(rand, data)
 }
 
 func parsePublicKey(path string) ssh.PublicKey {

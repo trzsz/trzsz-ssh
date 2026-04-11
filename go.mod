@@ -14,8 +14,8 @@ require (
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
 	github.com/google/uuid v1.6.0
 	github.com/jcmturner/gokrb5/v8 v8.4.4
-	github.com/mattn/go-isatty v0.0.20
-	github.com/mattn/go-runewidth v0.0.22
+	github.com/mattn/go-isatty v0.0.21
+	github.com/mattn/go-runewidth v0.0.23
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/pquerna/otp v1.5.0
 	github.com/quic-go/quic-go v0.59.0
@@ -28,11 +28,11 @@ require (
 	github.com/trzsz/promptui v0.10.8
 	github.com/trzsz/shellescape v1.6.0
 	github.com/trzsz/ssh_config v1.3.8
-	github.com/trzsz/trzsz-go v1.2.1-0.20260321175259-1b4edac9bfa1
+	github.com/trzsz/trzsz-go v1.2.1-0.20260410165008-9be4a4a9e14b
 	github.com/trzsz/tsshd v0.1.7-rc3.0.20260404172806-f792cdc9dffc
-	golang.org/x/crypto v0.49.1-0.20260323153451-8400f4a93807
-	golang.org/x/sys v0.42.0
-	golang.org/x/term v0.41.0
+	golang.org/x/crypto v0.50.0
+	golang.org/x/sys v0.43.0
+	golang.org/x/term v0.42.0
 )
 
 require (
@@ -66,16 +66,16 @@ require (
 	github.com/ncruces/zenity v0.10.14 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/randall77/makefat v0.0.0-20210315173500-7ddd0e42c844 // indirect
+	github.com/randall77/makefat v0.0.0-20260406194835-1b91746796b7 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/tjfoc/gmsm v1.4.1 // indirect
 	github.com/trzsz/smux v1.6.0 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/xtaci/kcp-go/v5 v5.6.72 // indirect
-	golang.org/x/image v0.38.0 // indirect
-	golang.org/x/net v0.52.0 // indirect
+	golang.org/x/image v0.39.0 // indirect
+	golang.org/x/net v0.53.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/text v0.35.0 // indirect
+	golang.org/x/text v0.36.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
