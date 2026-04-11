@@ -373,6 +373,9 @@ func (m *passwordModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.passwordInput += msg.Key().Text
 			m.err = nil
 		}
+	case tea.PasteMsg:
+		m.passwordInput += msg.String()
+		m.err = nil
 	case error:
 		m.err = msg
 		return m, nil
