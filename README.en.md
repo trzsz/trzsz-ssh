@@ -604,6 +604,55 @@ trzsz-ssh ( tssh ) with [tsshd](https://github.com/trzsz/tsshd) also supports in
 
 - Still ask for password after `Remember Password`? Maybe it's `keyboard interactive authentication`, please refer to `Remember Answers` below.
 
+### External Password Manager
+
+- For any secret configuration (e.g. `Password`, `Passphrase`, `QuestionAnswer1`, `TotpSecret1`), you can use an external command to retrieve the secret at runtime by adding a `Command` suffix to the key name. The command's stdout (trimmed) is used as the secret value.
+
+- The following tokens are supported in the command and will be expanded before execution:
+
+  | Token | Expansion |
+  | ----- | --------- |
+  | `%n`  | Host alias (the `Host` value in ssh config) |
+  | `%h`  | Remote hostname (`HostName`) |
+  | `%r`  | Remote username (`User`) |
+  | `%p`  | Remote port (`Port`) |
+  | `%%`  | Literal `%` |
+
+- Priority: `enc{Key}` (encrypted) > `{Key}Command` (external command) > `{Key}` (plain text).
+
+- Examples with various password managers:
+
+  ```
+  # gopass (https://github.com/gopass-io/gopass)
+  Host server1
+      #!! PasswordCommand gopass show -o ssh/%n
+      #!! PassphraseCommand gopass show -o ssh/%n/passphrase
+
+  # pass (https://www.passwordstore.org)
+  Host server2
+      #!! PasswordCommand pass show ssh/%n
+
+  # 1Password CLI
+  Host server3
+      #!! PasswordCommand op read "op://Vault/ssh-%n/password"
+
+  # macOS Keychain
+  Host server4
+      #!! PasswordCommand security find-generic-password -a %r -s %n -w
+
+  # Bitwarden CLI
+  Host server5
+      #!! PasswordCommand bw get password ssh-%n
+
+  # HashiCorp Vault
+  Host server6
+      #!! PasswordCommand vault kv get -field=password secret/ssh/%n
+
+  # Use for all hosts with a single command
+  Host *
+      #!! PasswordCommand gopass show -o ssh/%n
+  ```
+
 ### Remember Answers
 
 - In addition, there is a keyboard interactive authentication. The server returns some questions, and log in by providing the correct answers. Many custom one-time passwords are implemented by it.
