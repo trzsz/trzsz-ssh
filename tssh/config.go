@@ -26,6 +26,7 @@ package tssh
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -34,6 +35,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -737,6 +739,52 @@ func decodeSecret(secret string) (string, error) {
 	return string(plainSecret), nil
 }
 
+func secretConfigValue(alias, key, fallback string) string {
+	if userConfig != nil {
+		if value := getConfig(alias, key); value != "" {
+			return value
+		}
+	}
+	return fallback
+}
+
+func execSecretCommand(command, alias string) string {
+	expanded := strings.NewReplacer(
+		"%n", alias,
+		"%h", secretConfigValue(alias, "HostName", alias),
+		"%r", secretConfigValue(alias, "User", ""),
+		"%p", secretConfigValue(alias, "Port", "22"),
+		"%%", "%",
+	).Replace(command)
+
+	argv, err := splitCommandLine(expanded)
+	if err != nil || len(argv) == 0 {
+		warning("split secret command [%s] failed: %v", expanded, err)
+		return ""
+	}
+	if enableDebugLogging {
+		for i, arg := range argv {
+			debug("secret command argv[%d] = %s", i, arg)
+		}
+	}
+	cmd := exec.Command(argv[0], argv[1:]...)
+	var outBuf, errBuf bytes.Buffer
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+	if err := cmd.Run(); err != nil {
+		if errBuf.Len() > 0 {
+			warning("exec secret command [%s] failed: %v, %s", expanded, err, strings.TrimSpace(errBuf.String()))
+		} else {
+			warning("exec secret command [%s] failed: %v", expanded, err)
+		}
+		return ""
+	}
+	if enableDebugLogging && errBuf.Len() > 0 {
+		debug("secret command stderr output: %s", errBuf.String())
+	}
+	return strings.TrimSpace(outBuf.String())
+}
+
 func getSecretConfig(alias, key string) string {
 	if value := getExConfig(alias, "enc"+key); value != "" {
 		secret, err := decodeSecret(value)
@@ -744,6 +792,11 @@ func getSecretConfig(alias, key string) string {
 			return secret
 		}
 		warning("decode secret [%s] failed: %v", value, err)
+	}
+	if command := getExConfig(alias, key+"Command"); command != "" {
+		if secret := execSecretCommand(command, alias); secret != "" {
+			return secret
+		}
 	}
 	return getExConfig(alias, key)
 }
