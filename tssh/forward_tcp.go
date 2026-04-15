@@ -93,20 +93,33 @@ func listenOnLocalTCP(gateway bool, addr *string, port, name string, unlinkUnix 
 			warning("%s listen on local [%s] [%s] failed: %v", name, network, address, err)
 			return
 		}
+		var createdInfo os.FileInfo
 		if network == "unix" {
 			mode := os.FileMode(0666) &^ os.FileMode(bindMask)
 			if err := os.Chmod(address, mode); err != nil {
 				warning("%s chmod unix socket [%s] to %#o failed: %v", name, address, mode, err)
+			}
+			if info, err := os.Stat(address); err == nil {
+				createdInfo = info
 			}
 		}
 		debug("%s listen on local [%s] [%s] success", name, network, address)
 		listeners = append(listeners, listener)
 		addOnCloseFunc(func() {
 			_ = listener.Close()
-			if network == "unix" {
-				if err := os.Remove(address); err != nil {
-					debug("remove unix socket [%s] failed: %v", address, err)
-				}
+			if network != "unix" || createdInfo == nil {
+				return
+			}
+			current, err := os.Stat(address)
+			if err != nil {
+				return
+			}
+			if !os.SameFile(createdInfo, current) {
+				debug("%s unix socket [%s] replaced since creation; skipping unlink", name, address)
+				return
+			}
+			if err := os.Remove(address); err != nil {
+				debug("remove unix socket [%s] failed: %v", address, err)
 			}
 		})
 	}
