@@ -369,7 +369,7 @@ func sshPortForward(sshConn *sshConnection) {
 
 	// dynamic forward
 	for _, b := range args.DynamicForward.binds {
-		dynamicForward(sshConn.client, b, gateway, timeout)
+		dynamicForward(sshConn, b, gateway, timeout)
 	}
 	for _, s := range getAllExOptionConfig(args, "DynamicForward") {
 		b, err := parseBindCfg(s)
@@ -377,7 +377,7 @@ func sshPortForward(sshConn *sshConnection) {
 			warning("parse dynamic forwarding failed: %v", err)
 			continue
 		}
-		dynamicForward(sshConn.client, b, gateway, timeout)
+		dynamicForward(sshConn, b, gateway, timeout)
 	}
 
 	// local forward
