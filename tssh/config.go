@@ -739,23 +739,12 @@ func decodeSecret(secret string) (string, error) {
 	return string(plainSecret), nil
 }
 
-func secretConfigValue(alias, key, fallback string) string {
-	if userConfig != nil {
-		if value := getConfig(alias, key); value != "" {
-			return value
-		}
+func execSecretCommand(param *sshParam, command string) string {
+	expanded, err := expandTokens(command, param, "%hnpr")
+	if err != nil {
+		warning("expand secret command [%s] failed: %v", command, err)
+		return ""
 	}
-	return fallback
-}
-
-func execSecretCommand(command, alias string) string {
-	expanded := strings.NewReplacer(
-		"%n", alias,
-		"%h", secretConfigValue(alias, "HostName", alias),
-		"%r", secretConfigValue(alias, "User", ""),
-		"%p", secretConfigValue(alias, "Port", "22"),
-		"%%", "%",
-	).Replace(command)
 
 	argv, err := splitCommandLine(expanded)
 	if err != nil || len(argv) == 0 {
@@ -785,7 +774,8 @@ func execSecretCommand(command, alias string) string {
 	return strings.TrimSpace(outBuf.String())
 }
 
-func getSecretConfig(alias, key string) string {
+func getSecretConfig(param *sshParam, key string) string {
+	alias := param.args.Destination
 	if value := getExConfig(alias, "enc"+key); value != "" {
 		secret, err := decodeSecret(value)
 		if err == nil && secret != "" {
@@ -794,7 +784,7 @@ func getSecretConfig(alias, key string) string {
 		warning("decode secret [%s] failed: %v", value, err)
 	}
 	if command := getExConfig(alias, key+"Command"); command != "" {
-		if secret := execSecretCommand(command, alias); secret != "" {
+		if secret := execSecretCommand(param, command); secret != "" {
 			return secret
 		}
 	}

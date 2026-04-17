@@ -25,52 +25,56 @@ SOFTWARE.
 package tssh
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/trzsz/ssh_config"
 )
 
 func TestExecSecretCommand(t *testing.T) {
 	assert := assert.New(t)
+	oriEnableWarning, oriUserConfig := enableWarningLogging, userConfig
+	enableWarningLogging, userConfig = false, &tsshConfig{}
+	defer func() { enableWarningLogging, userConfig = oriEnableWarning, oriUserConfig }()
 
-	assert.Equal("hello", execSecretCommand("echo hello", "myhost"))
+	param, err := getSshParam(&sshArgs{Destination: "myhost"}, false)
+	require.NoError(t, err)
 
-	assert.Equal("secret", execSecretCommand("echo '  secret  '", "myhost"))
+	assert.Equal("hello", execSecretCommand(param, "echo hello"))
+	assert.Equal("secret", execSecretCommand(param, "echo '  secret  '"))
+	assert.Equal("myhost", execSecretCommand(param, "echo %n"))
+	assert.Equal("%", execSecretCommand(param, "echo %%"))
+	assert.Equal("", execSecretCommand(param, "false"))
+	assert.Equal("", execSecretCommand(param, "/nonexistent/command"))
+	assert.Equal("", execSecretCommand(param, "echo -n ''"))
 
-	assert.Equal("myhost", execSecretCommand("echo %n", "myhost"))
-
-	assert.Equal("%", execSecretCommand("echo %%", "myhost"))
-
-	assert.Equal("", execSecretCommand("false", "myhost"))
-
-	assert.Equal("", execSecretCommand("/nonexistent/command", "myhost"))
-
-	assert.Equal("", execSecretCommand("echo -n ''", "myhost"))
-
-	result := execSecretCommand("printf 'line1\\nline2'", "myhost")
+	result := execSecretCommand(param, "printf 'line1\\nline2'")
 	assert.Equal("line1\nline2", result)
 }
 
 func TestExecSecretCommandTokens(t *testing.T) {
 	assert := assert.New(t)
+	oriEnableWarning, oriUserConfig := enableWarningLogging, userConfig
+	enableWarningLogging, userConfig = false, &tsshConfig{}
+	defer func() { enableWarningLogging, userConfig = oriEnableWarning, oriUserConfig }()
 
-	// without userConfig, %h falls back to alias, %p to "22", %r to ""
-	assert.Equal("myhost", execSecretCommand("echo %h", "myhost"))
-	assert.Equal("22", execSecretCommand("echo %p", "myhost"))
-	assert.Equal("", execSecretCommand("echo -n %r", "myhost"))
+	param, err := getSshParam(&sshArgs{Destination: "myhost"}, false)
+	require.NoError(t, err)
+
+	assert.Equal("myhost", execSecretCommand(param, "echo %h"))
+	assert.Equal("22", execSecretCommand(param, "echo %p"))
+	assert.Equal(param.user, execSecretCommand(param, "echo %r"))
 }
 
 func TestGetSecretConfigWithCommand(t *testing.T) {
 	assert := assert.New(t)
-	require := require.New(t)
+	oriEnableWarning, oriUserConfig := enableWarningLogging, userConfig
+	enableWarningLogging, userConfig = false, &tsshConfig{}
+	defer func() { enableWarningLogging, userConfig = oriEnableWarning, oriUserConfig }()
 
-	tmpDir := t.TempDir()
-
-	sshConfig := filepath.Join(tmpDir, "config")
-	err := os.WriteFile(sshConfig, []byte(`
+	var err error
+	userConfig.exConfig, err = ssh_config.DecodeBytes([]byte(`
 Host cmdhost
     HostName 10.0.0.1
     User testuser
@@ -89,24 +93,24 @@ Host tokenhost
     HostName 10.0.0.4
     User testuser
     PasswordCommand echo password-for-%n
-`), 0600)
-	require.NoError(err)
+`))
+	require.NoError(t, err)
 
-	origConfig := userConfig
-	defer func() { userConfig = origConfig }()
-	userConfig = &tsshConfig{}
-	userConfig.configPath = sshConfig
-	userConfig.exConfigPath = filepath.Join(tmpDir, "password")
+	param := func(alias string) *sshParam {
+		param, err := getSshParam(&sshArgs{Destination: alias}, false)
+		require.NoError(t, err)
+		return param
+	}
 
 	// PasswordCommand should return the command output
-	assert.Equal("my-secret-password", getSecretConfig("cmdhost", "Password"))
+	assert.Equal("my-secret-password", getSecretConfig(param("cmdhost"), "Password"))
 
 	// host without any password config should return empty
-	assert.Equal("", getSecretConfig("enchost", "Password"))
+	assert.Equal("", getSecretConfig(param("enchost"), "Password"))
 
 	// plain Password should still work as fallback
-	assert.Equal("plain-text-pass", getSecretConfig("plainhost", "Password"))
+	assert.Equal("plain-text-pass", getSecretConfig(param("plainhost"), "Password"))
 
 	// %n token in PasswordCommand should be expanded to the alias
-	assert.Equal("password-for-tokenhost", getSecretConfig("tokenhost", "Password"))
+	assert.Equal("password-for-tokenhost", getSecretConfig(param("tokenhost"), "Password"))
 }

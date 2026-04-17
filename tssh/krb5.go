@@ -99,8 +99,8 @@ func getKrb5CacheFile() string {
 	return cachePath
 }
 
-func getGSSAPIWithMICAuthMethod(args *sshArgs, host string) ssh.AuthMethod {
-	if strings.ToLower(getOptionConfig(args, "GSSAPIAuthentication")) != "yes" {
+func getGSSAPIWithMICAuthMethod(param *sshParam) ssh.AuthMethod {
+	if strings.ToLower(getOptionConfig(param.args, "GSSAPIAuthentication")) != "yes" {
 		debug("disable auth method: gssapi-with-mic authentication")
 		return nil
 	}
@@ -123,8 +123,8 @@ func getGSSAPIWithMICAuthMethod(args *sshArgs, host string) ssh.AuthMethod {
 		return nil
 	}
 
-	hostName := host
-	if ips, _ := net.LookupIP(host); len(ips) > 0 {
+	hostName := param.host
+	if ips, _ := net.LookupIP(param.host); len(ips) > 0 {
 		if names, _ := net.LookupAddr(ips[0].String()); len(names) > 0 {
 			hostName = strings.TrimRight(names[0], ".")
 		}

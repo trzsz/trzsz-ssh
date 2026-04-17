@@ -170,7 +170,7 @@ func newPassphraseSigner(path string, priKey []byte, err *ssh.PassphraseMissingE
 	return newSshSigner(path, priKey, pubKey, nil)
 }
 
-func getSigner(dest string, path string) sshSigner {
+func getSigner(param *sshParam, path string) sshSigner {
 	path = resolveHomeDir(path)
 	privateKey, err := os.ReadFile(path)
 	if err != nil {
@@ -180,7 +180,7 @@ func getSigner(dest string, path string) sshSigner {
 	signer, err := parsePrivateKey(privateKey)
 	if err != nil {
 		if e, ok := err.(*ssh.PassphraseMissingError); ok {
-			if passphrase := getSecretConfig(dest, "Passphrase"); passphrase != "" {
+			if passphrase := getSecretConfig(param, "Passphrase"); passphrase != "" {
 				signer, err = parsePrivateKeyWithPassphrase(privateKey, []byte(passphrase))
 			} else {
 				return newPassphraseSigner(path, privateKey, e)
@@ -258,8 +258,8 @@ func readSecret(prompt string) (secret []byte, err error) {
 	return term.ReadPassword(int(stdin.Fd()))
 }
 
-func getPasswordAuthMethod(args *sshArgs, host, user string) ssh.AuthMethod {
-	if strings.ToLower(getOptionConfig(args, "PasswordAuthentication")) == "no" {
+func getPasswordAuthMethod(param *sshParam) ssh.AuthMethod {
+	if strings.ToLower(getOptionConfig(param.args, "PasswordAuthentication")) == "no" {
 		debug("disable auth method: password authentication")
 		return nil
 	}
@@ -269,19 +269,19 @@ func getPasswordAuthMethod(args *sshArgs, host, user string) ssh.AuthMethod {
 	return ssh.RetryableAuthMethod(ssh.PasswordCallback(func() (string, error) {
 		idx++
 		if idx == 1 {
-			password := args.Option.get("Password")
+			password := param.args.Option.get("Password")
 			if password == "" {
-				password = getSecretConfig(args.Destination, "Password")
+				password = getSecretConfig(param, "Password")
 			}
 			if password != "" {
 				rememberPassword = true
-				debug("trying the password configuration for '%s'", args.Destination)
+				debug("trying the password configuration for '%s'", param.args.Destination)
 				return password, nil
 			}
 		} else if idx == 2 && rememberPassword {
-			warning("the password configuration for '%s' is incorrect", args.Destination)
+			warning("the password configuration for '%s' is incorrect", param.args.Destination)
 		}
-		secret, err := readSecret(fmt.Sprintf("%s@%s's password: ", user, host))
+		secret, err := readSecret(fmt.Sprintf("%s@%s's password: ", param.user, param.host))
 		if err != nil {
 			return "", err
 		}
@@ -289,20 +289,20 @@ func getPasswordAuthMethod(args *sshArgs, host, user string) ssh.AuthMethod {
 	}), 3)
 }
 
-func readQuestionAnswerConfig(dest string, idx int, question string) string {
+func readQuestionAnswerConfig(param *sshParam, idx int, question string) string {
 	qhex := hex.EncodeToString([]byte(question))
 	debug("the hex code for question '%s' is %s", question, qhex)
-	if answer := getSecretConfig(dest, qhex); answer != "" {
+	if answer := getSecretConfig(param, qhex); answer != "" {
 		return answer
 	}
 
-	if secret := getSecretConfig(dest, "totp"+qhex); secret != "" {
+	if secret := getSecretConfig(param, "totp"+qhex); secret != "" {
 		if answer := getTotpCode(secret); answer != "" {
 			return answer
 		}
 	}
 
-	if command := getSecretConfig(dest, "otp"+qhex); command != "" {
+	if command := getSecretConfig(param, "otp"+qhex); command != "" {
 		if answer := getOtpCommandOutput(command, question); answer != "" {
 			return answer
 		}
@@ -310,13 +310,13 @@ func readQuestionAnswerConfig(dest string, idx int, question string) string {
 
 	qkey := fmt.Sprintf("QuestionAnswer%d", idx)
 	debug("the configuration key for question '%s' is %s", question, qkey)
-	if answer := getSecretConfig(dest, qkey); answer != "" {
+	if answer := getSecretConfig(param, qkey); answer != "" {
 		return answer
 	}
 
 	qsecret := fmt.Sprintf("TotpSecret%d", idx)
 	debug("the totp secret key for question '%s' is %s", question, qsecret)
-	if secret := getSecretConfig(dest, qsecret); secret != "" {
+	if secret := getSecretConfig(param, qsecret); secret != "" {
 		if answer := getTotpCode(secret); answer != "" {
 			return answer
 		}
@@ -324,7 +324,7 @@ func readQuestionAnswerConfig(dest string, idx int, question string) string {
 
 	qcmd := fmt.Sprintf("OtpCommand%d", idx)
 	debug("the otp command key for question '%s' is %s", question, qcmd)
-	if command := getSecretConfig(dest, qcmd); command != "" {
+	if command := getSecretConfig(param, qcmd); command != "" {
 		if answer := getOtpCommandOutput(command, question); answer != "" {
 			return answer
 		}
@@ -333,8 +333,8 @@ func readQuestionAnswerConfig(dest string, idx int, question string) string {
 	return ""
 }
 
-func getKeyboardInteractiveAuthMethod(args *sshArgs, host, user string) ssh.AuthMethod {
-	if strings.ToLower(getOptionConfig(args, "KbdInteractiveAuthentication")) == "no" {
+func getKeyboardInteractiveAuthMethod(param *sshParam) ssh.AuthMethod {
+	if strings.ToLower(getOptionConfig(param.args, "KbdInteractiveAuthentication")) == "no" {
 		debug("disable auth method: keyboard interactive authentication")
 		return nil
 	}
@@ -350,7 +350,7 @@ func getKeyboardInteractiveAuthMethod(args *sshArgs, host, user string) ssh.Auth
 				idx++
 				if _, seen := questionSeen[question]; !seen {
 					questionSeen[question] = struct{}{}
-					answer := readQuestionAnswerConfig(args.Destination, idx, question)
+					answer := readQuestionAnswerConfig(param, idx, question)
 					if answer != "" {
 						questionTried[question] = struct{}{}
 						answers = append(answers, answer)
@@ -359,10 +359,10 @@ func getKeyboardInteractiveAuthMethod(args *sshArgs, host, user string) ssh.Auth
 				} else if _, tried := questionTried[question]; tried {
 					if _, warned := questionWarned[question]; !warned {
 						questionWarned[question] = struct{}{}
-						warning("the question answer configuration of '%s' for '%s' is incorrect", question, args.Destination)
+						warning("the question answer configuration of '%s' for '%s' is incorrect", question, param.args.Destination)
 					}
 				}
-				secret, err := readSecret(fmt.Sprintf("(%s@%s) %s", user, host, strings.ReplaceAll(question, "\n", "\r\n")))
+				secret, err := readSecret(fmt.Sprintf("(%s@%s) %s", param.user, param.host, strings.ReplaceAll(question, "\n", "\r\n")))
 				if err != nil {
 					return nil, err
 				}
@@ -382,7 +382,7 @@ var getDefaultSigners = func() func() []sshSigner {
 				if !isFileExist(path) {
 					continue
 				}
-				if signer := getSigner(name, path); signer != nil {
+				if signer := getSigner(&sshParam{args: &sshArgs{Destination: name}}, path); signer != nil {
 					signers = append(signers, signer)
 				}
 			}
@@ -467,7 +467,7 @@ func getPublicKeysAuthMethod(param *sshParam) ssh.AuthMethod {
 					}
 				}
 			}
-			signer := getSigner(args.Destination, path)
+			signer := getSigner(param, path)
 			if signer == nil {
 				continue
 			}
@@ -505,15 +505,15 @@ func getAuthMethods(param *sshParam) []ssh.AuthMethod {
 		debug("add auth method: public key authentication")
 		authMethods = append(authMethods, authMethod)
 	}
-	if authMethod := getGSSAPIWithMICAuthMethod(param.args, param.host); authMethod != nil {
+	if authMethod := getGSSAPIWithMICAuthMethod(param); authMethod != nil {
 		debug("add auth method: gssapi-with-mic authentication")
 		authMethods = append(authMethods, authMethod)
 	}
-	if authMethod := getKeyboardInteractiveAuthMethod(param.args, param.host, param.user); authMethod != nil {
+	if authMethod := getKeyboardInteractiveAuthMethod(param); authMethod != nil {
 		debug("add auth method: keyboard interactive authentication")
 		authMethods = append(authMethods, authMethod)
 	}
-	if authMethod := getPasswordAuthMethod(param.args, param.host, param.user); authMethod != nil {
+	if authMethod := getPasswordAuthMethod(param); authMethod != nil {
 		debug("add auth method: password authentication")
 		authMethods = append(authMethods, authMethod)
 	}
