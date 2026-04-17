@@ -39,7 +39,9 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/trzsz/trzsz-ssh/internal/ssh"
 	"golang.org/x/crypto/ssh"
 )
@@ -155,11 +157,6 @@ func (s *skSigner) SignWithAlgorithm(rand io.Reader, data []byte, algorithm stri
 			Pin:       pin,
 		}
 
-		if userPresenceRequired {
-			fmt.Fprintf(os.Stderr, "\033[0;36mConfirm user presence for key %s %s\033[0m",
-				shortKeyType(s.keyType), ssh.FingerprintSHA256(s.pubKey))
-		}
-
 		cmd := exec.Command(skHelperPath)
 		if enableDebugLogging {
 			cmd.Args = append(cmd.Args, "-vvv")
@@ -190,12 +187,19 @@ func (s *skSigner) SignWithAlgorithm(rand io.Reader, data []byte, algorithm stri
 			return nil, fmt.Errorf("write request failed: %v", err)
 		}
 
-		if err := cmd.Run(); err != nil {
-			return nil, fmt.Errorf("run %s failed: %v", skHelperPath, err)
+		var stopPrompt func()
+		if userPresenceRequired {
+			stopPrompt = s.startUserPresencePrompt()
 		}
 
-		if userPresenceRequired {
-			fmt.Fprintf(os.Stderr, "\r\033[K")
+		err := cmd.Run()
+
+		if stopPrompt != nil {
+			stopPrompt()
+		}
+
+		if err != nil {
+			return nil, fmt.Errorf("run %s failed: %v", skHelperPath, err)
 		}
 
 		respPayload, err := readMessage(&stdout)
@@ -236,6 +240,46 @@ func (s *skSigner) SignWithAlgorithm(rand io.Reader, data []byte, algorithm stri
 	}
 
 	return nil, fmt.Errorf("PIN incorrect")
+}
+
+func (s *skSigner) startUserPresencePrompt() func() {
+	stopChan := make(chan struct{})
+	doneChan := make(chan struct{})
+
+	go func() {
+		defer close(doneChan)
+
+		fmt.Fprintf(os.Stderr, "%s%s\033[1;36m", ansi.HideCursor, ansi.ResetModeAutoWrap)
+
+		msg := fmt.Sprintf("Confirm user presence for key %s '%s' %s",
+			shortKeyType(s.keyType), s.path, ssh.FingerprintSHA256(s.pubKey))
+		shownMsg := fmt.Sprintf("\r[ ACTION REQUIRED ] %s", msg)
+		blankMsg := fmt.Sprintf("\r[                 ] %s", msg)
+
+		ticker := time.NewTicker(500 * time.Millisecond)
+		defer ticker.Stop()
+
+		show := true
+		for {
+			select {
+			case <-stopChan:
+				fmt.Fprintf(os.Stderr, "\033[0m\r%s%s%s", ansi.EraseLineRight, ansi.SetModeAutoWrap, ansi.ShowCursor)
+				return
+			case <-ticker.C:
+				if show {
+					fmt.Fprint(os.Stderr, shownMsg)
+				} else {
+					fmt.Fprint(os.Stderr, blankMsg)
+				}
+				show = !show
+			}
+		}
+	}()
+
+	return func() {
+		close(stopChan)
+		<-doneChan // wait for goroutine to finish clearing the line
+	}
 }
 
 type skECDSAPrivateKey struct {
