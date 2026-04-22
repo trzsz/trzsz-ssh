@@ -1,6 +1,11 @@
 package tssh
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"github.com/charmbracelet/x/ansi"
+)
 
 func TestGetPromptPageViewStrictLastPage(t *testing.T) {
 	originalConfig := userConfig
@@ -110,5 +115,60 @@ func TestPageDownKeepsLowercaseDAndCtrlD(t *testing.T) {
 	}
 	if p.pageDown([]byte{'D'}) {
 		t.Fatalf("expected D not to page down")
+	}
+}
+
+func withCyberpunkTheme(t *testing.T, width int) func() {
+	t.Helper()
+
+	originalConfig := userConfig
+	originalStrictPaging := promptStrictPagingEnabled
+	originalWidth := currentTerminalWidth.Load()
+
+	userConfig = &tsshConfig{
+		promptThemeLayout: "cyberpunk",
+		promptThemeColors: make(map[string]string),
+	}
+	promptStrictPagingEnabled = false
+	currentTerminalWidth.Store(int32(width))
+
+	return func() {
+		userConfig = originalConfig
+		promptStrictPagingEnabled = originalStrictPaging
+		currentTerminalWidth.Store(originalWidth)
+	}
+}
+
+func TestCyberpunkThemeRendersProfilePanel(t *testing.T) {
+	defer withCyberpunkTheme(t, 120)()
+
+	theme := getCyberpunkTheme()
+	items := []any{
+		&sshHost{Alias: "prod-api", Host: "10.1.1.37", User: "root", Port: "22", GroupLabels: "prod zone-38"},
+		&sshHost{Alias: "prod-worker", Host: "10.1.1.38", User: "root", Port: "22"},
+	}
+
+	output := ansi.Strip(theme.ItemsRenderer(items, 0))
+	for _, want := range []string{"? SSH Alias:", "┃", "╭─[ NODE PROFILE ]", "ALIAS", "prod-api", "ROUTE", "direct"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("cyberpunk output missing %q:\n%s", want, output)
+		}
+	}
+}
+
+func TestCyberpunkThemeHidesProfilePanelOnNarrowTerminal(t *testing.T) {
+	defer withCyberpunkTheme(t, 70)()
+
+	theme := getCyberpunkTheme()
+	items := []any{
+		&sshHost{Alias: "prod-api", Host: "10.1.1.37", User: "root", Port: "22", GroupLabels: "prod zone-38"},
+	}
+
+	output := ansi.Strip(theme.ItemsRenderer(items, 0))
+	if !strings.Contains(output, "? SSH Alias:") || !strings.Contains(output, "prod-api") {
+		t.Fatalf("cyberpunk narrow output missing left list:\n%s", output)
+	}
+	if strings.Contains(output, "NODE PROFILE") || strings.Contains(output, "┃") {
+		t.Fatalf("cyberpunk narrow output should hide profile panel:\n%s", output)
 	}
 }

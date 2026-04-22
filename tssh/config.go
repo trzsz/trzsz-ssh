@@ -785,6 +785,13 @@ func getThemeColor(key string) string {
 				`"active_selected": "green|bold", "active_alias": "cyan|bold", "active_host": "magenta|bold", "active_group": "blue|bold",` +
 				`"inactive_selected": "green|bold", "inactive_alias": "cyan", "inactive_host": "magenta", "inactive_group": "blue",` +
 				`"details_title": "default", "details_name": "faint", "details_value": "default"}`
+		case "cyberpunk":
+			colors = `{"help_tips": "faint", "shortcuts": "faint", "label_icon": "13|bold", "label_text": "14|bold", "cursor_icon": "13|bold",` +
+				`"active_number": "14|bold", "inactive_number": "8",` +
+				`"active_selected": "10|bold", "inactive_selected": "10",` +
+				`"active_alias": "14|bold", "inactive_alias": "6", "active_host": "15|bold", "inactive_host": "5",` +
+				`"bus_active": "13|bold", "bus_inactive": "8",` +
+				`"profile_border": "13", "profile_title": "14|bold", "profile_name": "13|bold", "profile_value": "10", "profile_empty": "8"}`
 		case "table":
 			colors = `{"help_tips": "faint", "shortcuts": "faint", "table_header": "10",` +
 				`"default_alias": "6", "default_host": "5", "default_group": "4",` +

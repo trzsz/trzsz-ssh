@@ -29,6 +29,7 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/trzsz/trzsz-ssh/internal/table"
 )
 
@@ -268,6 +269,280 @@ func (t *lineTheme) renderItems(items []any, idx int) string {
 	return builder.String()
 }
 
+const (
+	cyberpunkLeftWidth       = 46
+	cyberpunkProfileWidth    = 34
+	cyberpunkProfileMinWidth = 98
+)
+
+type cyberpunkTheme struct {
+	labelIconStyle       lipgloss.Style
+	labelTextStyle       lipgloss.Style
+	activeCursorStyle    lipgloss.Style
+	activeNumberStyle    lipgloss.Style
+	inactiveNumberStyle  lipgloss.Style
+	activeSelectedStyle  lipgloss.Style
+	inactiveSelectStyle  lipgloss.Style
+	activeAliasStyle     lipgloss.Style
+	inactiveAliasStyle   lipgloss.Style
+	activeHostStyle      lipgloss.Style
+	inactiveHostStyle    lipgloss.Style
+	activeBusStyle       lipgloss.Style
+	inactiveBusStyle     lipgloss.Style
+	profileBorderStyle   lipgloss.Style
+	profileTitleStyle    lipgloss.Style
+	profileNameStyle     lipgloss.Style
+	profileValueStyle    lipgloss.Style
+	profileFallbackStyle lipgloss.Style
+}
+
+func newCyberpunkTheme() *cyberpunkTheme {
+	return &cyberpunkTheme{
+		labelIconStyle:       getPromptLineStyle(getThemeColor("label_icon")),
+		labelTextStyle:       getPromptLineStyle(getThemeColor("label_text")),
+		activeCursorStyle:    getPromptLineStyle(getThemeColor("cursor_icon")),
+		activeNumberStyle:    getPromptLineStyle(getThemeColor("active_number")),
+		inactiveNumberStyle:  getPromptLineStyle(getThemeColor("inactive_number")),
+		activeSelectedStyle:  getPromptLineStyle(getThemeColor("active_selected")),
+		inactiveSelectStyle:  getPromptLineStyle(getThemeColor("inactive_selected")),
+		activeAliasStyle:     getPromptLineStyle(getThemeColor("active_alias")),
+		inactiveAliasStyle:   getPromptLineStyle(getThemeColor("inactive_alias")),
+		activeHostStyle:      getPromptLineStyle(getThemeColor("active_host")),
+		inactiveHostStyle:    getPromptLineStyle(getThemeColor("inactive_host")),
+		activeBusStyle:       getPromptLineStyle(getThemeColor("bus_active")),
+		inactiveBusStyle:     getPromptLineStyle(getThemeColor("bus_inactive")),
+		profileBorderStyle:   getPromptLineStyle(getThemeColor("profile_border")),
+		profileTitleStyle:    getPromptLineStyle(getThemeColor("profile_title")),
+		profileNameStyle:     getPromptLineStyle(getThemeColor("profile_name")),
+		profileValueStyle:    getPromptLineStyle(getThemeColor("profile_value")),
+		profileFallbackStyle: getPromptLineStyle(getThemeColor("profile_empty")),
+	}
+}
+
+func fitPlainText(s string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	if ansi.StringWidth(s) > width {
+		return ansi.Truncate(s, width, "…")
+	}
+	return s + strings.Repeat(" ", width-ansi.StringWidth(s))
+}
+
+func fitStyledText(s string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	if ansi.StringWidth(s) > width {
+		return ansi.Truncate(s, width, "…")
+	}
+	return s + strings.Repeat(" ", width-ansi.StringWidth(s))
+}
+
+func getPromptTerminalWidth() int {
+	if width := int(currentTerminalWidth.Load()); width > 0 {
+		return width
+	}
+	if isTerminal {
+		if width, _, err := getTerminalSize(); err == nil && width > 0 {
+			return width
+		}
+	}
+	return 120
+}
+
+func (t *cyberpunkTheme) showProfilePanel() bool {
+	return getPromptTerminalWidth() >= cyberpunkProfileMinWidth
+}
+
+func (t *cyberpunkTheme) renderLeftLine(host *sshHost, idx int, active bool) string {
+	cursor := "  "
+	if active {
+		cursor = t.activeCursorStyle.Render(promptCursorIcon) + " "
+	}
+
+	number := fitPlainText(fmt.Sprintf("%d", idx), 2)
+	if active {
+		number = t.activeNumberStyle.Render(number)
+	} else {
+		number = t.inactiveNumberStyle.Render(number)
+	}
+
+	selected := "  "
+	if host.Selected {
+		selected = fitPlainText(promptSelectedIcon, 2)
+	}
+	if active {
+		selected = t.activeSelectedStyle.Render(selected)
+	} else {
+		selected = t.inactiveSelectStyle.Render(selected)
+	}
+
+	alias := fitPlainText(host.Alias, 15)
+	if active {
+		alias = t.activeAliasStyle.Render(alias)
+	} else {
+		alias = t.inactiveAliasStyle.Render(alias)
+	}
+
+	hostName := fitPlainText(host.Host, 22)
+	if active {
+		hostName = t.activeHostStyle.Render(hostName)
+	} else {
+		hostName = t.inactiveHostStyle.Render(hostName)
+	}
+
+	return fitStyledText(fmt.Sprintf("%s%s %s %s %s", cursor, number, selected, alias, hostName), cyberpunkLeftWidth)
+}
+
+func (t *cyberpunkTheme) getProfileValues(host *sshHost) [][2]string {
+	port := host.Port
+	if port == "" {
+		port = "22"
+	}
+	group := host.GroupLabels
+	if group == "" {
+		group = "-"
+	}
+
+	auth := "default"
+	if host.IdentityFile != "" {
+		auth = "key"
+	}
+	if getExConfig(host.Alias, "encPassword") != "" || getExConfig(host.Alias, "Password") != "" {
+		if auth == "key" {
+			auth = "key / password cache"
+		} else {
+			auth = "password cache"
+		}
+	}
+
+	route := "direct"
+	if host.ProxyJump != "" {
+		route = "jump: " + host.ProxyJump
+	} else if host.ProxyCommand != "" {
+		route = "command"
+	}
+
+	return [][2]string{
+		{"ALIAS", host.Alias},
+		{"HOST", host.Host},
+		{"USER", host.User},
+		{"PORT", port},
+		{"GROUP", group},
+		{"AUTH", auth},
+		{"ROUTE", route},
+	}
+}
+
+func (t *cyberpunkTheme) renderProfileLine(name, value string) string {
+	const nameWidth = 7
+	innerWidth := cyberpunkProfileWidth - 2
+	valueWidth := innerWidth - nameWidth - 2
+	name = t.profileNameStyle.Render(fitPlainText(name, nameWidth))
+	if value == "" {
+		value = "-"
+	}
+	valueStyle := t.profileValueStyle
+	if value == "-" {
+		valueStyle = t.profileFallbackStyle
+	}
+	value = valueStyle.Render(fitPlainText(value, valueWidth))
+	return t.profileBorderStyle.Render("│") + " " + name + " " + value + t.profileBorderStyle.Render("│")
+}
+
+func (t *cyberpunkTheme) renderProfilePanel(host *sshHost) []string {
+	innerWidth := cyberpunkProfileWidth - 2
+	title := "[ NODE PROFILE ]"
+	topFill := innerWidth - 1 - ansi.StringWidth(title)
+	if topFill < 0 {
+		topFill = 0
+	}
+	lines := []string{
+		t.profileBorderStyle.Render("╭─") + t.profileTitleStyle.Render(title) +
+			t.profileBorderStyle.Render(strings.Repeat("─", topFill)+"╮"),
+	}
+	for _, item := range t.getProfileValues(host) {
+		lines = append(lines, t.renderProfileLine(item[0], item[1]))
+	}
+	lines = append(lines, t.profileBorderStyle.Render("╰"+strings.Repeat("─", innerWidth)+"╯"))
+	return lines
+}
+
+func (t *cyberpunkTheme) renderItems(items []any, idx int) string {
+	view := getPromptPageView(items, idx, promptStrictPagingEnabled)
+	if len(view.hosts) == 0 {
+		return ""
+	}
+
+	leftLines := []string{
+		fitStyledText(t.labelIconStyle.Render("? ")+t.labelTextStyle.Render("SSH Alias:"), cyberpunkLeftWidth),
+	}
+	for i, host := range view.hosts {
+		leftLines = append(leftLines, t.renderLeftLine(host, i, i == view.activeIdx))
+	}
+
+	if !t.showProfilePanel() || view.activeIdx < 0 || view.activeIdx >= len(view.hosts) {
+		return strings.Join(leftLines, "\n")
+	}
+
+	profileLines := t.renderProfilePanel(view.hosts[view.activeIdx])
+	totalLines := len(leftLines)
+	if len(profileLines) > totalLines {
+		totalLines = len(profileLines)
+	}
+
+	var builder strings.Builder
+	for i := 0; i < totalLines; i++ {
+		left := strings.Repeat(" ", cyberpunkLeftWidth)
+		if i < len(leftLines) {
+			left = fitStyledText(leftLines[i], cyberpunkLeftWidth)
+		}
+
+		bus := t.inactiveBusStyle.Render("┆")
+		if i == view.activeIdx+1 {
+			bus = t.activeBusStyle.Render("┃")
+		}
+
+		profile := ""
+		if i < len(profileLines) {
+			profile = profileLines[i]
+		}
+
+		builder.WriteString(left)
+		builder.WriteString(" ")
+		builder.WriteString(bus)
+		builder.WriteString("  ")
+		builder.WriteString(profile)
+		if i < totalLines-1 {
+			builder.WriteByte('\n')
+		}
+	}
+	return builder.String()
+}
+
+func (t *cyberpunkTheme) renderDetails(item any) string {
+	if t.showProfilePanel() {
+		return ""
+	}
+	host, ok := item.(*sshHost)
+	if !ok {
+		return ""
+	}
+	return strings.Join(t.renderProfilePanel(host), "\n")
+}
+
+func getCyberpunkTheme() *promptTheme {
+	cyberpunk := newCyberpunkTheme()
+	return &promptTheme{
+		HideLabel:       true,
+		Help:            getDefaultHelpTipsTemplate(),
+		Shortcuts:       getDefaultShortcutsTemplate(),
+		ItemsRenderer:   cyberpunk.renderItems,
+		DetailsRenderer: cyberpunk.renderDetails,
+	}
+}
+
 type tableTheme struct {
 	tableHeaderStyle    lipgloss.Style
 	defaultAliasStyle   lipgloss.Style
@@ -442,6 +717,8 @@ func getPromptTheme() *promptTheme {
 		return getTinyTheme()
 	case "simple":
 		return getSimpleTheme()
+	case "cyberpunk":
+		return getCyberpunkTheme()
 	case "table":
 		return getTableTheme()
 	default:
