@@ -70,6 +70,8 @@ type sshPrompt struct {
 	hosts         []*sshHost
 	termMgr       terminalManager
 	openType      int
+	deleteAlias   string
+	keywords      string
 	showShortcuts bool
 	search        bool
 	quit          bool
@@ -104,9 +106,10 @@ var normalShortcuts = []sshShortcuts{
 	{actionName: "Move Prev", globalKeys: []string{"Ctrl+K", "Shift+Tab", "↑"}, nonSearchKeys: []string{"k", "K"}},
 	{actionName: "Move Next", globalKeys: []string{"Ctrl+J", "Tab      ", "↓"}, nonSearchKeys: []string{"j", "J"}},
 	{actionName: "Page   Up", globalKeys: []string{"Ctrl+H", "Ctrl+U", "Ctrl+B", "PageUp  ", "←"}, nonSearchKeys: []string{"h", "H", "u", "U", "b", "B"}},
-	{actionName: "Page Down", globalKeys: []string{"Ctrl+L", "Ctrl+D", "Ctrl+F", "PageDown", "→"}, nonSearchKeys: []string{"l", "L", "d", "D", "f", "F"}},
+	{actionName: "Page Down", globalKeys: []string{"Ctrl+L", "Ctrl+D", "Ctrl+F", "PageDown", "→"}, nonSearchKeys: []string{"l", "L", "d", "f", "F"}},
 	{actionName: "Goto Home", globalKeys: []string{"Home"}, nonSearchKeys: []string{"g"}},
 	{actionName: "Goto  End", globalKeys: []string{"End "}, nonSearchKeys: []string{"G"}},
+	{actionName: "Delete   ", globalKeys: nil, nonSearchKeys: []string{"D"}},
 	{actionName: "EraseKeys", globalKeys: []string{"Ctrl+E"}, nonSearchKeys: []string{"e", "E"}},
 	{actionName: "TglSearch", globalKeys: []string{"/"}, searchKeys: []string{"Esc", "Enter"}},
 	{actionName: "Tgl  Help", globalKeys: []string{"?"}},
@@ -271,7 +274,7 @@ func (p *sshPrompt) pageDown(buf []byte) bool {
 	switch buf[0] {
 	case keyCtrlL, keyCtrlD, keyCtrlF:
 		return true
-	case 'l', 'L', 'd', 'D', 'f', 'F':
+	case 'l', 'L', 'd', 'f', 'F':
 		return !p.search
 	default:
 		return false
@@ -381,6 +384,10 @@ func (p *sshPrompt) selectOpposite(buf []byte) bool {
 	default:
 		return false
 	}
+}
+
+func (p *sshPrompt) deleteHost(buf []byte) bool {
+	return len(buf) == 1 && buf[0] == 'D' && !p.search
 }
 
 func (p *sshPrompt) toggleSearch(buf []byte) bool {
@@ -578,6 +585,67 @@ func (p *sshPrompt) jumpToVisibleHost(buf []byte) []byte {
 	return bytes.Repeat([]byte{readline.CharPrev}, currentIndex-targetIndex)
 }
 
+func (p *sshPrompt) getCurrentHost() *sshHost {
+	idx := p.selector.GetCurrentIndex()
+	if idx < 0 || idx >= len(p.hosts) {
+		return nil
+	}
+	return p.hosts[idx]
+}
+
+func confirmRemoveHost(alias string) bool {
+	fmt.Fprintf(os.Stderr, "\r\nRemove host [%s] from config and password store? Press y to confirm, any other key to cancel. ", alias)
+	buf := make([]byte, 16)
+	n, err := os.Stdin.Read(buf)
+	fmt.Fprint(os.Stderr, "\r\n")
+	if err != nil || n == 0 {
+		return false
+	}
+	answer := strings.TrimSpace(strings.ToLower(string(buf[:n])))
+	return answer == "y" || answer == "yes"
+}
+
+func (p *sshPrompt) requestDeleteCurrentHost() bool {
+	host := p.getCurrentHost()
+	if host == nil {
+		return false
+	}
+
+	p.deleteAlias = host.Alias
+	p.keywords = p.selector.Keywords
+	return true
+}
+
+func removePromptHost(alias string) bool {
+	if !confirmRemoveHost(alias) {
+		toolsWarn("RemoveHost", "cancelled removing host [%s]", alias)
+		return false
+	}
+
+	result, err := removeHostArtifacts(alias)
+	if err != nil {
+		toolsWarn("RemoveHost", "remove host [%s] failed: %v", alias, err)
+		return false
+	}
+	if !result.configUpdated && !result.passwordUpdated {
+		toolsWarn("RemoveHost", "host [%s] not found in user config or password store", alias)
+		return false
+	}
+
+	if result.configUpdated {
+		if result.configBlockDrop {
+			toolsSucc("RemoveHost", "removed host [%s] from %s", alias, result.configPath)
+		} else {
+			toolsSucc("RemoveHost", "removed alias [%s] from host entry in %s", alias, result.configPath)
+		}
+	}
+	if result.passwordUpdated {
+		toolsSucc("RemoveHost", "removed password for [%s] from %s", alias, result.passwordPath)
+	}
+
+	return true
+}
+
 func (p *sshPrompt) userConfirm(buf []byte) bool {
 	if len(buf) != 1 {
 		return false
@@ -669,6 +737,12 @@ func (p *sshPrompt) wrapStdin() {
 					host.Selected = !host.Selected
 				}
 			}
+		case p.deleteHost(buf):
+			if p.requestDeleteCurrentHost() {
+				_, _ = p.pipeOut.Write([]byte{readline.CharEnter})
+				return
+			}
+			buf = []byte{promptui.KeyRefresh}
 		case p.toggleSearch(buf):
 			p.search = !p.search
 			buf = []byte{'/'}
@@ -713,80 +787,91 @@ func chooseAlias(keywords string) (string, bool, error) {
 		defer resetStdin(state)
 	}
 
-	hosts := getAllHosts()
-
-	searcher := func(input string, index int) bool {
-		return matchHost(hosts[index], strings.Fields(strings.ToLower(input)))
-	}
-
-	theme := getPromptTheme()
-	termMgr := getTerminalManager()
-	funcMap := promptui.FuncMap
-	funcMap["getExConfig"] = getExConfig
-	funcMap["hasField"] = func(obj any, field string) bool {
-		v := reflect.ValueOf(obj)
-		if v.Kind() == reflect.Pointer {
-			v = v.Elem()
+	for {
+		hosts := getAllHosts()
+		if len(hosts) == 0 {
+			return "", true, nil
 		}
-		return v.FieldByName(field).IsValid()
-	}
 
-	pipeIn, pipeOut := io.Pipe()
-	promptStrictPagingEnabled = true
-	prompt := sshPrompt{
-		selector: &promptui.Select{
-			Label: "SSH Alias",
-			Items: hosts,
-			Templates: &promptui.SelectTemplates{
-				Help:            theme.Help,
-				Label:           theme.Label,
-				Active:          theme.Active,
-				Inactive:        theme.Inactive,
-				Details:         theme.Details,
-				Shortcuts:       theme.Shortcuts,
-				HideLabel:       theme.HideLabel,
-				ItemsRenderer:   theme.ItemsRenderer,
-				DetailsRenderer: theme.DetailsRenderer,
-				FuncMap:         funcMap,
+		searcher := func(input string, index int) bool {
+			return matchHost(hosts[index], strings.Fields(strings.ToLower(input)))
+		}
+
+		theme := getPromptTheme()
+		termMgr := getTerminalManager()
+		funcMap := promptui.FuncMap
+		funcMap["getExConfig"] = getExConfig
+		funcMap["hasField"] = func(obj any, field string) bool {
+			v := reflect.ValueOf(obj)
+			if v.Kind() == reflect.Pointer {
+				v = v.Elem()
+			}
+			return v.FieldByName(field).IsValid()
+		}
+
+		pipeIn, pipeOut := io.Pipe()
+		promptStrictPagingEnabled = true
+		prompt := sshPrompt{
+			selector: &promptui.Select{
+				Label: "SSH Alias",
+				Items: hosts,
+				Templates: &promptui.SelectTemplates{
+					Help:            theme.Help,
+					Label:           theme.Label,
+					Active:          theme.Active,
+					Inactive:        theme.Inactive,
+					Details:         theme.Details,
+					Shortcuts:       theme.Shortcuts,
+					HideLabel:       theme.HideLabel,
+					ItemsRenderer:   theme.ItemsRenderer,
+					DetailsRenderer: theme.DetailsRenderer,
+					FuncMap:         funcMap,
+				},
+				Size:         getPromptPageSize(),
+				Searcher:     searcher,
+				Stdin:        pipeIn,
+				Stdout:       &bellFilter{os.Stderr},
+				HideSelected: true,
+				Keywords:     keywords,
 			},
-			Size:         getPromptPageSize(),
-			Searcher:     searcher,
-			Stdin:        pipeIn,
-			Stdout:       &bellFilter{os.Stderr},
-			HideSelected: true,
-			Keywords:     keywords,
-		},
-		pipeOut: pipeOut,
-		hosts:   hosts,
-		termMgr: termMgr,
-	}
+			pipeOut:  pipeOut,
+			hosts:    hosts,
+			termMgr:  termMgr,
+			keywords: keywords,
+		}
 
-	if enableDebugLogging && tmuxDebugPaneWriter == nil {
-		enableDebugLogging = false
-		defer func() { enableDebugLogging = true }()
-	}
+		if enableDebugLogging && tmuxDebugPaneWriter == nil {
+			enableDebugLogging = false
+			defer func() { enableDebugLogging = true }()
+		}
 
-	go prompt.wrapStdin()
+		go prompt.wrapStdin()
 
-	idx, _, err := prompt.selector.Run()
-	if err != nil {
-		return "", prompt.quit, fmt.Errorf("prompt choose alias failed: %v", err)
-	}
-	if prompt.quit {
-		return "", true, nil
-	}
+		idx, _, err := prompt.selector.Run()
+		if err != nil {
+			return "", prompt.quit, fmt.Errorf("prompt choose alias failed: %v", err)
+		}
+		if prompt.quit {
+			return "", true, nil
+		}
+		if prompt.deleteAlias != "" {
+			keywords = prompt.keywords
+			removePromptHost(prompt.deleteAlias)
+			continue
+		}
 
-	selectedHosts := prompt.getSelected(idx)
-	for _, h := range selectedHosts {
-		fmt.Fprintf(os.Stderr, "\033[0;32m%s %s\033[0m\r\n", promptSelectedIcon, h.Alias)
-	}
-	if len(selectedHosts) > 1 && termMgr != nil {
-		termMgr.openTerminals(keywords, prompt.openType, selectedHosts)
-	}
+		selectedHosts := prompt.getSelected(idx)
+		for _, h := range selectedHosts {
+			fmt.Fprintf(os.Stderr, "\033[0;32m%s %s\033[0m\r\n", promptSelectedIcon, h.Alias)
+		}
+		if len(selectedHosts) > 1 && termMgr != nil {
+			termMgr.openTerminals(keywords, prompt.openType, selectedHosts)
+		}
 
-	// Return the alias to let SSH config handle port and other settings
-	selected := selectedHosts[0]
-	return selected.Alias, false, nil
+		// Return the alias to let SSH config handle port and other settings
+		selected := selectedHosts[0]
+		return selected.Alias, false, nil
+	}
 }
 
 func fastLookupHost(host string) bool {

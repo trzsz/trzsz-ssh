@@ -84,3 +84,31 @@ func TestStrictPagingMoveAcrossPages(t *testing.T) {
 		t.Fatalf("prevDistance(20) = %d, want 1", got)
 	}
 }
+
+func TestDeleteHostKeyOnlyInNonSearchMode(t *testing.T) {
+	p := &sshPrompt{}
+	if !p.deleteHost([]byte{'D'}) {
+		t.Fatalf("expected D to delete host in non-search mode")
+	}
+	if p.deleteHost([]byte{'d'}) {
+		t.Fatalf("expected d not to delete host")
+	}
+
+	p.search = true
+	if p.deleteHost([]byte{'D'}) {
+		t.Fatalf("expected D not to delete host in search mode")
+	}
+}
+
+func TestPageDownKeepsLowercaseDAndCtrlD(t *testing.T) {
+	p := &sshPrompt{}
+	if !p.pageDown([]byte{'d'}) {
+		t.Fatalf("expected d to keep page-down behavior")
+	}
+	if !p.pageDown([]byte{keyCtrlD}) {
+		t.Fatalf("expected Ctrl+D to keep page-down behavior")
+	}
+	if p.pageDown([]byte{'D'}) {
+		t.Fatalf("expected D not to page down")
+	}
+}

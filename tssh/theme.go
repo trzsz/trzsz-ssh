@@ -211,7 +211,7 @@ func (t *lineTheme) renderItems(items []any, idx int) string {
 		} else {
 			builder.WriteString("   ")
 		}
-		number := fmt.Sprintf("%d", host.Index-view.displayStart)
+		number := fmt.Sprintf("%d", i)
 		if active {
 			builder.WriteString(t.activeNumberStyle.Render(number))
 		} else {
@@ -342,7 +342,7 @@ func (t *tableTheme) renderItems(items []any, idx int) string {
 		if host.Selected {
 			icon = "✔"
 		}
-		data = append(data, []string{fmt.Sprintf("%d", host.Index-view.displayStart), icon, host.Alias, host.Host, host.GroupLabels})
+		data = append(data, []string{fmt.Sprintf("%d", len(data)), icon, host.Alias, host.Host, host.GroupLabels})
 	}
 	tbl := table.New().BorderRow(true).
 		Headers("No.", "", "Alias", "Host Name", "Group Labels").Rows(data...).
