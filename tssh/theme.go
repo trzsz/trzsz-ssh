@@ -454,13 +454,16 @@ func (t *cyberpunkTheme) renderProfileLine(name, value string) string {
 func (t *cyberpunkTheme) renderProfilePanel(host *sshHost) []string {
 	innerWidth := cyberpunkProfileWidth - 2
 	title := "[ NODE PROFILE ]"
-	topFill := innerWidth - 1 - ansi.StringWidth(title)
-	if topFill < 0 {
-		topFill = 0
+	titleWidth := ansi.StringWidth(title)
+	sideFill := innerWidth - titleWidth
+	if sideFill < 0 {
+		sideFill = 0
 	}
+	leftFill := sideFill / 2
+	rightFill := sideFill - leftFill
 	lines := []string{
-		t.profileBorderStyle.Render("╭─") + t.profileTitleStyle.Render(title) +
-			t.profileBorderStyle.Render(strings.Repeat("─", topFill)+"╮"),
+		t.profileBorderStyle.Render("╭"+strings.Repeat("─", leftFill)) + t.profileTitleStyle.Render(title) +
+			t.profileBorderStyle.Render(strings.Repeat("─", rightFill)+"╮"),
 	}
 	for _, item := range t.getProfileValues(host) {
 		lines = append(lines, t.renderProfileLine(item[0], item[1]))
@@ -491,6 +494,13 @@ func (t *cyberpunkTheme) renderItems(items []any, idx int) string {
 	if len(profileLines) > totalLines {
 		totalLines = len(profileLines)
 	}
+	profileStart := 1
+	if len(leftLines) > len(profileLines)+1 {
+		profileStart = 1 + (len(leftLines)-1-len(profileLines))/2
+	}
+	if profileStart+len(profileLines) > totalLines {
+		totalLines = profileStart + len(profileLines)
+	}
 
 	var builder strings.Builder
 	for i := 0; i < totalLines; i++ {
@@ -505,8 +515,9 @@ func (t *cyberpunkTheme) renderItems(items []any, idx int) string {
 		}
 
 		profile := ""
-		if i < len(profileLines) {
-			profile = profileLines[i]
+		profileIdx := i - profileStart
+		if profileIdx >= 0 && profileIdx < len(profileLines) {
+			profile = profileLines[profileIdx]
 		}
 
 		builder.WriteString(left)

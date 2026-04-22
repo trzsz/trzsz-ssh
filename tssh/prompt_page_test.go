@@ -149,10 +149,13 @@ func TestCyberpunkThemeRendersProfilePanel(t *testing.T) {
 	}
 
 	output := ansi.Strip(theme.ItemsRenderer(items, 0))
-	for _, want := range []string{"? SSH Alias:", "┃", "╭─[ NODE PROFILE ]", "ALIAS", "prod-api", "ROUTE", "direct"} {
+	for _, want := range []string{"? SSH Alias:", "┃", "[ NODE PROFILE ]", "ALIAS", "prod-api", "ROUTE", "direct"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("cyberpunk output missing %q:\n%s", want, output)
 		}
+	}
+	if strings.Contains(output, "╭─[ NODE PROFILE ]") {
+		t.Fatalf("cyberpunk profile title should be centered:\n%s", output)
 	}
 }
 
