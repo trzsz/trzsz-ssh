@@ -122,6 +122,9 @@ func runFileManager(client SshClient) error {
 		switch {
 		case model.searching:
 			handleFileManagerSearchKey(model, key)
+		case isFileManagerClearFilterKey(model, key):
+			model.activePane().clearFilter()
+			model.message = ""
 		case isFileManagerQuitKey(key):
 			model.cancelled = true
 			_, _ = os.Stderr.WriteString("\x1b[H\x1b[2J")
@@ -186,6 +189,10 @@ func handleFileManagerSearchKey(model *fileManagerModel, key []byte) {
 	}
 }
 
+func isFileManagerClearFilterKey(model *fileManagerModel, key []byte) bool {
+	return len(key) == 1 && key[0] == keyESC && model.activePane().filter != ""
+}
+
 func runFileManagerTransfer(model *fileManagerModel, upload bool) error {
 	lastRender := time.Time{}
 	progress := func(event fileTransferProgress) {
@@ -219,23 +226,35 @@ func isFileManagerMoveUpKey(key []byte) bool {
 
 func renderFileManager(model *fileManagerModel) string {
 	theme := newFileManagerTheme()
-	width, height, err := getTerminalSize()
-	if err != nil || width <= 0 {
-		width = 100
+	terminalWidth, height, err := getTerminalSize()
+	if err != nil || terminalWidth <= 0 {
+		terminalWidth = 100
 	}
-	if width < 60 {
-		width = 60
+	if terminalWidth < 60 {
+		terminalWidth = 60
 	}
 	if height < 12 {
 		height = 24
 	}
-	separator := theme.border.Render(" │ ")
+	contentWidth := terminalWidth
+	if contentWidth > 116 {
+		contentWidth = 116
+	}
+	separator := "  "
 	separatorWidth := ansi.StringWidth(separator)
-	paneWidth := (width - separatorWidth) / 2
-	rightWidth := width - separatorWidth - paneWidth
+	paneWidth := (contentWidth - separatorWidth) / 2
+	rightWidth := contentWidth - separatorWidth - paneWidth
+	if paneWidth < 28 {
+		paneWidth = 28
+		rightWidth = 28
+		contentWidth = paneWidth + separatorWidth + rightWidth
+	}
 	pageSize := height - 7
 	if pageSize < 5 {
 		pageSize = 5
+	}
+	if pageSize > 14 {
+		pageSize = 14
 	}
 
 	left := renderFileManagerPane(model.local, paneWidth, pageSize, model.active == fileManagerLocalPane, theme)
@@ -250,22 +269,28 @@ func renderFileManager(model *fileManagerModel) string {
 		if i < len(right) {
 			r = right[i]
 		}
-		lines = append(lines, padRight(l, paneWidth)+separator+padRight(r, rightWidth))
+		lines = append(lines, centerText(padRight(l, paneWidth)+separator+padRight(r, rightWidth), terminalWidth))
 	}
 	lines = append(lines, "")
-	lines = append(lines, renderFileManagerShortcuts(width, theme))
+	lines = append(lines, centerText(renderFileManagerShortcuts(contentWidth, theme), terminalWidth))
 	if model.message != "" {
-		lines = append(lines, padRight(theme.message.Render(truncateText(model.message, width)), width))
+		lines = append(lines, centerText(padRight(theme.message.Render(truncateText(model.message, contentWidth)), contentWidth), terminalWidth))
 	}
 	return strings.Join(lines, "\r\n") + "\r\n"
 }
 
 func renderFileManagerPane(pane *fileManagerPane, width, pageSize int, active bool, theme fileManagerTheme) []string {
+	innerWidth := width - 2
+	if innerWidth < 1 {
+		innerWidth = 1
+	}
 	titlePrefix := " "
 	titleStyle := theme.inactive
+	borderStyle := theme.border
 	if active {
 		titlePrefix = ">"
 		titleStyle = theme.active
+		borderStyle = theme.active
 	}
 	title := titleStyle.Render(titlePrefix) + " " + theme.title.Render(pane.title) +
 		theme.meta.Render(": ") + theme.meta.Render(pane.cwd)
@@ -273,14 +298,14 @@ func renderFileManagerPane(pane *fileManagerPane, width, pageSize int, active bo
 		title += theme.meta.Render("  /") + theme.search.Render(pane.filter)
 	}
 	lines := []string{
-		padRight(truncateText(title, width), width),
-		padRight(theme.border.Render(strings.Repeat("─", width)), width),
+		borderStyle.Render("┌" + strings.Repeat("─", innerWidth) + "┐"),
+		wrapFileManagerPaneLine(truncateText(title, innerWidth), innerWidth, borderStyle),
 	}
 	if pane.err != nil {
-		lines = append(lines, padRight(theme.error.Render(truncateText("! "+pane.err.Error(), width)), width))
+		lines = append(lines, wrapFileManagerPaneLine(theme.error.Render(truncateText("! "+pane.err.Error(), innerWidth)), innerWidth, borderStyle))
 	}
 	if len(pane.filtered) == 0 {
-		lines = append(lines, padRight(theme.meta.Render("(empty)"), width))
+		lines = append(lines, wrapFileManagerPaneLine(theme.meta.Render("(empty)"), innerWidth, borderStyle))
 	}
 
 	start := 0
@@ -310,21 +335,26 @@ func renderFileManagerPane(pane *fileManagerPane, width, pageSize int, active bo
 		} else {
 			name = theme.file.Render(name)
 		}
-		line := truncateText(cursor+" "+check+name, width)
+		line := truncateText(cursor+" "+check+name, innerWidth)
 		if idx == pane.cursor {
 			line = theme.active.Render(line)
 		}
-		lines = append(lines, padRight(line, width))
+		lines = append(lines, wrapFileManagerPaneLine(line, innerWidth, borderStyle))
 	}
-	for len(lines) < pageSize+2 {
-		lines = append(lines, "")
+	for len(lines) < pageSize+3 {
+		lines = append(lines, wrapFileManagerPaneLine("", innerWidth, borderStyle))
 	}
 	status := fmt.Sprintf("%d item(s), %d selected", len(pane.filtered), len(pane.selected))
 	if pane.filter != "" {
 		status = fmt.Sprintf("%d/%d match(es), %d selected", len(pane.filtered), len(pane.entries), len(pane.selected))
 	}
-	lines = append(lines, padRight(theme.status.Render(truncateText(status, width)), width))
+	lines = append(lines, wrapFileManagerPaneLine(theme.status.Render(truncateText(status, innerWidth)), innerWidth, borderStyle))
+	lines = append(lines, borderStyle.Render("└"+strings.Repeat("─", innerWidth)+"┘"))
 	return lines
+}
+
+func wrapFileManagerPaneLine(text string, width int, borderStyle lipgloss.Style) string {
+	return borderStyle.Render("│") + padRight(text, width) + borderStyle.Render("│")
 }
 
 func renderFileManagerShortcuts(width int, theme fileManagerTheme) string {
@@ -352,6 +382,15 @@ func padRight(text string, width int) string {
 		return truncateText(text, width)
 	}
 	return text + strings.Repeat(" ", width-displayWidth)
+}
+
+func centerText(text string, width int) string {
+	displayWidth := ansi.StringWidth(text)
+	if displayWidth >= width {
+		return truncateText(text, width)
+	}
+	left := (width - displayWidth) / 2
+	return strings.Repeat(" ", left) + text
 }
 
 func truncateText(text string, width int) string {

@@ -104,6 +104,51 @@ func TestFileManagerPaneClearFilterRestoresEntries(t *testing.T) {
 	}
 }
 
+func TestFileManagerEscClearsFilterBeforeQuit(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "alpha.txt"), []byte("alpha"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	fs := &localFileManagerFS{}
+	model, err := newFileManagerModel(fs, fs, dir, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	model.activePane().setFilter("alpha")
+
+	if !isFileManagerClearFilterKey(model, []byte{keyESC}) {
+		t.Fatalf("expected Esc to clear filter before quit")
+	}
+	model.activePane().clearFilter()
+	if isFileManagerClearFilterKey(model, []byte{keyESC}) {
+		t.Fatalf("expected Esc not to clear filter when filter is empty")
+	}
+}
+
+func TestFileManagerSearchEscClearsFilter(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "alpha.txt"), []byte("alpha"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	fs := &localFileManagerFS{}
+	model, err := newFileManagerModel(fs, fs, dir, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	model.searching = true
+	model.activePane().setFilter("alpha")
+
+	handleFileManagerSearchKey(model, []byte{keyESC})
+	if model.searching {
+		t.Fatalf("expected search mode to end")
+	}
+	if model.activePane().filter != "" {
+		t.Fatalf("expected filter to be cleared, got %q", model.activePane().filter)
+	}
+}
+
 func TestFileManagerCopyFileBetweenLocalFilesystems(t *testing.T) {
 	srcDir := t.TempDir()
 	dstDir := t.TempDir()
@@ -187,6 +232,27 @@ func TestRenderFileManagerKeepsLineWidthWithWideCharacters(t *testing.T) {
 		}
 		if ansi.StringWidth(line) > 100 {
 			t.Fatalf("line width = %d, want <= 100, line = %q", ansi.StringWidth(line), line)
+		}
+	}
+}
+
+func TestRenderFileManagerPaneWrapsLinesWithStableWidth(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "你好-world.txt"), []byte("hello"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	fs := &localFileManagerFS{}
+	pane := newFileManagerPane("Local", fs, dir)
+	if err := pane.refresh(); err != nil {
+		t.Fatal(err)
+	}
+
+	const width = 42
+	lines := renderFileManagerPane(pane, width, 5, true, newFileManagerTheme())
+	for _, line := range lines {
+		if ansi.StringWidth(line) != width {
+			t.Fatalf("line width = %d, want %d, line = %q", ansi.StringWidth(line), width, line)
 		}
 	}
 }
