@@ -42,6 +42,8 @@ type fileManagerPane struct {
 	fs       fileManagerFS
 	cwd      string
 	entries  []fileManagerEntry
+	filtered []fileManagerEntry
+	filter   string
 	cursor   int
 	selected map[string]struct{}
 	order    []string
@@ -70,35 +72,30 @@ func (p *fileManagerPane) refresh() error {
 		return strings.ToLower(entries[i].Name) < strings.ToLower(entries[j].Name)
 	})
 	p.entries = entries
-	if p.cursor >= len(p.entries) {
-		p.cursor = len(p.entries) - 1
-	}
-	if p.cursor < 0 {
-		p.cursor = 0
-	}
+	p.applyFilter()
 	p.err = nil
 	return nil
 }
 
 func (p *fileManagerPane) move(delta int) {
-	if len(p.entries) == 0 {
+	if len(p.filtered) == 0 {
 		return
 	}
 	p.cursor += delta
 	if p.cursor < 0 {
-		p.cursor = len(p.entries) - 1
+		p.cursor = len(p.filtered) - 1
 	}
-	if p.cursor >= len(p.entries) {
+	if p.cursor >= len(p.filtered) {
 		p.cursor = 0
 	}
 	p.err = nil
 }
 
 func (p *fileManagerPane) currentEntry() (fileManagerEntry, bool) {
-	if p.cursor < 0 || p.cursor >= len(p.entries) {
+	if p.cursor < 0 || p.cursor >= len(p.filtered) {
 		return fileManagerEntry{}, false
 	}
-	return p.entries[p.cursor], true
+	return p.filtered[p.cursor], true
 }
 
 func (p *fileManagerPane) enter() error {
@@ -109,6 +106,7 @@ func (p *fileManagerPane) enter() error {
 	p.cwd = p.fs.Clean(entry.Path)
 	p.cursor = 0
 	p.clearSelection()
+	p.clearFilter()
 	return p.refresh()
 }
 
@@ -120,6 +118,7 @@ func (p *fileManagerPane) back() error {
 	p.cwd = p.fs.Clean(parent)
 	p.cursor = 0
 	p.clearSelection()
+	p.clearFilter()
 	return p.refresh()
 }
 
@@ -149,8 +148,8 @@ func (p *fileManagerPane) transferEntries() []fileManagerEntry {
 		}
 		return nil
 	}
-	entriesByPath := make(map[string]fileManagerEntry, len(p.entries))
-	for _, entry := range p.entries {
+	entriesByPath := make(map[string]fileManagerEntry, len(p.filtered))
+	for _, entry := range p.filtered {
 		entriesByPath[entry.Path] = entry
 	}
 	result := make([]fileManagerEntry, 0, len(p.order))
@@ -167,10 +166,60 @@ func (p *fileManagerPane) clearSelection() {
 	p.order = nil
 }
 
+func (p *fileManagerPane) setFilter(filter string) {
+	p.filter = filter
+	p.cursor = 0
+	p.applyFilter()
+}
+
+func (p *fileManagerPane) clearFilter() {
+	p.filter = ""
+	p.cursor = 0
+	p.applyFilter()
+}
+
+func (p *fileManagerPane) applyFilter() {
+	if p.filter == "" {
+		p.filtered = p.entries
+	} else {
+		p.filtered = make([]fileManagerEntry, 0, len(p.entries))
+		for _, entry := range p.entries {
+			if fuzzyMatchFileName(entry.Name, p.filter) {
+				p.filtered = append(p.filtered, entry)
+			}
+		}
+	}
+	if p.cursor >= len(p.filtered) {
+		p.cursor = len(p.filtered) - 1
+	}
+	if p.cursor < 0 {
+		p.cursor = 0
+	}
+}
+
+func fuzzyMatchFileName(name, query string) bool {
+	query = strings.ToLower(strings.TrimSpace(query))
+	if query == "" {
+		return true
+	}
+	name = strings.ToLower(name)
+	idx := 0
+	for _, ch := range name {
+		if idx >= len(query) {
+			return true
+		}
+		if ch == rune(query[idx]) {
+			idx++
+		}
+	}
+	return idx >= len(query)
+}
+
 type fileManagerModel struct {
 	local     *fileManagerPane
 	remote    *fileManagerPane
 	active    fileManagerPaneID
+	searching bool
 	message   string
 	cancelled bool
 }
@@ -203,6 +252,7 @@ func (m *fileManagerModel) switchPane() {
 	} else {
 		m.active = fileManagerLocalPane
 	}
+	m.searching = false
 	m.message = ""
 }
 

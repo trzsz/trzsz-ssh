@@ -45,6 +45,7 @@ type fileManagerTheme struct {
 	file       lipgloss.Style
 	meta       lipgloss.Style
 	status     lipgloss.Style
+	search     lipgloss.Style
 	shortcut   lipgloss.Style
 	shortcutBg lipgloss.Style
 	message    lipgloss.Style
@@ -63,6 +64,7 @@ func newFileManagerTheme() fileManagerTheme {
 		file:       getPromptLineStyle("15"),
 		meta:       getPromptLineStyle("8"),
 		status:     getPromptLineStyle("10"),
+		search:     getPromptLineStyle("13|bold"),
 		shortcut:   getPromptLineStyle("14|bold"),
 		shortcutBg: lipgloss.NewStyle().Foreground(lipgloss.Color("13")).Bold(true),
 		message:    getPromptLineStyle("10|bold"),
@@ -118,10 +120,15 @@ func runFileManager(client SshClient) error {
 		}
 		key := buf[:n]
 		switch {
+		case model.searching:
+			handleFileManagerSearchKey(model, key)
 		case isFileManagerQuitKey(key):
 			model.cancelled = true
 			_, _ = os.Stderr.WriteString("\x1b[H\x1b[2J")
 			return nil
+		case len(key) == 1 && key[0] == '/':
+			model.searching = true
+			model.message = ""
 		case len(key) == 1 && key[0] == '\t':
 			model.switchPane()
 		case isFileManagerMoveDownKey(key):
@@ -154,6 +161,28 @@ func runFileManager(client SshClient) error {
 				model.message = err.Error()
 			}
 		}
+	}
+}
+
+func handleFileManagerSearchKey(model *fileManagerModel, key []byte) {
+	pane := model.activePane()
+	switch {
+	case len(key) == 1 && (key[0] == keyESC || key[0] == keyCtrlC):
+		model.searching = false
+		pane.clearFilter()
+	case len(key) == 1 && (key[0] == keyEnter || key[0] == '\n'):
+		model.searching = false
+	case len(key) == 1 && (key[0] == '\x7f' || key[0] == keyCtrlH):
+		if pane.filter == "" {
+			model.searching = false
+			return
+		}
+		runes := []rune(pane.filter)
+		pane.setFilter(string(runes[:len(runes)-1]))
+	case len(key) == 1 && key[0] >= 0x20 && key[0] != 0x7f:
+		pane.setFilter(pane.filter + string(key))
+	default:
+		model.message = "输入关键字搜索，Enter 结束，Esc 清空"
 	}
 }
 
@@ -240,6 +269,9 @@ func renderFileManagerPane(pane *fileManagerPane, width, pageSize int, active bo
 	}
 	title := titleStyle.Render(titlePrefix) + " " + theme.title.Render(pane.title) +
 		theme.meta.Render(": ") + theme.meta.Render(pane.cwd)
+	if pane.filter != "" {
+		title += theme.meta.Render("  /") + theme.search.Render(pane.filter)
+	}
 	lines := []string{
 		padRight(truncateText(title, width), width),
 		padRight(theme.border.Render(strings.Repeat("─", width)), width),
@@ -247,7 +279,7 @@ func renderFileManagerPane(pane *fileManagerPane, width, pageSize int, active bo
 	if pane.err != nil {
 		lines = append(lines, padRight(theme.error.Render(truncateText("! "+pane.err.Error(), width)), width))
 	}
-	if len(pane.entries) == 0 {
+	if len(pane.filtered) == 0 {
 		lines = append(lines, padRight(theme.meta.Render("(empty)"), width))
 	}
 
@@ -256,11 +288,11 @@ func renderFileManagerPane(pane *fileManagerPane, width, pageSize int, active bo
 		start = pane.cursor / pageSize * pageSize
 	}
 	end := start + pageSize
-	if end > len(pane.entries) {
-		end = len(pane.entries)
+	if end > len(pane.filtered) {
+		end = len(pane.filtered)
 	}
 	for idx := start; idx < end; idx++ {
-		entry := pane.entries[idx]
+		entry := pane.filtered[idx]
 		cursor := " "
 		if idx == pane.cursor {
 			cursor = theme.cursor.Render(">")
@@ -287,7 +319,10 @@ func renderFileManagerPane(pane *fileManagerPane, width, pageSize int, active bo
 	for len(lines) < pageSize+2 {
 		lines = append(lines, "")
 	}
-	status := fmt.Sprintf("%d item(s), %d selected", len(pane.entries), len(pane.selected))
+	status := fmt.Sprintf("%d item(s), %d selected", len(pane.filtered), len(pane.selected))
+	if pane.filter != "" {
+		status = fmt.Sprintf("%d/%d match(es), %d selected", len(pane.filtered), len(pane.entries), len(pane.selected))
+	}
 	lines = append(lines, padRight(theme.status.Render(truncateText(status, width)), width))
 	return lines
 }
@@ -297,6 +332,7 @@ func renderFileManagerShortcuts(width int, theme fileManagerTheme) string {
 		{"Tab", "切换面板"},
 		{"Enter", "打开"},
 		{"Space", "选择"},
+		{"/", "搜索"},
 		{"U", "上传"},
 		{"D", "下载"},
 		{"R", "刷新"},

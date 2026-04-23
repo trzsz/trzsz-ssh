@@ -57,6 +57,53 @@ func TestFileManagerPaneOrdersDirectoriesFirst(t *testing.T) {
 	}
 }
 
+func TestFileManagerPaneFuzzyFilter(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"release.tar.gz", "README.md", "server.log"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(name), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	pane := newFileManagerPane("Local", &localFileManagerFS{}, dir)
+	if err := pane.refresh(); err != nil {
+		t.Fatal(err)
+	}
+	pane.setFilter("rtg")
+	if len(pane.filtered) != 1 {
+		t.Fatalf("filtered = %d, want 1", len(pane.filtered))
+	}
+	if pane.filtered[0].Name != "release.tar.gz" {
+		t.Fatalf("filtered[0] = %q, want release.tar.gz", pane.filtered[0].Name)
+	}
+	entry, ok := pane.currentEntry()
+	if !ok || entry.Name != "release.tar.gz" {
+		t.Fatalf("current entry = %#v, %v", entry, ok)
+	}
+}
+
+func TestFileManagerPaneClearFilterRestoresEntries(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"alpha.txt", "beta.txt"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(name), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	pane := newFileManagerPane("Local", &localFileManagerFS{}, dir)
+	if err := pane.refresh(); err != nil {
+		t.Fatal(err)
+	}
+	pane.setFilter("alpha")
+	pane.clearFilter()
+	if len(pane.filtered) != len(pane.entries) {
+		t.Fatalf("filtered = %d, want %d", len(pane.filtered), len(pane.entries))
+	}
+	if pane.filter != "" {
+		t.Fatalf("filter = %q, want empty", pane.filter)
+	}
+}
+
 func TestFileManagerCopyFileBetweenLocalFilesystems(t *testing.T) {
 	srcDir := t.TempDir()
 	dstDir := t.TempDir()
