@@ -30,6 +30,46 @@ Disable auto-save for a specific session:
 tssh --no-save user@192.168.1.100
 ```
 
+### 4. Local/Remote File Manager
+
+Open a two-pane SFTP file manager for any SSH host. The left pane shows the
+local directory where `tssh` was started, and the right pane shows the remote
+directory on the selected host.
+
+From the interactive host list, press `U` on a host to open the file manager.
+You can also open it directly from the command line:
+
+```sh
+tssh --file-manager my-host
+```
+
+Supported actions:
+
+- `[Tab]` switch between local and remote panes
+- `[Enter]` open the selected directory
+- `[Space]` select files or directories
+- `[/]` fuzzy search in the active pane
+- `[U]` upload selected local files/directories to the remote pane
+- `[D]` download selected remote files/directories to the local pane
+- `[R]` refresh both panes
+- `[Q]` quit the file manager
+
+The file manager uses SFTP over the existing SSH connection, so it is designed
+for hosts that already support SSH/SFTP.
+
+### 5. Host Groups
+
+Hosts can be assigned to groups with `--group`, making large host lists easier
+to organize and search.
+
+```sh
+tssh --group production user@192.168.1.100
+tssh --group staging user@192.168.1.101
+```
+
+Group labels are shown in the interactive host list and can be matched by
+search keywords.
+
 ## License
 
 [MIT License](https://choosealicense.com/licenses/mit/)
