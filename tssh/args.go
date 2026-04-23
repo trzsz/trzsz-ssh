@@ -102,6 +102,7 @@ type sshArgs struct {
 	TrzszBinPath   string      `arg:"--trzsz-bin-path" placeholder:"path" help:"[tools] trzsz binary installation package path"`
 	TsshdVersion   string      `arg:"--tsshd-version" placeholder:"x.x.x" help:"[tools] install the specified version of tsshd"`
 	TsshdBinPath   string      `arg:"--tsshd-bin-path" placeholder:"path" help:"[tools] tsshd binary installation package path"`
+	FileManager    bool        `arg:"--file-manager" help:"[tools] open the local/remote sftp file manager"`
 	UploadFile     multiStr    `arg:"--upload-file" placeholder:"path" help:"[tools] upload the local file to remote server"`
 	DownloadPath   string      `arg:"--download-path" placeholder:"path" help:"[tools] the local saving path for downloading"`
 	originalDest   string

@@ -208,10 +208,10 @@ func TsshMain(argv []string) int {
 			fmt.Fprintln(os.Stderr, "destination is required when running tssh in non-interactive mode")
 			return kExitCodeNoDestHost
 		}
-		dest, quit, err = chooseAlias("")
+		dest, quit, err = chooseAlias("", &args)
 		args.NoSave = false
 	} else {
-		dest, quit, err = predictDestination(args.Destination)
+		dest, quit, err = predictDestination(args.Destination, &args)
 	}
 	if quit {
 		err = nil
@@ -282,6 +282,10 @@ func sshStart(args *sshArgs) (int, error) {
 			return kExitCodeSubFwFailed, err
 		}
 		return 0, nil
+	}
+
+	if args.FileManager {
+		return execFileManager(sshConn), nil
 	}
 
 	// ssh port forwarding

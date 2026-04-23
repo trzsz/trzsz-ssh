@@ -71,6 +71,7 @@ type sshPrompt struct {
 	termMgr       terminalManager
 	openType      int
 	deleteAlias   string
+	uploadAlias   string
 	keywords      string
 	showShortcuts bool
 	search        bool
@@ -105,11 +106,12 @@ var normalShortcuts = []sshShortcuts{
 	{actionName: "Jump 0-9 ", globalKeys: nil, nonSearchKeys: []string{"0..9"}},
 	{actionName: "Move Prev", globalKeys: []string{"Ctrl+K", "Shift+Tab", "↑"}, nonSearchKeys: []string{"k", "K"}},
 	{actionName: "Move Next", globalKeys: []string{"Ctrl+J", "Tab      ", "↓"}, nonSearchKeys: []string{"j", "J"}},
-	{actionName: "Page   Up", globalKeys: []string{"Ctrl+H", "Ctrl+U", "Ctrl+B", "PageUp  ", "←"}, nonSearchKeys: []string{"h", "H", "u", "U", "b", "B"}},
+	{actionName: "Page   Up", globalKeys: []string{"Ctrl+H", "Ctrl+U", "Ctrl+B", "PageUp  ", "←"}, nonSearchKeys: []string{"h", "H", "u", "b", "B"}},
 	{actionName: "Page Down", globalKeys: []string{"Ctrl+L", "Ctrl+D", "Ctrl+F", "PageDown", "→"}, nonSearchKeys: []string{"l", "L", "d", "f", "F"}},
 	{actionName: "Goto Home", globalKeys: []string{"Home"}, nonSearchKeys: []string{"g"}},
 	{actionName: "Goto  End", globalKeys: []string{"End "}, nonSearchKeys: []string{"G"}},
 	{actionName: "Delete   ", globalKeys: nil, nonSearchKeys: []string{"D"}},
+	{actionName: "Upload   ", globalKeys: nil, nonSearchKeys: []string{"U"}},
 	{actionName: "EraseKeys", globalKeys: []string{"Ctrl+E"}, nonSearchKeys: []string{"e", "E"}},
 	{actionName: "TglSearch", globalKeys: []string{"/"}, searchKeys: []string{"Esc", "Enter"}},
 	{actionName: "Tgl  Help", globalKeys: []string{"?"}},
@@ -248,7 +250,7 @@ func (p *sshPrompt) pageUp(buf []byte) bool {
 	switch buf[0] {
 	case keyCtrlH, keyCtrlU, keyCtrlB:
 		return true
-	case 'h', 'H', 'u', 'U', 'b', 'B':
+	case 'h', 'H', 'u', 'b', 'B':
 		return !p.search
 	default:
 		return false
@@ -388,6 +390,10 @@ func (p *sshPrompt) selectOpposite(buf []byte) bool {
 
 func (p *sshPrompt) deleteHost(buf []byte) bool {
 	return len(buf) == 1 && buf[0] == 'D' && !p.search
+}
+
+func (p *sshPrompt) uploadFiles(buf []byte) bool {
+	return len(buf) == 1 && buf[0] == 'U' && !p.search
 }
 
 func (p *sshPrompt) toggleSearch(buf []byte) bool {
@@ -616,6 +622,17 @@ func (p *sshPrompt) requestDeleteCurrentHost() bool {
 	return true
 }
 
+func (p *sshPrompt) requestUploadCurrentHost() bool {
+	host := p.getCurrentHost()
+	if host == nil {
+		return false
+	}
+
+	p.uploadAlias = host.Alias
+	p.keywords = p.selector.Keywords
+	return true
+}
+
 func removePromptHost(alias string) bool {
 	if !confirmRemoveHost(alias) {
 		toolsWarn("RemoveHost", "cancelled removing host [%s]", alias)
@@ -743,6 +760,12 @@ func (p *sshPrompt) wrapStdin() {
 				return
 			}
 			buf = []byte{promptui.KeyRefresh}
+		case p.uploadFiles(buf):
+			if p.requestUploadCurrentHost() {
+				_, _ = p.pipeOut.Write([]byte{readline.CharEnter})
+				return
+			}
+			buf = []byte{promptui.KeyRefresh}
 		case p.toggleSearch(buf):
 			p.search = !p.search
 			buf = []byte{'/'}
@@ -782,14 +805,14 @@ func matchHost(h *sshHost, keywords []string) bool {
 	return true
 }
 
-func chooseAlias(keywords string) (string, bool, error) {
-	if state, _ := makeStdinRaw(); state != nil {
-		defer resetStdin(state)
-	}
-
+func chooseAlias(keywords string, args *sshArgs) (string, bool, error) {
 	for {
+		state, _ := makeStdinRaw()
 		hosts := getAllHosts()
 		if len(hosts) == 0 {
+			if state != nil {
+				resetStdin(state)
+			}
 			return "", true, nil
 		}
 
@@ -848,6 +871,9 @@ func chooseAlias(keywords string) (string, bool, error) {
 		go prompt.wrapStdin()
 
 		idx, _, err := prompt.selector.Run()
+		if state != nil {
+			resetStdin(state)
+		}
 		if err != nil {
 			return "", prompt.quit, fmt.Errorf("prompt choose alias failed: %v", err)
 		}
@@ -858,6 +884,15 @@ func chooseAlias(keywords string) (string, bool, error) {
 			keywords = prompt.keywords
 			removePromptHost(prompt.deleteAlias)
 			continue
+		}
+		if prompt.uploadAlias != "" {
+			keywords = prompt.keywords
+			if args == nil {
+				return "", false, fmt.Errorf("file manager requires ssh arguments")
+			}
+			args.FileManager = true
+			fmt.Fprintf(os.Stderr, "\033[0;32m%s %s\033[0m\r\n", promptSelectedIcon, prompt.uploadAlias)
+			return prompt.uploadAlias, false, nil
 		}
 
 		selectedHosts := prompt.getSelected(idx)
@@ -881,7 +916,7 @@ func fastLookupHost(host string) bool {
 	return err == nil
 }
 
-func predictDestination(dest string) (string, bool, error) {
+func predictDestination(dest string, args *sshArgs) (string, bool, error) {
 	if !isTerminal || strings.ContainsAny(dest, ".:[]@") {
 		return dest, false, nil
 	}
@@ -919,5 +954,5 @@ func predictDestination(dest string) (string, bool, error) {
 		return dest, false, nil
 	}
 
-	return chooseAlias(dest)
+	return chooseAlias(dest, args)
 }

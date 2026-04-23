@@ -118,6 +118,40 @@ func TestPageDownKeepsLowercaseDAndCtrlD(t *testing.T) {
 	}
 }
 
+func TestUploadFilesKeyOnlyUppercaseU(t *testing.T) {
+	p := &sshPrompt{}
+	if !p.uploadFiles([]byte{'U'}) {
+		t.Fatalf("expected U to upload files")
+	}
+	if p.uploadFiles([]byte{'u'}) {
+		t.Fatalf("expected plain u not to upload files")
+	}
+	if p.uploadFiles([]byte{keyCtrlU}) {
+		t.Fatalf("expected Ctrl+U not to upload files")
+	}
+	if p.uploadFiles([]byte{keyESC, 'u'}) {
+		t.Fatalf("expected Alt+U not to upload files")
+	}
+
+	p.search = true
+	if p.uploadFiles([]byte{'U'}) {
+		t.Fatalf("expected U not to upload files in search mode")
+	}
+}
+
+func TestPageUpKeepsLowercaseUAndCtrlU(t *testing.T) {
+	p := &sshPrompt{}
+	if !p.pageUp([]byte{'u'}) {
+		t.Fatalf("expected u to keep page-up behavior")
+	}
+	if !p.pageUp([]byte{keyCtrlU}) {
+		t.Fatalf("expected Ctrl+U to keep page-up behavior")
+	}
+	if p.pageUp([]byte{'U'}) {
+		t.Fatalf("expected U not to page up")
+	}
+}
+
 func withCyberpunkTheme(t *testing.T, width int) func() {
 	t.Helper()
 

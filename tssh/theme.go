@@ -46,7 +46,7 @@ type promptTheme struct {
 }
 
 func getDefaultHelpTipsTemplate() string {
-	return fmt.Sprintf(`{{ "Use ← ↓ ↑ → h j k l to navigate, 0-9 jumps within page, / toggles search, ? toggles help" | %s }}`, getThemeColor("help_tips"))
+	return fmt.Sprintf(`{{ "Use ← ↓ ↑ → h j k l to navigate, 0-9 jumps, U uploads, D deletes, / searches, ? help" | %s }}`, getThemeColor("help_tips"))
 }
 
 func getDefaultShortcutsTemplate() string {
