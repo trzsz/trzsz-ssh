@@ -79,7 +79,7 @@ func enableVirtualTerminal() error {
 	if err := windows.GetConsoleMode(windows.Handle(inHandle), &inMode); err != nil {
 		return err
 	}
-	addOnCloseFunc(func() { windows.SetConsoleMode(windows.Handle(inHandle), inMode) })
+	addOnExitFunc(func() { windows.SetConsoleMode(windows.Handle(inHandle), inMode) })
 	if err := windows.SetConsoleMode(windows.Handle(inHandle), inMode|windows.ENABLE_VIRTUAL_TERMINAL_INPUT); err != nil {
 		return err
 	}
@@ -91,7 +91,7 @@ func enableVirtualTerminal() error {
 	if err := windows.GetConsoleMode(windows.Handle(outHandle), &outMode); err != nil {
 		return err
 	}
-	addOnCloseFunc(func() { windows.SetConsoleMode(windows.Handle(outHandle), outMode) })
+	addOnExitFunc(func() { windows.SetConsoleMode(windows.Handle(outHandle), outMode) })
 	if err := windows.SetConsoleMode(windows.Handle(outHandle),
 		outMode|windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING|windows.DISABLE_NEWLINE_AUTO_RETURN); err != nil {
 		return err
@@ -179,7 +179,7 @@ func setupVirtualTerminal() error {
 	outCP := getConsoleOutputCP()
 	setConsoleCP(CP_UTF8)
 	setConsoleOutputCP(CP_UTF8)
-	addOnCloseFunc(func() { setConsoleCP(inCP); setConsoleOutputCP(outCP) })
+	addOnExitFunc(func() { setConsoleCP(inCP); setConsoleOutputCP(outCP) })
 
 	return nil
 }
