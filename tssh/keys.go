@@ -38,7 +38,9 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
@@ -47,11 +49,10 @@ import (
 )
 
 type skSigner struct {
-	path     string
-	keyType  string
-	keyBuf   []byte
-	pubKey   ssh.PublicKey
-	keyFlags uint8
+	path   string
+	pubKey ssh.PublicKey
+	keyBuf []byte
+	flags  uint8
 }
 
 func (s *skSigner) PublicKey() ssh.PublicKey {
@@ -126,19 +127,12 @@ func (s *skSigner) SignWithAlgorithm(rand io.Reader, data []byte, algorithm stri
 		return nil, fmt.Errorf("ssh-sk-helper not found: %s", skHelperPath)
 	}
 
-	keyBuf := make([]byte, 4+len(s.keyType)+len(s.keyBuf))
-	binary.BigEndian.PutUint32(keyBuf, uint32(len(s.keyType)))
-	copy(keyBuf[4:], s.keyType)
-	copy(keyBuf[4+len(s.keyType):], s.keyBuf)
-
-	userPresenceRequired := s.keyFlags&1 != 0 // SSH_SK_USER_PRESENCE_REQD = 1
-
 	for i := range 4 {
 		debug("starting ssh-sk-helper: %s", skHelperPath)
 
 		pin := ""
 		if i > 0 {
-			secret, err := readSecret(fmt.Sprintf("Enter PIN for %s key %s: ", shortKeyType(s.keyType), s.path))
+			secret, err := readSecret(fmt.Sprintf("Enter PIN for %s key %s: ", shortKeyType(s.pubKey.Type()), s.path))
 			if err != nil {
 				return nil, fmt.Errorf("read pin failed: %v", err)
 			}
@@ -150,7 +144,7 @@ func (s *skSigner) SignWithAlgorithm(rand io.Reader, data []byte, algorithm stri
 			ReqType:   1, // SSH_SK_HELPER_SIGN = 1
 			LogStderr: 1, // on_stderr != 0
 			LogLevel:  logLevel,
-			Key:       keyBuf,
+			Key:       s.keyBuf,
 			Provider:  skProvider,
 			Algorithm: algorithm,
 			Data:      data,
@@ -187,19 +181,14 @@ func (s *skSigner) SignWithAlgorithm(rand io.Reader, data []byte, algorithm stri
 			return nil, fmt.Errorf("write request failed: %v", err)
 		}
 
-		var stopPrompt func()
-		if userPresenceRequired {
-			stopPrompt = s.startUserPresencePrompt()
-		}
-
-		err := cmd.Run()
-
-		if stopPrompt != nil {
-			stopPrompt()
-		}
-
-		if err != nil {
-			return nil, fmt.Errorf("run %s failed: %v", skHelperPath, err)
+		if s.flags&1 != 0 { // SSH_SK_USER_PRESENCE_REQD = 1
+			if err := s.runWithPrompt(cmd); err != nil {
+				return nil, err
+			}
+		} else {
+			if err := cmd.Run(); err != nil {
+				return nil, fmt.Errorf("run %s failed: %v", skHelperPath, err)
+			}
 		}
 
 		respPayload, err := readMessage(&stdout)
@@ -242,86 +231,65 @@ func (s *skSigner) SignWithAlgorithm(rand io.Reader, data []byte, algorithm stri
 	return nil, fmt.Errorf("PIN incorrect")
 }
 
-func (s *skSigner) startUserPresencePrompt() func() {
-	stopChan := make(chan struct{})
-	doneChan := make(chan struct{})
+func (s *skSigner) runWithPrompt(cmd *exec.Cmd) error {
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("start %s failed: %v", cmd.Path, err)
+	}
 
+	fmt.Fprintf(os.Stderr, "%s%s", ansi.HideCursor, ansi.ResetModeAutoWrap)
+	defer fmt.Fprintf(os.Stderr, "\r%s%s%s", ansi.EraseLineRight, ansi.SetModeAutoWrap, ansi.ShowCursor)
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+	defer func() { signal.Stop(sigChan); close(sigChan) }()
+
+	doneChan := make(chan error, 1)
 	go func() {
 		defer close(doneChan)
-
-		fmt.Fprintf(os.Stderr, "%s%s\033[1;36m", ansi.HideCursor, ansi.ResetModeAutoWrap)
-
-		msg := fmt.Sprintf("Confirm user presence for key %s '%s' %s",
-			shortKeyType(s.keyType), s.path, ssh.FingerprintSHA256(s.pubKey))
-		shownMsg := fmt.Sprintf("\r[ ACTION REQUIRED ] %s", msg)
-		blankMsg := fmt.Sprintf("\r[                 ] %s", msg)
-
-		ticker := time.NewTicker(500 * time.Millisecond)
-		defer ticker.Stop()
-
-		show := true
-		for {
-			select {
-			case <-stopChan:
-				fmt.Fprintf(os.Stderr, "\033[0m\r%s%s%s", ansi.EraseLineRight, ansi.SetModeAutoWrap, ansi.ShowCursor)
-				return
-			case <-ticker.C:
-				if show {
-					fmt.Fprint(os.Stderr, shownMsg)
-				} else {
-					fmt.Fprint(os.Stderr, blankMsg)
-				}
-				show = !show
-			}
+		if err := cmd.Wait(); err != nil {
+			doneChan <- fmt.Errorf("wait %s failed: %v", cmd.Path, err)
+			return
 		}
+		doneChan <- nil
 	}()
 
-	return func() {
-		close(stopChan)
-		<-doneChan // wait for goroutine to finish clearing the line
-	}
-}
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
 
-type skECDSAPrivateKey struct {
-	Curve string
-	Pub   []byte
-	App   string
-	Flags uint8
-	Rest  []byte `ssh:"rest"`
-}
+	show := true
+	msg := fmt.Sprintf("Confirm user presence for key %s '%s' %s",
+		shortKeyType(s.pubKey.Type()), s.path, ssh.FingerprintSHA256(s.pubKey))
+	shownMsg := fmt.Sprintf("\r\033[1;36m[ ACTION REQUIRED ] %s\033[0m", msg)
+	blankMsg := fmt.Sprintf("\r\033[1;36m[                 ] %s\033[0m", msg)
 
-type skEd25519PrivateKey struct {
-	PubKey []byte
-	App    string
-	Flags  uint8
-	Rest   []byte `ssh:"rest"`
-}
-
-func parseSecurityKey(path string, skErr *unhandledSecurityKeyError) (*skSigner, error) {
-	pubKey, err := ssh.ParsePublicKey(skErr.PubKey)
-	if err != nil {
-		return nil, fmt.Errorf("parse public key failed: %v", err)
-	}
-
-	var keyFlags uint8
-	switch skErr.KeyType {
-	case ssh.KeyAlgoSKED25519:
-		var pk skEd25519PrivateKey
-		if err := ssh.Unmarshal(skErr.Rest, &pk); err != nil {
-			return nil, err
+	for {
+		select {
+		case sig := <-sigChan:
+			_ = cmd.Process.Kill()
+			if sig == os.Interrupt || sig.String() == "interrupt" {
+				return fmt.Errorf("interrupted by user")
+			}
+			return fmt.Errorf("terminated by signal: %v", sig)
+		case err := <-doneChan:
+			return err
+		case <-ticker.C:
+			if show {
+				fmt.Fprint(os.Stderr, shownMsg)
+			} else {
+				fmt.Fprint(os.Stderr, blankMsg)
+			}
+			show = !show
 		}
-		keyFlags = pk.Flags
-	case ssh.KeyAlgoSKECDSA256:
-		var pk skECDSAPrivateKey
-		if err := ssh.Unmarshal(skErr.Rest, &pk); err != nil {
-			return nil, err
-		}
-		keyFlags = pk.Flags
-	default:
-		return nil, fmt.Errorf("ssh: unhandled key type %q", skErr.KeyType)
 	}
+}
 
-	return &skSigner{path, skErr.KeyType, skErr.Rest, pubKey, keyFlags}, nil
+func parseSecurityKey(path string, skErr *unsupportedSecurityKeyError) (*skSigner, error) {
+	return &skSigner{
+		path:   path,
+		pubKey: skErr.PublicKey,
+		keyBuf: skErr.Raw,
+		flags:  skErr.Flags,
+	}, nil
 }
 
 func shortKeyType(keyType string) string {
@@ -351,16 +319,77 @@ func shortKeyType(keyType string) string {
 	}
 }
 
-// ==================== The following code is adapted from golang.org/x/crypto/ssh ====================
+// ==================== The following code is adapted from https://go.dev/cl/768800 ====================
 
-type unhandledSecurityKeyError struct {
-	KeyType string
-	PubKey  []byte
-	Rest    []byte
+// unsupportedSecurityKeyError is returned when attempting to parse an
+// OpenSSH private key of a security key (sk-*) type. Security key private
+// keys require external hardware (FIDO/U2F) for signing operations and
+// are not directly supported by this package.
+//
+// The error exposes the parsed public key along with the FIDO-specific
+// metadata needed to perform signing via an external helper such as
+// ssh-sk-helper.
+//
+// See openssh/PROTOCOL.u2f 'SSH U2F Signatures' for details.
+type unsupportedSecurityKeyError struct {
+	// PublicKey is the parsed and validated public key from the key file.
+	PublicKey ssh.PublicKey
+
+	// Flags contains the FIDO key flags. Bit 0x01 indicates that
+	// user presence (touch) is required for each signature.
+	Flags uint8
+
+	// Raw contains the full private key in OpenSSH wire encoding,
+	// starting from the key type string. It can be passed directly
+	// to ssh-sk-helper or similar external signing helpers without
+	// any reassembly. Trailing comment and padding bytes may be
+	// present after the SK-specific fields.
+	Raw []byte
 }
 
-func (e *unhandledSecurityKeyError) Error() string {
-	return fmt.Sprintf("ssh: unhandled security key type %q", e.KeyType)
+func (e *unsupportedSecurityKeyError) Error() string {
+	// Defensive nil check: parseOpenSSHPrivateKey always sets PublicKey,
+	// but guard against manually constructed values (tests, mocks).
+	if e.PublicKey == nil {
+		return "ssh: unsupported security key"
+	}
+	return fmt.Sprintf("ssh: unsupported security key type %q", e.PublicKey.Type())
+}
+
+// skFlagsFromRest extracts the FIDO flags byte from the type-specific
+// private key fields. The flags are located after the public key material,
+// which varies by key type:
+//   - sk-ecdsa: curve(string) + Q(string) + application(string) + flags
+//   - sk-ed25519: pubkey(string) + application(string) + flags
+func skFlagsFromRest(keyType string, rest []byte) (uint8, error) {
+	// Number of public key fields before the application string.
+	var skipCount int
+	switch keyType {
+	case ssh.KeyAlgoSKECDSA256:
+		skipCount = 2 // curve + ec_point
+	case ssh.KeyAlgoSKED25519:
+		skipCount = 1 // pubkey
+	default:
+		return 0, fmt.Errorf("ssh: not a security key type: %s", keyType)
+	}
+
+	buf := rest
+	// Skip the public key material fields and the application string.
+	for i := 0; i < skipCount+1; i++ {
+		if len(buf) < 4 {
+			return 0, errors.New("ssh: truncated security key data")
+		}
+		fieldLen := binary.BigEndian.Uint32(buf[:4])
+		if uint32(len(buf)-4) < fieldLen {
+			return 0, errors.New("ssh: truncated security key data")
+		}
+		buf = buf[4+fieldLen:]
+	}
+	// buf[0] is the flags byte.
+	if len(buf) < 1 {
+		return 0, errors.New("ssh: truncated security key data")
+	}
+	return buf[0], nil
 }
 
 const kUnhandledKeyTypeError = "ssh: unhandled key type"
@@ -534,7 +563,19 @@ func parseOpenSSHPrivateKey(key []byte, decrypt openSSHDecryptFunc) (crypto.Priv
 
 	switch pk1.Keytype {
 	case ssh.KeyAlgoSKED25519, ssh.KeyAlgoSKECDSA256:
-		return nil, &unhandledSecurityKeyError{pk1.Keytype, w.PubKey, pk1.Rest}
+		pubKey, err := ssh.ParsePublicKey(w.PubKey)
+		if err != nil {
+			return nil, fmt.Errorf("ssh: failed to parse security key public key: %v", err)
+		}
+		flags, err := skFlagsFromRest(pk1.Keytype, pk1.Rest)
+		if err != nil {
+			return nil, err
+		}
+		return nil, &unsupportedSecurityKeyError{
+			PublicKey: pubKey,
+			Raw:       privKeyBlock[8:],
+			Flags:     flags,
+		}
 	default:
 		return nil, errors.New("ssh: unhandled key type")
 	}

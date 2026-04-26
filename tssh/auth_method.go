@@ -100,7 +100,7 @@ func (s *sshBaseSigner) initSigner() error {
 		if err == x509.IncorrectPasswordError {
 			continue
 		}
-		if skErr, ok := err.(*unhandledSecurityKeyError); ok {
+		if skErr, ok := err.(*unsupportedSecurityKeyError); ok {
 			s.signer, err = parseSecurityKey(s.path, skErr)
 		}
 		if err != nil {
@@ -186,7 +186,7 @@ func getSigner(param *sshParam, path string) sshSigner {
 				return newPassphraseSigner(path, privateKey, e)
 			}
 		}
-		if skErr, ok := err.(*unhandledSecurityKeyError); ok {
+		if skErr, ok := err.(*unsupportedSecurityKeyError); ok {
 			signer, err = parseSecurityKey(path, skErr)
 		}
 		if err != nil {

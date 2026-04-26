@@ -129,7 +129,7 @@ func TestParsePrivateKey_TriggersFallback(t *testing.T) {
 				t.Fatalf("unexpected upstream error: %v", err)
 			}
 			_, err := parsePrivateKey(tt.key)
-			if _, ok := err.(*unhandledSecurityKeyError); !ok {
+			if _, ok := err.(*unsupportedSecurityKeyError); !ok {
 				t.Fatalf("fallback not working, got %T: %v", err, err)
 			}
 		})
@@ -144,13 +144,13 @@ func TestParsePrivateKey_SKKey(t *testing.T) {
 				t.Fatalf("expected error for security key type")
 			}
 
-			skErr, ok := err.(*unhandledSecurityKeyError)
+			skErr, ok := err.(*unsupportedSecurityKeyError)
 			if !ok {
-				t.Fatalf("expected unhandledSecurityKeyError, got %T: %v", err, err)
+				t.Fatalf("expected unsupportedSecurityKeyError, got %T: %v", err, err)
 			}
 
-			if shortKeyType(skErr.KeyType) != tt.name {
-				t.Fatalf("unexpected key type: got %s, want %s", shortKeyType(skErr.KeyType), tt.name)
+			if shortKeyType(skErr.PublicKey.Type()) != tt.name {
+				t.Fatalf("unexpected key type: got %s, want %s", shortKeyType(skErr.PublicKey.Type()), tt.name)
 			}
 
 			signer, err := parseSecurityKey("", skErr)
@@ -158,8 +158,8 @@ func TestParsePrivateKey_SKKey(t *testing.T) {
 				t.Fatalf("parse security key error: %v", err)
 			}
 
-			if signer.keyFlags != 1 { // SSH_SK_USER_PRESENCE_REQD = 1
-				t.Fatalf("unexpected keyFlags: got=%d want=%d", signer.keyFlags, 1)
+			if signer.flags != 1 { // SSH_SK_USER_PRESENCE_REQD = 1
+				t.Fatalf("unexpected flags: got=%d want=%d", signer.flags, 1)
 			}
 		})
 	}
@@ -202,13 +202,13 @@ func TestParsePrivateKeyWithPassphrase_SKKey(t *testing.T) {
 				t.Fatalf("expected error for security key type")
 			}
 
-			skErr, ok := err.(*unhandledSecurityKeyError)
+			skErr, ok := err.(*unsupportedSecurityKeyError)
 			if !ok {
-				t.Fatalf("expected unhandledSecurityKeyError, got %T: %v", err, err)
+				t.Fatalf("expected unsupportedSecurityKeyError, got %T: %v", err, err)
 			}
 
-			if shortKeyType(skErr.KeyType) != tt.name {
-				t.Fatalf("unexpected key type: got %s, want %s", shortKeyType(skErr.KeyType), tt.name)
+			if shortKeyType(skErr.PublicKey.Type()) != tt.name {
+				t.Fatalf("unexpected key type: got %s, want %s", shortKeyType(skErr.PublicKey.Type()), tt.name)
 			}
 
 			signer, err := parseSecurityKey("", skErr)
@@ -216,8 +216,8 @@ func TestParsePrivateKeyWithPassphrase_SKKey(t *testing.T) {
 				t.Fatalf("parse security key error: %v", err)
 			}
 
-			if signer.keyFlags != 1 { // SSH_SK_USER_PRESENCE_REQD = 1
-				t.Fatalf("unexpected keyFlags: got=%d want=%d", signer.keyFlags, 1)
+			if signer.flags != 1 { // SSH_SK_USER_PRESENCE_REQD = 1
+				t.Fatalf("unexpected flags: got=%d want=%d", signer.flags, 1)
 			}
 		})
 	}
