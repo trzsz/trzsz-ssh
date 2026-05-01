@@ -4,17 +4,17 @@ go 1.25.0
 
 require (
 	charm.land/bubbles/v2 v2.1.0
-	charm.land/bubbletea/v2 v2.0.2
-	charm.land/lipgloss/v2 v2.0.2
+	charm.land/bubbletea/v2 v2.0.6
+	charm.land/lipgloss/v2 v2.0.3
 	github.com/Microsoft/go-winio v0.6.2
 	github.com/charmbracelet/colorprofile v0.4.3
-	github.com/charmbracelet/x/ansi v0.11.6
+	github.com/charmbracelet/x/ansi v0.11.7
 	github.com/chzyer/readline v1.5.1
 	github.com/creack/pty v1.1.24
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
 	github.com/google/uuid v1.6.0
 	github.com/jcmturner/gokrb5/v8 v8.4.4
-	github.com/mattn/go-isatty v0.0.21
+	github.com/mattn/go-isatty v0.0.22
 	github.com/mattn/go-runewidth v0.0.23
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/pquerna/otp v1.5.0
@@ -42,7 +42,7 @@ require (
 	github.com/andybrewer/mack v0.0.0-20251024001139-afd410b36447 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/boombuler/barcode v1.1.0 // indirect
-	github.com/charmbracelet/ultraviolet v0.0.0-20260330092749-0f94982c930b // indirect
+	github.com/charmbracelet/ultraviolet v0.0.0-20260428153724-66037269d7be // indirect
 	github.com/charmbracelet/x/term v0.2.2 // indirect
 	github.com/charmbracelet/x/termios v0.1.1 // indirect
 	github.com/charmbracelet/x/windows v0.2.2 // indirect
@@ -58,9 +58,9 @@ require (
 	github.com/jcmturner/goidentity/v6 v6.0.1 // indirect
 	github.com/jcmturner/rpc/v2 v2.0.3 // indirect
 	github.com/josephspurrier/goversioninfo v1.5.0 // indirect
-	github.com/klauspost/compress v1.18.5 // indirect
+	github.com/klauspost/compress v1.18.6 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
-	github.com/klauspost/reedsolomon v1.13.3 // indirect
+	github.com/klauspost/reedsolomon v1.14.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.0 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/ncruces/zenity v0.10.14 // indirect

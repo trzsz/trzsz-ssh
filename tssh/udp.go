@@ -341,17 +341,14 @@ func startTsshdServer(args *sshArgs, tcpClient SshClient, tsshdCmd string) (*tss
 
 	if err := session.Wait(); err != nil {
 		var builder strings.Builder
+		fmt.Fprintf(&builder, "session wait failed: %v", err)
 		if outMsg, _ := readConsoleOutput(serverOut); outMsg != "" {
+			builder.WriteByte('\n')
 			builder.WriteString(outMsg)
 		}
 		if errMsg, _ := readConsoleOutput(serverErr); errMsg != "" {
-			if builder.Len() > 0 {
-				builder.WriteString("\n")
-			}
+			builder.WriteByte('\n')
 			builder.WriteString(errMsg)
-		}
-		if builder.Len() == 0 {
-			fmt.Fprintf(&builder, "session wait failed: %v", err)
 		}
 		return nil, fmt.Errorf("%s\r\n%s", builder.String(),
 			"\033[0;36mHint:\033[0m Have you installed tsshd on your server? You may need to specify the path to tsshd.")
