@@ -2,8 +2,8 @@
 
 [![MIT License](https://img.shields.io/badge/license-MIT-green.svg?style=flat)](https://choosealicense.com/licenses/mit/)
 [![GitHub Release](https://img.shields.io/github/v/release/trzsz/trzsz-ssh)](https://github.com/trzsz/trzsz-ssh/releases)
-[![WebSite](https://img.shields.io/badge/WebSite-https%3A%2F%2Ftrzsz.github.io%2Fssh-blue?style=flat)](https://trzsz.github.io/ssh)
-[![中文文档](https://img.shields.io/badge/%E4%B8%AD%E6%96%87%E6%96%87%E6%A1%A3-https%3A%2F%2Ftrzsz.github.io%2Fcn%2Fssh-blue?style=flat)](https://trzsz.github.io/cn/ssh)
+[![WebSite](https://img.shields.io/badge/WebSite-https%3A%2F%2Ftrzsz.github.io%2Ftssh-blue?style=flat)](https://trzsz.github.io/tssh)
+[![中文文档](https://img.shields.io/badge/%E4%B8%AD%E6%96%87%E6%96%87%E6%A1%A3-https%3A%2F%2Ftrzsz.github.io%2Fcn%2Ftssh-blue?style=flat)](https://trzsz.github.io/cn/tssh)
 
 trzsz-ssh ( tssh ) is an ssh client designed as a drop-in replacement for the openssh client. It aims to provide complete compatibility with openssh, mirroring all its features, while also offering additional useful features not found in the openssh client.
 
@@ -86,7 +86,18 @@ trzsz-ssh ( tssh ) with [tsshd](https://github.com/trzsz/tsshd) also supports in
 
   </details>
 
-- Install with yum on Linux
+- Install with dnf on Fedora / CentOS / RHEL
+
+  <details><summary><code>sudo dnf install tssh</code></summary>
+
+  ```sh
+  sudo dnf copr enable @trzsz/tssh
+  sudo dnf install tssh
+  ```
+
+  </details>
+
+- Install with yum on Legacy CentOS / RHEL
 
   <details><summary><code>sudo yum install tssh</code></summary>
 
