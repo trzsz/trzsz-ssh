@@ -8,9 +8,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout trzsz-ssh
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: "1.25"
       - name: Run GoReleaser
@@ -43,10 +43,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout trzsz-ssh
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Set up Go
         run: |
-          wget -q https://github.com/thongtech/go-legacy-win7/releases/download/v1.25.6-1/go-legacy-win7-1.25.6-1.linux_amd64.tar.gz -O /tmp/go.tar.gz
+          wget -q https://github.com/thongtech/go-legacy-win7/releases/download/v1.25.7-1/go-legacy-win7-1.25.7-1.linux_amd64.tar.gz -O /tmp/go.tar.gz
           tar -C $HOME -xzf /tmp/go.tar.gz
       - name: Build trzsz-ssh
         run: |
