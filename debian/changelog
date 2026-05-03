@@ -1,3 +1,9 @@
+tssh (0.1.25) trusty; urgency=medium
+
+  * tssh v0.1.25
+
+ -- Lonny Wong <lonnywong@qq.com>  Sun, 03 May 2026 08:55:37 +0800
+
 tssh (0.1.24) trusty; urgency=medium
 
   * tssh v0.1.24
