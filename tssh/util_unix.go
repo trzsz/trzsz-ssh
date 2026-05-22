@@ -35,6 +35,8 @@ import (
 	"github.com/trzsz/iterm2"
 )
 
+const kDefaultSshSkHelperPath = "/usr/lib/openssh/ssh-sk-helper"
+
 func isRemoteSshEnv(pid int) bool {
 	for range 1000 {
 		stat, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))

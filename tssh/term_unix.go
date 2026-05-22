@@ -41,8 +41,6 @@ import (
 	"golang.org/x/term"
 )
 
-const kDefaultSshSkHelperPath = "/usr/lib/openssh/ssh-sk-helper"
-
 var isRunningOnOldWindows atomic.Bool
 
 type stdinState struct {
