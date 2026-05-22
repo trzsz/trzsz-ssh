@@ -33,6 +33,8 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+const kDefaultSshSkHelperPath = "/usr/libexec/ssh-sk-helper"
+
 func isRemoteSshEnv(pid int) bool {
 	for range 1000 {
 		kinfo, err := unix.SysctlKinfoProc("kern.proc.pid", pid)
