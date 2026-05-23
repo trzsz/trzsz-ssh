@@ -138,6 +138,8 @@ github.com/quic-go/quic-go v0.59.1 h1:0Gmua0HW1Tv7ANR7hUYwRyD0MG5OJfgvYSZasGZzBi
 github.com/quic-go/quic-go v0.59.1/go.mod h1:upnsH4Ju1YkqpLXC305eW3yDZ4NfnNbmQRCMWS58IKU=
 github.com/randall77/makefat v0.0.0-20260406194835-1b91746796b7 h1:m1yKMZwDSXkT5o2MKhd6ihdzb2dYb6eElNE04xjOSEY=
 github.com/randall77/makefat v0.0.0-20260406194835-1b91746796b7/go.mod h1:T1TLSfyWVBRXVGzWd0o9BI4kfoO9InEgfQe4NV3mLz8=
+github.com/rcarmo/go-te v0.1.0 h1:BH9Ub+A0AVBY5Q00El4QMVaWAMbycVHgMHQI2Kz8J/o=
+github.com/rcarmo/go-te v0.1.0/go.mod h1:cLsrtroxCubS+OHHwH0riB6xeNESfntaHEeI1jPAedk=
 github.com/rivo/uniseg v0.2.0/go.mod h1:J6wj4VEh+S6ZtnVlnTBMWIodfgj8LQOQFoIToxlJtxc=
 github.com/rivo/uniseg v0.4.4/go.mod h1:FN3SvrM+Zdj16jyLfmOkMNblXMcoc8DfTHruCPUcx88=
 github.com/rivo/uniseg v0.4.7 h1:WUdvkW8uEhrYfLC4ZzdpI2ztxP1I582+49Oc5Mq64VQ=
@@ -177,8 +179,8 @@ github.com/trzsz/ssh_config v1.3.8 h1:es62z3daBPSHkM+GxQRFQP5DuBM9P4b3qAA/kQNKdz
 github.com/trzsz/ssh_config v1.3.8/go.mod h1:uSVHpGOTpBwE1FwyUrtnanlFuxZKt4dvdKFVKe41h58=
 github.com/trzsz/trzsz-go v1.2.1-0.20260410165008-9be4a4a9e14b h1:+hiaucaU1H975S5+sPSxwxDmX6t90E4AnSQmyaXi4/k=
 github.com/trzsz/trzsz-go v1.2.1-0.20260410165008-9be4a4a9e14b/go.mod h1:J468+9Rz6TiEf4wX2WJ1XXWA9d41IJZhk1/aCHHcdfM=
-github.com/trzsz/tsshd v0.1.8 h1:yEsUiXLeUJQl7xq0UWOKYr+BAIoV6vfPYVfeA2FYCE0=
-github.com/trzsz/tsshd v0.1.8/go.mod h1:GFYmsjJ0SXaXGqmoBvVjnUAcCTVlKKgGSkR3QBQqDCM=
+github.com/trzsz/tsshd v0.1.9-0.20260523153943-fabbb77bea4c h1:bP5fzqnZj4YGHbdpFa0Mcp/snL6TYYBUshT4iw+KRrg=
+github.com/trzsz/tsshd v0.1.9-0.20260523153943-fabbb77bea4c/go.mod h1:ZHqoYfVm3WbB0CCz2KOvGRDabvGzmvu05j5FoSu1w0I=
 github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e h1:JVG44RsyaB9T2KIHavMF/ppJZNG9ZpyihvCd0w101no=
 github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e/go.mod h1:RbqR21r5mrJuqunuUZ/Dhy/avygyECGrLceyNeo4LiM=
 github.com/xtaci/kcp-go/v5 v5.6.72 h1:FLaQPalgpufJYQRk0OK+gErEhXGLUPjv6FSRPrFR8Lk=
@@ -195,8 +197,6 @@ golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9/go.mod h1:LzIPMQfyMNhhGPh
 golang.org/x/crypto v0.0.0-20201012173705-84dcc777aaee/go.mod h1:LzIPMQfyMNhhGPhUkYOs5KpL4U8rLKemX1yGLhDgUto=
 golang.org/x/crypto v0.0.0-20210921155107-089bfa567519/go.mod h1:GvvjBRRGRdwPK5ydBHafDWAxML/pGHZbMvKqRZ5+Abc=
 golang.org/x/crypto v0.6.0/go.mod h1:OFC/31mSvZgRz0V1QTNCzfAI1aIRzbiufJtkMIlEp58=
-golang.org/x/crypto v0.52.0 h1:RMs7fP2rXdep0CftQlK8Uf+kibLm7qkCcradZWYz988=
-golang.org/x/crypto v0.52.0/go.mod h1:1QgfPxDqh0T2M/elOJtp9RvuR95kVjir0e6/BvEmGbc=
 golang.org/x/crypto v0.52.1-0.20260522023950-e5306b2f3e96 h1:ci+gY5mNjQksCBEpN93LN71wHZjWu4VcEDLJWC+WsmY=
 golang.org/x/crypto v0.52.1-0.20260522023950-e5306b2f3e96/go.mod h1:1QgfPxDqh0T2M/elOJtp9RvuR95kVjir0e6/BvEmGbc=
 golang.org/x/exp v0.0.0-20190121172915-509febef88a4/go.mod h1:CJ0aWSM057203Lf6IL+f9T1iT9GByDxfZKAQTCR3kQA=

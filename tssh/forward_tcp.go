@@ -108,6 +108,9 @@ func listenOnLocalTCP(gateway bool, addr *string, port, name string, unlinkUnix 
 			mode := os.FileMode(0666) &^ os.FileMode(bindMask)
 			if err := os.Chmod(address, mode); err != nil {
 				warning("%s chmod unix socket [%s] to %#o failed: %v", name, address, mode, err)
+				_ = listener.Close()
+				_ = os.Remove(address)
+				return
 			}
 			listener = &cleanupListener{listener, newFileUnlinker(address, listener)}
 		}

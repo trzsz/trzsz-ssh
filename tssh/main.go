@@ -36,6 +36,7 @@ import (
 
 	"github.com/mattn/go-isatty"
 	"github.com/trzsz/go-arg"
+	"github.com/trzsz/tsshd/tsshd"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -432,7 +433,11 @@ func sshStart(args *sshArgs) (int, error) {
 	}
 
 	// run command or start shell
-	if sshConn.cmd != "" {
+	if sess, ok := sshConn.session.(*tsshd.SshUdpSession); ok && udpAttachSessionID > 0 {
+		if err := sess.Attach(udpAttachSessionID); err != nil {
+			return kExitCodeAttachFail, fmt.Errorf("attach session [%d] failed: %v", udpAttachSessionID, err)
+		}
+	} else if sshConn.cmd != "" {
 		if err := sshConn.session.Start(sshConn.cmd); err != nil {
 			return kExitCodeStartFailed, fmt.Errorf("start command [%s] failed: %v", sshConn.cmd, err)
 		}

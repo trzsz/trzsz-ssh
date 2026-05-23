@@ -89,7 +89,7 @@ func (m *menuModel) Init() tea.Cmd {
 
 func (m *menuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch s := msg.String(); s {
 		case "ctrl+c", "esc", "q":
 			m.quitting = true

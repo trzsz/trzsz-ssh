@@ -228,7 +228,26 @@ func udpLogin(param *sshParam, tcpClient SshClient) (SshClient, error) {
 
 	// start tsshd
 	connectTimeout := getConnectTimeout(args)
-	tsshdCmd := getTsshdCommand(param, mtu, connectTimeout)
+	sessionName := getExOptionConfig(args, "UdpSessionName")
+	tsshdPath := getTsshdPath(args)
+	var tsshdCmdBuf *strings.Builder
+	if args.Attach || strings.ToLower(getExOptionConfig(args, "UdpSessionAttach")) == "yes" {
+		var err error
+		tsshdCmdBuf, err = attachToSession(tcpClient, tsshdPath, sessionName)
+		if err != nil {
+			if _, ok := err.(*attachSelectError); ok {
+				return nil, fmt.Errorf("failed to select tsshd session to attach: %v", err)
+			}
+			warning("falling back to new session due to attach failed: %v", err)
+		}
+		if tsshdCmdBuf == nil {
+			tsshdCmdBuf = getTsshdCommand(param, tsshdPath, mtu, connectTimeout)
+			tsshdCmdBuf.WriteString(" --attachable --socket")
+		}
+	} else {
+		tsshdCmdBuf = getTsshdCommand(param, tsshdPath, mtu, connectTimeout)
+	}
+	tsshdCmd := tsshdCmdBuf.String()
 	debug("udp login to [%s] tsshd command: %s", args.Destination, tsshdCmd)
 
 	serverInfo, err := startTsshdServer(args, tcpClient, tsshdCmd)
@@ -264,6 +283,7 @@ func udpLogin(param *sshParam, tcpClient SshClient) (SshClient, error) {
 		IPv4:             param.ipv4,
 		IPv6:             param.ipv6,
 		TsshdAddr:        tsshdAddr,
+		SessionName:      sessionName,
 		ServerInfo:       serverInfo,
 		AliveTimeout:     globalUdpAliveTimeout,
 		IntervalTime:     intervalTime,
@@ -391,16 +411,20 @@ func startTsshdServer(args *sshArgs, tcpClient SshClient, tsshdCmd string) (*tss
 	return &info, nil
 }
 
-func getTsshdCommand(param *sshParam, mtu uint16, connectTimeout time.Duration) string {
+func getTsshdPath(args *sshArgs) string {
+	if args.TsshdPath != "" {
+		return args.TsshdPath
+	}
+	if tsshdPath := getExOptionConfig(args, "TsshdPath"); tsshdPath != "" {
+		return tsshdPath
+	}
+	return "tsshd"
+}
+
+func getTsshdCommand(param *sshParam, tsshdPath string, mtu uint16, connectTimeout time.Duration) *strings.Builder {
 	args := param.args
 	var buf strings.Builder
-	if args.TsshdPath != "" {
-		buf.WriteString(args.TsshdPath)
-	} else if tsshdPath := getExOptionConfig(args, "TsshdPath"); tsshdPath != "" {
-		buf.WriteString(tsshdPath)
-	} else {
-		buf.WriteString("tsshd")
-	}
+	buf.WriteString(tsshdPath)
 
 	if param.udpMode == kUdpModeKcp {
 		buf.WriteString(" --kcp")
@@ -454,7 +478,7 @@ func getTsshdCommand(param *sshParam, mtu uint16, connectTimeout time.Duration) 
 		fmt.Fprintf(&buf, "%d", connectTimeout/time.Second)
 	}
 
-	return buf.String()
+	return &buf
 }
 
 func parseTsshdPortRanges(tsshdPort string) [][2]uint16 {
@@ -585,7 +609,7 @@ func getUdpMode(args *sshArgs) udpModeType {
 		warning("unknown UdpMode %s", udpMode)
 	}
 
-	if args.UDP {
+	if args.UDP || args.Attach {
 		return kUdpModeYes
 	}
 	return kUdpModeNo

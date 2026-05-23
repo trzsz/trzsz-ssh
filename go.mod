@@ -29,7 +29,7 @@ require (
 	github.com/trzsz/shellescape v1.6.0
 	github.com/trzsz/ssh_config v1.3.8
 	github.com/trzsz/trzsz-go v1.2.1-0.20260410165008-9be4a4a9e14b
-	github.com/trzsz/tsshd v0.1.8
+	github.com/trzsz/tsshd v0.1.9-0.20260523153943-fabbb77bea4c
 	golang.org/x/crypto v0.52.1-0.20260522023950-e5306b2f3e96
 	golang.org/x/sys v0.45.0
 	golang.org/x/term v0.43.0
@@ -67,6 +67,7 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/randall77/makefat v0.0.0-20260406194835-1b91746796b7 // indirect
+	github.com/rcarmo/go-te v0.1.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/tjfoc/gmsm v1.4.1 // indirect
 	github.com/trzsz/smux v1.6.0 // indirect

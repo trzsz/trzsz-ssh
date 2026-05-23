@@ -383,6 +383,9 @@ func listenOnLocalUDP(gateway bool, addr *string, port, name string, unlinkUnix 
 			mode := os.FileMode(0666) &^ os.FileMode(bindMask)
 			if err := os.Chmod(address, mode); err != nil {
 				warning("%s chmod unix socket [%s] to %#o failed: %v", name, address, mode, err)
+				_ = conn.Close()
+				_ = os.Remove(address)
+				return
 			}
 			conn = &cleanupPacketConn{conn, newFileUnlinker(address, conn)}
 		}

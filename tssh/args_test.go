@@ -94,6 +94,7 @@ func TestSshArgs(t *testing.T) {
 
 	assertArgsEqual("--udp", sshArgs{UDP: true})
 	assertArgsEqual("--kcp", sshArgs{KCP: true})
+	assertArgsEqual("--attach", sshArgs{Attach: true})
 	assertArgsEqual("--tsshd-path /usr/bin/tsshd", sshArgs{TsshdPath: "/usr/bin/tsshd"})
 	assertArgsEqual("--tsshd-port 10000-11000", sshArgs{TsshdPort: "10000-11000"})
 

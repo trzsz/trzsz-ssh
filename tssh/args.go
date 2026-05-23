@@ -88,6 +88,7 @@ type sshArgs struct {
 	Dns            string      `arg:"--dns" placeholder:"[udp://|tcp://]host[:port]" help:"custom DNS server"`
 	UDP            bool        `arg:"--udp" help:"ssh over UDP like mosh (default: QUIC)"`
 	KCP            bool        `arg:"--kcp" help:"[udp] use KCP protocol for ssh over UDP"`
+	Attach         bool        `arg:"--attach" help:"[udp] attach to session (implies --udp)"`
 	TsshdPath      string      `arg:"--tsshd-path" placeholder:"path" help:"[udp] tsshd absolute path on the server"`
 	TsshdPort      string      `arg:"--tsshd-port" placeholder:"low-high" help:"[udp] port range that tsshd listens on"`
 	NewHost        bool        `arg:"--new-host" help:"[tools] add new host to configuration"`
