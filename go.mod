@@ -18,7 +18,7 @@ require (
 	github.com/mattn/go-runewidth v0.0.23
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/pquerna/otp v1.5.0
-	github.com/quic-go/quic-go v0.59.0
+	github.com/quic-go/quic-go v0.59.1
 	github.com/skeema/knownhosts v1.3.2
 	github.com/stretchr/testify v1.11.1
 	github.com/trzsz/go-arg v1.5.4
@@ -29,9 +29,9 @@ require (
 	github.com/trzsz/shellescape v1.6.0
 	github.com/trzsz/ssh_config v1.3.8
 	github.com/trzsz/trzsz-go v1.2.1-0.20260410165008-9be4a4a9e14b
-	github.com/trzsz/tsshd v0.1.7
-	golang.org/x/crypto v0.51.0
-	golang.org/x/sys v0.44.0
+	github.com/trzsz/tsshd v0.1.8
+	golang.org/x/crypto v0.52.1-0.20260522023950-e5306b2f3e96
+	golang.org/x/sys v0.45.0
 	golang.org/x/term v0.43.0
 )
 
@@ -42,7 +42,7 @@ require (
 	github.com/andybrewer/mack v0.0.0-20251024001139-afd410b36447 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/boombuler/barcode v1.1.0 // indirect
-	github.com/charmbracelet/ultraviolet v0.0.0-20260428153724-66037269d7be // indirect
+	github.com/charmbracelet/ultraviolet v0.0.0-20260511121909-c840852527f3 // indirect
 	github.com/charmbracelet/x/term v0.2.2 // indirect
 	github.com/charmbracelet/x/termios v0.1.1 // indirect
 	github.com/charmbracelet/x/windows v0.2.2 // indirect
@@ -57,7 +57,7 @@ require (
 	github.com/jcmturner/gofork v1.7.6 // indirect
 	github.com/jcmturner/goidentity/v6 v6.0.1 // indirect
 	github.com/jcmturner/rpc/v2 v2.0.3 // indirect
-	github.com/josephspurrier/goversioninfo v1.5.0 // indirect
+	github.com/josephspurrier/goversioninfo v1.7.0 // indirect
 	github.com/klauspost/compress v1.18.6 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/klauspost/reedsolomon v1.14.0 // indirect
@@ -72,8 +72,8 @@ require (
 	github.com/trzsz/smux v1.6.0 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/xtaci/kcp-go/v5 v5.6.72 // indirect
-	golang.org/x/image v0.40.0 // indirect
-	golang.org/x/net v0.54.0 // indirect
+	golang.org/x/image v0.41.0 // indirect
+	golang.org/x/net v0.55.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/text v0.37.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
