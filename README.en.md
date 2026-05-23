@@ -957,6 +957,8 @@ trzsz-ssh ( tssh ) with [tsshd](https://github.com/trzsz/tsshd) also supports in
 
 - The `tsshd` process listens on a random UDP port in the range 61001–61999 (configurable via `TsshdPort`), and sends the port number and session secret keys back to the `tssh` process through the SSH channel. The SSH connection is then closed, and `tssh` communicates with `tsshd` over UDP.
 
+![tsshd attach session](https://trzsz.github.io/images/tsshd_attach.gif)
+
 ### UDP Configurations
 
 ```
