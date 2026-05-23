@@ -62,6 +62,7 @@ type sshArgs struct {
 	Background     bool        `arg:"-f,--" help:"run as a background process, implies -n"`
 	Subsystem      bool        `arg:"-s,--" help:"request invocation of a subsystem"`
 	NoCommand      bool        `arg:"-N,--" help:"do not execute a remote command"`
+	NoStdin        bool        `arg:"-n,--" help:"prevents reading from stdin"`
 	Port           int         `arg:"-p,--" placeholder:"port" help:"port to connect to on the remote host"`
 	LoginName      string      `arg:"-l,--" placeholder:"login_name" help:"the user to log in as on the remote machine"`
 	Identity       multiStr    `arg:"-i,--" placeholder:"identity_file" help:"identity (private key) for public key auth"`
@@ -76,6 +77,7 @@ type sshArgs struct {
 	X11Forward     bool        `arg:"-X,--" help:"enables X11 forwarding"`
 	NoX11Forward   bool        `arg:"-x,--" help:"disables X11 forwarding"`
 	X11Trusted     bool        `arg:"-Y,--" help:"enables trusted X11 forwarding"`
+	ControlPath    string      `arg:"-S,--" placeholder:"ctl_path" help:"specify the control socket path"`
 	Reconnect      bool        `arg:"--reconnect" help:"reconnect or restart after process exits"`
 	DragFile       bool        `arg:"--dragfile" help:"enable drag files and directories to upload"`
 	TraceLog       bool        `arg:"--tracelog" help:"enable trzsz detect trace logs for debugging"`

@@ -367,6 +367,7 @@ func execProxyCommand(param *sshParam) (net.Conn, string, error) {
 	if err != nil {
 		return nil, command, err
 	}
+	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
 		return nil, command, err
 	}

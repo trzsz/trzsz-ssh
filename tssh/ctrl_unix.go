@@ -319,8 +319,10 @@ func startControlMaster(param *sshParam, sshPath string) error {
 
 func connectViaControl(param *sshParam) SshClient {
 	args := param.args
-	ctrlMaster := getOptionConfig(args, "ControlMaster")
-	ctrlPath := getOptionConfig(args, "ControlPath")
+	ctrlPath := args.ControlPath
+	if ctrlPath == "" {
+		ctrlPath = getOptionConfig(args, "ControlPath")
+	}
 
 	switch strings.ToLower(ctrlPath) {
 	case "", "none":
@@ -348,6 +350,7 @@ func connectViaControl(param *sshParam) SshClient {
 	}
 	socket = resolveHomeDir(socket)
 
+	ctrlMaster := getOptionConfig(args, "ControlMaster")
 	switch strings.ToLower(ctrlMaster) {
 	case "yes", "ask", "true":
 		if isFileExist(socket) {

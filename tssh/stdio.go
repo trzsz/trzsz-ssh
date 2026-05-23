@@ -58,6 +58,10 @@ func forwardInput(reader io.Reader, writer io.WriteCloser, win bool, escapeChar 
 		debug("ssh session stdin forward completed")
 	}()
 
+	if sshConn.param.args.NoStdin {
+		return
+	}
+
 	var enterPressedFlag bool
 	var enterPressedTime time.Time
 

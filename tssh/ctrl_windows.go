@@ -32,7 +32,10 @@ const kOpenSSH = "ssh.exe"
 
 func connectViaControl(param *sshParam) SshClient {
 	ctrlMaster := getOptionConfig(param.args, "ControlMaster")
-	ctrlPath := getOptionConfig(param.args, "ControlPath")
+	ctrlPath := param.args.ControlPath
+	if ctrlPath == "" {
+		ctrlPath = getOptionConfig(param.args, "ControlPath")
+	}
 
 	switch strings.ToLower(ctrlMaster) {
 	case "auto", "yes", "ask", "autoask", "true":
