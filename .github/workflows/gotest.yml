@@ -34,21 +34,6 @@ jobs:
           go-version: "1.25"
       - name: make test
         run: make test
-  go-release-snapshot:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout trzsz-ssh
-        uses: actions/checkout@v6
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: "1.25"
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          distribution: goreleaser
-          version: "~> v1"
-          args: release --clean --snapshot --skip=publish
   test-win7-patch:
     runs-on: ubuntu-latest
     steps:

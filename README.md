@@ -223,7 +223,7 @@ trzsz-ssh ( tssh ) offers additional useful features:
 
   </details>
 
-- Download from the [GitHub Releases](https://github.com/trzsz/trzsz-ssh/releases) and install locally
+- Download from the [GitHub Releases](https://github.com/trzsz/trzsz-ssh/releases) (or [Pre-Release](https://github.com/trzsz/trzsz-ssh/releases/tag/dev)) and install locally
 
   <details><summary><code>download and install locally</code></summary>
 
