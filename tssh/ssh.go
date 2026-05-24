@@ -301,6 +301,7 @@ func (c *sshConnection) waitUntilExit() int {
 		debug("force exit with code: %d", code)
 		return code
 	case code := <-done:
+		wantExit.Store(true)
 		c.waitWarn.Wait()
 		debug("session wait completed with code: %d", code)
 		return code
@@ -313,7 +314,7 @@ func (c *sshConnection) forceExit(code int, cause string) {
 	}
 
 	verb, detach := "Exited", false
-	if sess, ok := c.session.(*detachableSession); ok && sess.attachMode && !userTerminated.Load() {
+	if sess, ok := c.session.(*detachableSession); ok && sess.attachMode && !wantExit.Load() {
 		verb, detach = "Detached", true
 	}
 

@@ -37,7 +37,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-var userTerminated atomic.Bool
+var wantExit atomic.Bool
 
 type menuItem struct {
 	key    string
@@ -210,7 +210,7 @@ func runConsole(escapeChar byte, writer io.WriteCloser, sshConn *sshConnection) 
 		exiting.Store(true)
 		go func() {
 			<-quitted
-			userTerminated.Store(true)
+			wantExit.Store(true)
 			sshConn.forceExit(kExitCodeConsoleKill, fmt.Sprintf("user action in the console or entering the escape sequences ( %s. )", char))
 		}()
 		model.quitting = true

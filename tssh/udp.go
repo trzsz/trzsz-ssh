@@ -88,7 +88,7 @@ type detachableWriter struct {
 }
 
 func (w *detachableWriter) Close() error {
-	if w.attachMode && !userTerminated.Load() {
+	if w.attachMode && !wantExit.Load() {
 		return nil
 	}
 	return w.WriteCloser.Close()
@@ -108,7 +108,7 @@ func (s *detachableSession) StdinPipe() (io.WriteCloser, error) {
 }
 
 func (s *detachableSession) Close() error {
-	if s.attachMode && !userTerminated.Load() {
+	if s.attachMode && !wantExit.Load() {
 		return nil
 	}
 	return s.SshUdpSession.Close()
@@ -127,7 +127,7 @@ func (c *sshUdpClient) DialTimeout(network, addr string, timeout time.Duration) 
 }
 
 func (c *sshUdpClient) Close() (err error) {
-	if !c.attachMode || userTerminated.Load() {
+	if !c.attachMode || wantExit.Load() {
 		err = c.SshUdpClient.Close()
 	}
 	if c.waitCloseChan != nil {
