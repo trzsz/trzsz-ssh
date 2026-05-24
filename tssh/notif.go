@@ -100,7 +100,7 @@ func interactWithUserInput(client *sshUdpClient) {
 			case '\x01': // ctrl + a
 				client.notifInterceptor.showFullNotif.Store(!client.notifInterceptor.showFullNotif.Load())
 			case '\x03': // ctrl + c
-				client.exit(kExitCodeUdpCtrlC, "Exit due to connection was lost and Ctrl+C was pressed")
+				client.exit(kExitCodeUdpCtrlC, "lost connection and Ctrl+C keystroke")
 				return
 			}
 		case <-time.After(200 * time.Millisecond):
@@ -314,7 +314,7 @@ func (ni *notifInterceptor) handleUserInput(input []byte) {
 		var paneId string
 		buf, ni.tmuxLeftBuf, paneId, detach = handleAndDecodeTmuxInput(buf)
 		if detach {
-			ni.client.sshConn.Load().forceExit(kExitCodeTmuxDetach, "Exit due to connection was lost and detach from tmux integration")
+			ni.client.sshConn.Load().forceExit(kExitCodeTmuxDetach, "lost connection and detachment from tmux integration")
 			return
 		}
 		if paneId == "" {

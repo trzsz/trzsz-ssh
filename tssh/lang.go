@@ -46,6 +46,7 @@ var english = map[string]string{
 	"console/send_char": "Send the escape character '{0}' ( {0} : Enter '{0}' )",
 	"console/suspend":   "Suspend the current SSH process ( ^Z : Ctrl + Z )",
 	"console/terminate": "Terminate the current SSH session ( . : Exit / Kill )",
+	"console/detach":    "Detach the current SSH session ( d : Detach )",
 	"console/notes":     "↑/↓/j/k Move • Enter Select • q Quit",
 }
 
@@ -65,6 +66,7 @@ var chinese = map[string]string{
 	"console/send_char": "发送转义字符 '{0}' ( {0} : 输入 '{0}' )",
 	"console/suspend":   "暂停当前 SSH 进程 ( ^Z : Ctrl + Z )",
 	"console/terminate": "退出当前 SSH 会话 ( . : Exit / Kill )",
+	"console/detach":    "分离当前 SSH 会话 ( d : Detach )",
 	"console/notes":     "↑/↓/j/k 移动 • Enter 选择 • q 退出",
 }
 

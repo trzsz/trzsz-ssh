@@ -78,19 +78,58 @@ type sshUdpClient struct {
 	notifInterceptor *notifInterceptor
 	notifModel       atomic.Pointer[notifModel]
 	sshDestName      string
+	attachMode       bool
 	sshConn          atomic.Pointer[sshConnection]
 }
 
+type detachableWriter struct {
+	io.WriteCloser
+	attachMode bool
+}
+
+func (w *detachableWriter) Close() error {
+	if w.attachMode && !userTerminated.Load() {
+		return nil
+	}
+	return w.WriteCloser.Close()
+}
+
+type detachableSession struct {
+	*tsshd.SshUdpSession
+	attachMode bool
+}
+
+func (s *detachableSession) StdinPipe() (io.WriteCloser, error) {
+	writer, err := s.SshUdpSession.StdinPipe()
+	if err != nil {
+		return nil, err
+	}
+	return &detachableWriter{writer, s.attachMode}, nil
+}
+
+func (s *detachableSession) Close() error {
+	if s.attachMode && !userTerminated.Load() {
+		return nil
+	}
+	return s.SshUdpSession.Close()
+}
+
 func (c *sshUdpClient) NewSession() (SshSession, error) {
-	return c.SshUdpClient.NewSession()
+	session, err := c.SshUdpClient.NewSession()
+	if err != nil {
+		return nil, err
+	}
+	return &detachableSession{session, c.attachMode}, nil
 }
 
 func (c *sshUdpClient) DialTimeout(network, addr string, timeout time.Duration) (net.Conn, error) {
 	return c.SshUdpClient.DialTimeout(network, addr, timeout)
 }
 
-func (c *sshUdpClient) Close() error {
-	err := c.SshUdpClient.Close()
+func (c *sshUdpClient) Close() (err error) {
+	if !c.attachMode || userTerminated.Load() {
+		err = c.SshUdpClient.Close()
+	}
 	if c.waitCloseChan != nil {
 		select {
 		case c.waitCloseChan <- struct{}{}:
@@ -131,7 +170,7 @@ func (c *sshUdpClient) udpKeepAlive() {
 	for !c.IsClosed() {
 		if c.sshConn.Load() != nil && time.Since(time.UnixMilli(c.GetLastActiveTime())) > c.aliveTimeout {
 			c.debug("alive timeout for %v", c.aliveTimeout)
-			c.exit(kExitCodeUdpTimeout, fmt.Sprintf("Exit due to connection was lost and timeout for %v", c.aliveTimeout))
+			c.exit(kExitCodeUdpTimeout, fmt.Sprintf("lost connection and timeout after %v", c.aliveTimeout))
 			return
 		}
 
@@ -180,7 +219,7 @@ func quitCallback(name, reason string) {
 	for lastJumpUdpClient == nil || lastJumpUdpClient.sshConn.Load() == nil {
 		time.Sleep(10 * time.Millisecond) // waiting for sshConn to be initialized
 	}
-	lastJumpUdpClient.sshConn.Load().forceExit(kExitCodeSignalKill, fmt.Sprintf("Exit due to [%s] %s", name, reason))
+	lastJumpUdpClient.sshConn.Load().forceExit(kExitCodeSignalKill, fmt.Sprintf("[%s] %s", name, reason))
 }
 
 func initGlobalUdpAliveTimeout(args *sshArgs) {
@@ -227,9 +266,10 @@ func udpLogin(param *sshParam, tcpClient SshClient) (SshClient, error) {
 	}
 
 	// start tsshd
+	attachMode := false
+	tsshdPath := getTsshdPath(args)
 	connectTimeout := getConnectTimeout(args)
 	sessionName := getExOptionConfig(args, "UdpSessionName")
-	tsshdPath := getTsshdPath(args)
 	var tsshdCmdBuf *strings.Builder
 	if args.Attach || strings.ToLower(getExOptionConfig(args, "UdpSessionAttach")) == "yes" {
 		var err error
@@ -244,6 +284,7 @@ func udpLogin(param *sshParam, tcpClient SshClient) (SshClient, error) {
 			tsshdCmdBuf = getTsshdCommand(param, tsshdPath, mtu, connectTimeout)
 			tsshdCmdBuf.WriteString(" --attachable --socket")
 		}
+		attachMode = true
 	} else {
 		tsshdCmdBuf = getTsshdCommand(param, tsshdPath, mtu, connectTimeout)
 	}
@@ -275,6 +316,7 @@ func udpLogin(param *sshParam, tcpClient SshClient) (SshClient, error) {
 		connectTimeout:   connectTimeout,
 		reconnectTimeout: reconnectTimeout,
 		sshDestName:      args.Destination,
+		attachMode:       attachMode,
 	}
 	tsshdAddr := joinHostPort(param.host, strconv.Itoa(serverInfo.Port))
 	clientOpts := &tsshd.UdpClientOptions{

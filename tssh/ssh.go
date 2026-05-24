@@ -307,9 +307,14 @@ func (c *sshConnection) waitUntilExit() int {
 	}
 }
 
-func (c *sshConnection) forceExit(code int, msg string) {
+func (c *sshConnection) forceExit(code int, cause string) {
 	if !c.exited.CompareAndSwap(false, true) {
 		return
+	}
+
+	verb, detach := "Exited", false
+	if sess, ok := c.session.(*detachableSession); ok && sess.attachMode && !userTerminated.Load() {
+		verb, detach = "Detached", true
 	}
 
 	if enableWarningLogging {
@@ -320,20 +325,22 @@ func (c *sshConnection) forceExit(code int, msg string) {
 			}
 			_, _ = os.Stderr.Write([]byte("\n\r")) // make the top message still visible after exiting
 		}
-		warning("%s", msg)
+		warning("%s due to %s", verb, cause)
 		c.waitWarn.Done()
 	}
 
 	go func() {
-		// Add extra wait time to allow all incoming data to be received for UDP mode.
-		// See tsshd.SshUdpClient.Close and tsshd.SshUdpSession.Close for more details.
-		udpClientCount := 0
-		client := lastJumpUdpClient
-		for client != nil {
-			udpClientCount++
-			client = client.proxyClient
+		if !detach {
+			// Add extra wait time to allow all incoming data to be received for UDP mode.
+			// See tsshd.SshUdpClient.Close and tsshd.SshUdpSession.Close for more details.
+			udpClientCount := 0
+			client := lastJumpUdpClient
+			for client != nil {
+				udpClientCount++
+				client = client.proxyClient
+			}
+			time.Sleep(time.Duration(200+1000*udpClientCount) * time.Millisecond)
 		}
-		time.Sleep(time.Duration(200+1000*udpClientCount) * time.Millisecond)
 		if enableDebugLogging && debugCleanuped.Load() {
 			debugCleanupWG.Wait()
 			// the process is expected to exit before sleep returns
@@ -344,7 +351,9 @@ func (c *sshConnection) forceExit(code int, msg string) {
 		c.exitChan <- code
 
 		go func() {
-			time.Sleep(300 * time.Millisecond)
+			if !detach {
+				time.Sleep(300 * time.Millisecond)
+			}
 			if enableDebugLogging && debugCleanuped.Load() {
 				debugCleanupWG.Wait()
 				// the process is expected to exit before sleep returns
