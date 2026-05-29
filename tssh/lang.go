@@ -88,7 +88,7 @@ func chooseLanguage() {
 	case "":
 		break
 	default:
-		warning("Language [%s] is not support yet, English will be used by default.", userConfig.language)
+		warning("Language [%s] is not supported yet, English will be used by default.", userConfig.language)
 	}
 
 	language := promptList("Please choose your preferred language", "", []string{"English", "简体中文"})

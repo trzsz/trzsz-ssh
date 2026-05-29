@@ -141,18 +141,22 @@ func getRemoteServerOS(client SshClient) (string, error) {
 		return "", err
 	}
 	defer func() { _ = session.Close() }()
+
 	output, err := session.Output("uname -s")
 	if err != nil {
 		return "", err
 	}
+
 	name := strings.TrimSpace(string(output))
 	switch strings.ToLower(name) {
+	case "freebsd":
+		return "freebsd", nil
 	case "darwin":
 		return "macos", nil
 	case "linux":
 		return "linux", nil
 	default:
-		return "", fmt.Errorf("os [%s] is not support yet", name)
+		return "", fmt.Errorf("os [%s] is not supported yet", name)
 	}
 }
 
@@ -162,15 +166,17 @@ func getRemoteServerArch(client SshClient) (string, error) {
 		return "", err
 	}
 	defer func() { _ = session.Close() }()
+
 	output, err := session.Output("uname -m")
 	if err != nil {
 		return "", err
 	}
+
 	arch := strings.TrimSpace(string(output))
 	switch strings.ToLower(arch) {
-	case "x86_64":
+	case "x86_64", "amd64":
 		return "x86_64", nil
-	case "aarch64":
+	case "aarch64", "arm64":
 		return "aarch64", nil
 	case "armv6l":
 		return "armv6", nil
@@ -178,8 +184,12 @@ func getRemoteServerArch(client SshClient) (string, error) {
 		return "armv7", nil
 	case "i386", "i486", "i586", "i686":
 		return "i386", nil
+	case "loongarch64", "loong64":
+		return "loong64", nil
+	case "mipsle":
+		return "mipsle", nil
 	default:
-		return "", fmt.Errorf("arch [%s] is not support yet", arch)
+		return "", fmt.Errorf("arch [%s] is not supported yet", arch)
 	}
 }
 
