@@ -228,7 +228,7 @@ func remoteForwardSocket(client SshClient, clientSocket, serverSocket string) er
 				_ = remote.Close()
 				continue
 			}
-			go tcpForward(local, remote)
+			go tcpForward(client, local, remote)
 		}
 	}()
 	return nil

@@ -25,6 +25,7 @@ SOFTWARE.
 package tssh
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -36,6 +37,7 @@ import (
 
 	"github.com/mattn/go-isatty"
 	"github.com/trzsz/go-arg"
+	"github.com/trzsz/tsshd/tsshd"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -434,6 +436,13 @@ func sshStart(args *sshArgs) (int, error) {
 	// run command or start shell
 	if sess, ok := sshConn.session.(*detachableSession); ok && udpAttachSessionID > 0 {
 		if err := sess.Attach(udpAttachSessionID); err != nil {
+			wantExit.Store(true)
+			if sshConn.tty {
+				var te *tsshd.Error
+				if errors.As(err, &te) && te.Code == tsshd.ErrNotPty {
+					wantExit.Store(false)
+				}
+			}
 			return kExitCodeAttachFail, fmt.Errorf("attach session [%d] failed: %v", udpAttachSessionID, err)
 		}
 	} else if sshConn.cmd != "" {

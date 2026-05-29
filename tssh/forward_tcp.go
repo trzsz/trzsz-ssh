@@ -286,7 +286,7 @@ func localForwardTCP(sshConn *sshConnection, f *forwardCfg, gateway bool, timeou
 					_ = local.Close()
 					continue
 				}
-				go tcpForward(local, remote)
+				go tcpForward(sshConn.client, local, remote)
 			}
 		}(listener)
 	}
@@ -321,13 +321,13 @@ func remoteForwardTCP(sshConn *sshConnection, f *forwardCfg, gateway bool, timeo
 					_ = remote.Close()
 					continue
 				}
-				go tcpForward(local, remote)
+				go tcpForward(sshConn.client, local, remote)
 			}
 		}(listener)
 	}
 }
 
-func tcpForward(local, remote net.Conn) {
+func tcpForward(client SshClient, local, remote net.Conn) {
 	var wg sync.WaitGroup
 
 	wg.Go(func() {
@@ -355,6 +355,26 @@ func tcpForward(local, remote net.Conn) {
 	})
 
 	wg.Wait()
+
+	if udpClient, ok := client.(*sshUdpClient); ok {
+		// Usually, the data transfer is complete, and a CloseWrite/EOF may have been sent.
+		// If we call Close immediately, the underlying QUIC/KCP layer might discard
+		// in-flight data that hasn't been received by the server yet.
+		// We delay the final closure to provide a grace period for the transport layer
+		// to complete data delivery, especially during connection roaming or high latency.
+		for range 60 {
+			if udpClient.IsConnectionLost() {
+				// Wait for potential reconnection to ensure the last packets can be delivered.
+				_ = udpClient.WaitUntilReconnected()
+			}
+			if udpClient.IsClosed() {
+				// If the client is already closed, stop waiting and proceed to clean up.
+				break
+			}
+			time.Sleep(time.Second)
+		}
+	}
+
 	_ = local.Close()
 	_ = remote.Close()
 }
