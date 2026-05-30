@@ -275,10 +275,13 @@ func (m *notifModel) getView(redrawing bool) string {
 			buf.WriteString(m.errorStyle.Render("Last reconnect error: " + err.Error()))
 		}
 		if m.client.notifInterceptor.exitKey != 0 {
-			buf.WriteByte('\n')
+			verb := "exit"
+			if m.client.attachMode {
+				verb = "detach"
+			}
 			buf.WriteString(m.tipsStyle.Render(fmt.Sprintf(
-				"No longer need to reconnect to the server? Press %s to exit.",
-				udpReconnectExitKeyName(m.client.notifInterceptor.exitKey))))
+				"\nNo longer need to reconnect to the server? Press %s to %s.",
+				udpReconnectExitKeyName(m.client.notifInterceptor.exitKey), verb)))
 		}
 	}
 
@@ -498,7 +501,7 @@ func (c *outputCache) flushOutput(writer io.Writer) error {
 const defaultUdpReconnectExitKey byte = '\x04' // Ctrl+D
 
 // parseUdpReconnectExitKey parses the UdpReconnectExitKey ex-option.
-// It accepts "none", "ctrl+<letter>", and "^<letter>"; invalid values fall back to Ctrl+D.
+// It accepts "none", "ctrl+<letter>", and "^<letter>"; invalid values fall back to defaultUdpReconnectExitKey.
 func parseUdpReconnectExitKey(value string) byte {
 	v := strings.TrimSpace(value)
 	if v == "" {
@@ -516,7 +519,7 @@ func parseUdpReconnectExitKey(value string) byte {
 		return parseUdpReconnectControlKey(value, v[1])
 	}
 
-	warning("UdpReconnectExitKey: invalid value %q, fallback to Ctrl+D", value)
+	warning("UdpReconnectExitKey: invalid value %q, fallback to %s", value, udpReconnectExitKeyName(defaultUdpReconnectExitKey))
 	return defaultUdpReconnectExitKey
 }
 
@@ -525,12 +528,12 @@ func parseUdpReconnectControlKey(value string, b byte) byte {
 		b += 'a' - 'A'
 	}
 	if b < 'a' || b > 'z' {
-		warning("UdpReconnectExitKey: %s is not a valid control key, fallback to Ctrl+D", value)
+		warning("UdpReconnectExitKey: %s is not a valid control key, fallback to %s", value, udpReconnectExitKeyName(defaultUdpReconnectExitKey))
 		return defaultUdpReconnectExitKey
 	}
 	key := byte(b-'a') + 1
 	if key == '\x01' {
-		warning("UdpReconnectExitKey: Ctrl+A is reserved, fallback to Ctrl+D")
+		warning("UdpReconnectExitKey: Ctrl+A is reserved, fallback to %s", udpReconnectExitKeyName(defaultUdpReconnectExitKey))
 		return defaultUdpReconnectExitKey
 	}
 	return key

@@ -61,6 +61,11 @@ func TestParseUdpReconnectExitKey(t *testing.T) {
 		{"  Ctrl+X  ", 0x18},
 		{"  ^X  ", 0x18},
 	}
+
+	enableWarning := enableWarningLogging
+	enableWarningLogging = false
+	defer func() { enableWarningLogging = enableWarning }()
+
 	for _, tt := range tests {
 		if gotKey := parseUdpReconnectExitKey(tt.input); gotKey != tt.wantKey {
 			t.Errorf("parseUdpReconnectExitKey(%q) = 0x%02x, want 0x%02x", tt.input, gotKey, tt.wantKey)
