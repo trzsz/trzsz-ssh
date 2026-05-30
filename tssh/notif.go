@@ -385,6 +385,13 @@ func (ni *notifInterceptor) forwardInput(reader io.Reader, writer io.WriteCloser
 				copy(buf, buffer[:n])
 			}
 			if ni.filterESC6n.Load() {
+				// Cursor position reports are not considered real user input. Ignore them and keep filtering.
+				if n > 5 && buf[0] == '\x1b' && buf[1] == '[' && buf[n-1] == 'R' { // cursor pos
+					if enableDebugLogging {
+						debug("ignored cursor position report: %q", string(buf))
+					}
+					continue
+				}
 				// stop filtering ESC[6n once the user provides real input and starts interacting with the remote program again.
 				ni.filterESC6n.Store(false)
 			}
