@@ -42,7 +42,7 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-const kDefaultUdpAliveTimeout = 24 * time.Hour
+const kDefaultUdpAliveTimeout = 10 * 24 * time.Hour
 
 const kDefaultUdpHeartbeatTimeout = 3 * time.Second
 
@@ -170,7 +170,7 @@ func (c *sshUdpClient) udpKeepAlive() {
 	for !c.IsClosed() {
 		if c.sshConn.Load() != nil && time.Since(time.UnixMilli(c.GetLastActiveTime())) > c.aliveTimeout {
 			c.debug("alive timeout for %v", c.aliveTimeout)
-			c.exit(kExitCodeUdpTimeout, fmt.Sprintf("lost connection and timeout after %v", c.aliveTimeout))
+			c.exit(kExitCodeUdpTimeout, fmt.Sprintf("lost connection and timeout after %s", formatSshTime(uint32(c.aliveTimeout/time.Second))))
 			return
 		}
 
@@ -183,8 +183,9 @@ func (c *sshUdpClient) udpKeepAlive() {
 }
 
 func (c *sshUdpClient) getConnLostStatus() string {
-	return fmt.Sprintf("Oops, looks like the connection to the server was lost, trying to reconnect for %d/%d seconds.",
-		time.Since(time.UnixMilli(c.GetLastActiveTime()))/time.Second, c.aliveTimeout/time.Second)
+	return fmt.Sprintf("Oops, looks like the connection to the server was lost, trying to reconnect for %s/%s.",
+		formatSshTime(uint32(time.Since(time.UnixMilli(c.GetLastActiveTime()))/time.Second)),
+		formatSshTime(uint32(c.aliveTimeout/time.Second)))
 }
 
 func (c *sshUdpClient) notifyConnectionLost() {

@@ -964,9 +964,10 @@ Host xxx
     #!! UdpMode yes
     #!! TsshdPort 61001-61999
     #!! TsshdPath ~/go/bin/tsshd
-    #!! UdpAliveTimeout 86400
+    #!! UdpAliveTimeout 1w3d
     #!! UdpHeartbeatTimeout 3
     #!! UdpReconnectTimeout 15
+    #!! UdpReconnectExitKey ^d
     #!! ShowNotificationOnTop yes
     #!! ShowFullNotifications yes
     #!! UdpProxyMode UDP
@@ -981,11 +982,13 @@ Host xxx
 
 - `TsshdPath`: 指定服务器上 tsshd 二进制程序的路径，如果未配置，则在 $PATH 中查找。也可在命令行中使用 `--tsshd-path` 指定路径。
 
-- `UdpAliveTimeout`: 如果断开连接的时间超过 `UdpAliveTimeout` 秒，tssh 和 tsshd 都会退出，不再支持重连。默认值为 86400 秒。
+- `UdpAliveTimeout`: 如果断开连接的时间超过 `UdpAliveTimeout` 设置的时间，tssh 和 tsshd 都会退出，不再支持重连。支持的单位：`w` 周， `d` 天，`h` 时，`m` 分，`s` 秒。默认值为 `1w3d` (10天)。
 
-- `UdpHeartbeatTimeout`: 如果断开连接的时间超过 `UdpHeartbeatTimeout` 秒，tssh 将会尝试换条路重新连到服务器。默认值为 3 秒。
+- `UdpHeartbeatTimeout`: 如果断开连接的时间超过 `UdpHeartbeatTimeout` 设置的时间，tssh 将会尝试换条路重新连到服务器。默认值为 3 秒。
 
-- `UdpReconnectTimeout`: 如果断开连接的时间超过 `UdpReconnectTimeout` 秒，tssh 将会显示失去连接的通知公告。默认值为 15 秒。
+- `UdpReconnectTimeout`: 如果断开连接的时间超过 `UdpReconnectTimeout` 设置的时间，tssh 将会显示失去连接的通知公告。默认值为 15 秒。
+
+- `UdpReconnectExitKey`: 指定在断开连接并尝试重连时，用于退出（或脱离）等待状态的快捷键。支持的值包括 `none`、`ctrl+<字母>` 和 `^<字母>`。默认值为 `^d`（即 Ctrl+D）。
 
 - `ShowNotificationOnTop`: 是否在屏幕顶部显示失去连接的通知。默认为 yes，这可能会覆盖之前的一些输出。设置为 `no` 在光标当前行显示通知。
 

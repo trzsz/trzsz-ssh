@@ -70,3 +70,61 @@ func TestConvertSshTime(t *testing.T) {
 	assertTimeError("9999999999h", "overflow")
 	assertTimeError("4294967296s", "overflow")
 }
+
+func TestFormatSshTime(t *testing.T) {
+	tests := []struct {
+		name     string
+		seconds  uint32
+		expected string
+	}{
+		{
+			name:     "Zero seconds",
+			seconds:  0,
+			expected: "0s",
+		},
+		{
+			name:     "Only seconds",
+			seconds:  45,
+			expected: "45s",
+		},
+		{
+			name:     "Only minutes",
+			seconds:  120, // 2m
+			expected: "2m",
+		},
+		{
+			name:     "Weeks and seconds (skip days, hours, mins)",
+			seconds:  7*24*60*60 + 2, // 1w + 2s
+			expected: "1w2s",
+		},
+		{
+			name:     "Days and minutes (skip hours and seconds)",
+			seconds:  24*60*60 + 120, // 1d + 2m
+			expected: "1d2m",
+		},
+		{
+			name:     "All units combined",
+			seconds:  7*24*60*60 + 2*24*60*60 + 3*60*60 + 4*60 + 5, // 1w 2d 3h 4m 5s
+			expected: "1w2d3h4m5s",
+		},
+		{
+			name:     "More than one week with overflow-like logic",
+			seconds:  10 * 24 * 60 * 60, // 10 days = 1w 3d
+			expected: "1w3d",
+		},
+		{
+			name:     "Weeks, hours, and seconds (skip days and mins)",
+			seconds:  2*7*24*60*60 + 5*60*60 + 30,
+			expected: "2w5h30s",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := formatSshTime(tt.seconds)
+			if result != tt.expected {
+				t.Errorf("formatSshTime(%d) = %q; want %q", tt.seconds, result, tt.expected)
+			}
+		})
+	}
+}

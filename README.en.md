@@ -966,9 +966,10 @@ Host xxx
     #!! UdpMode yes
     #!! TsshdPort 61001-61999
     #!! TsshdPath ~/go/bin/tsshd
-    #!! UdpAliveTimeout 86400
+    #!! UdpAliveTimeout 1w3d
     #!! UdpHeartbeatTimeout 3
     #!! UdpReconnectTimeout 15
+    #!! UdpReconnectExitKey ^d
     #!! ShowNotificationOnTop yes
     #!! ShowFullNotifications yes
     #!! UdpProxyMode UDP
@@ -983,11 +984,13 @@ Host xxx
 
 - `TsshdPath`: Specifies the path to the tsshd binary on the server, lookup in $PATH if not configured. You can also specify the path on the command line using `--tsshd-path`.
 
-- `UdpAliveTimeout`: If the disconnection lasts longer than `UdpAliveTimeout` in seconds, tssh and tsshd will both exit, and no longer support reconnection. The default is 86400 seconds.
+- `UdpAliveTimeout`: If the disconnection lasts longer than the time specified by `UdpAliveTimeout`, tssh and tsshd will both exit, and no longer support reconnection. Supported units: `w` for weeks, `d` for days, `h` for hours, `m` for minutes, `s` for seconds. The default is `1w3d` (10 days).
 
-- `UdpHeartbeatTimeout`: If the disconnection lasts longer than `UdpHeartbeatTimeout` in seconds, tssh will try to reconnect to the server by a new path. The default is 3 seconds.
+- `UdpHeartbeatTimeout`: If the disconnection lasts longer than the time specified by `UdpHeartbeatTimeout`, tssh will try to reconnect to the server by a new path. The default is 3 seconds.
 
-- `UdpReconnectTimeout`: If the disconnection lasts longer than `UdpReconnectTimeout` in seconds, tssh will display a notification indicating that the connection has been lost. The default is 15 seconds.
+- `UdpReconnectTimeout`: If the disconnection lasts longer than the time specified by `UdpReconnectTimeout`, tssh will display a notification indicating that the connection has been lost. The default is 15 seconds.
+
+- `UdpReconnectExitKey`: Specifies the shortcut key to exit (or detach) while waiting for reconnection. It accepts `none`, `ctrl+<letter>`, and `^<letter>`. The default is `^d` (Ctrl+D).
 
 - `ShowNotificationOnTop`: Whether the connection loss notification is displayed on the top. The default is yes, which may overwrite some of the previous output. Set it to `no` to display notifications on the current line of the cursor.
 

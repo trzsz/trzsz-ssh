@@ -535,6 +535,38 @@ func convertSshTime(str string) (uint32, error) {
 	return total, nil
 }
 
+func formatSshTime(seconds uint32) string {
+	if seconds == 0 {
+		return "0s"
+	}
+
+	units := []struct {
+		suffix byte
+		value  uint32
+	}{
+		{'w', 7 * 24 * 60 * 60},
+		{'d', 24 * 60 * 60},
+		{'h', 60 * 60},
+		{'m', 60},
+		{'s', 1},
+	}
+
+	// Estimate the maximum length (e.g., "1w2d3h4m5s" is only about 10 characters).
+	// Appending directly to a byte slice is faster than using strings.Builder or fmt.Sprintf.
+	var buf []byte
+
+	for _, u := range units {
+		if seconds >= u.value {
+			val := seconds / u.value
+			seconds %= u.value
+			buf = strconv.AppendUint(buf, uint64(val), 10)
+			buf = append(buf, u.suffix)
+		}
+	}
+
+	return string(buf)
+}
+
 // getOpenSSH returns a usable OpenSSH binary path and its (major, minor) version.
 func getOpenSSH() (string, int, int, error) {
 	re := regexp.MustCompile(`OpenSSH.*?_(\d+)\.(\d+)`)
