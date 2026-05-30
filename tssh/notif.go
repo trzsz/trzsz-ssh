@@ -96,11 +96,12 @@ func interactWithUserInput(client *sshUdpClient) {
 			if !ok {
 				return
 			}
-			switch ch {
-			case '\x01': // ctrl + a
+			switch {
+			case ch == '\x01': // Ctrl+A toggles full notifications.
 				client.notifInterceptor.showFullNotif.Store(!client.notifInterceptor.showFullNotif.Load())
-			case '\x03': // ctrl + c
-				client.exit(kExitCodeUdpCtrlC, "lost connection and Ctrl+C keystroke")
+			case client.notifInterceptor.exitKey != 0 && ch == client.notifInterceptor.exitKey:
+				client.exit(kExitCodeUdpCtrlC, fmt.Sprintf("lost connection and %s keystroke",
+					udpReconnectExitKeyName(client.notifInterceptor.exitKey)))
 				return
 			}
 		case <-time.After(200 * time.Millisecond):
@@ -273,8 +274,15 @@ func (m *notifModel) getView(redrawing bool) string {
 			buf.WriteByte('\n')
 			buf.WriteString(m.errorStyle.Render("Last reconnect error: " + err.Error()))
 		}
-		buf.WriteByte('\n')
-		buf.WriteString(m.tipsStyle.Render("No longer need to reconnect to the server? Press Ctrl+C to exit."))
+		if m.client.notifInterceptor.exitKey != 0 {
+			verb := "exit"
+			if m.client.attachMode {
+				verb = "detach"
+			}
+			buf.WriteString(m.tipsStyle.Render(fmt.Sprintf(
+				"\nNo longer need to reconnect to the server? Press %s to %s.",
+				udpReconnectExitKeyName(m.client.notifInterceptor.exitKey), verb)))
+		}
 	}
 
 	return lipgloss.PlaceHorizontal(m.getWidth(), lipgloss.Center, m.borderStyle.Render(buf.String()))
@@ -298,6 +306,7 @@ type notifInterceptor struct {
 	tmuxPaneId    atomic.Pointer[string]
 	tmuxLeftBuf   []byte
 	filterESC6n   atomic.Bool
+	exitKey       byte // Exit key during UDP reconnect; 0 means disabled.
 }
 
 func (ni *notifInterceptor) handleUserInput(input []byte) {
@@ -489,6 +498,54 @@ func (c *outputCache) flushOutput(writer io.Writer) error {
 	return nil
 }
 
+const defaultUdpReconnectExitKey byte = '\x04' // Ctrl+D
+
+// parseUdpReconnectExitKey parses the UdpReconnectExitKey ex-option.
+// It accepts "none", "ctrl+<letter>", and "^<letter>"; invalid values fall back to defaultUdpReconnectExitKey.
+func parseUdpReconnectExitKey(value string) byte {
+	v := strings.TrimSpace(value)
+	if v == "" {
+		return defaultUdpReconnectExitKey
+	}
+	lower := strings.ToLower(v)
+	if lower == "none" {
+		return 0
+	}
+
+	if strings.HasPrefix(lower, "ctrl+") && len(lower) == len("ctrl+")+1 {
+		return parseUdpReconnectControlKey(value, lower[len("ctrl+")])
+	}
+	if len(v) == 2 && v[0] == '^' {
+		return parseUdpReconnectControlKey(value, v[1])
+	}
+
+	warning("UdpReconnectExitKey: invalid value %q, fallback to %s", value, udpReconnectExitKeyName(defaultUdpReconnectExitKey))
+	return defaultUdpReconnectExitKey
+}
+
+func parseUdpReconnectControlKey(value string, b byte) byte {
+	if b >= 'A' && b <= 'Z' {
+		b += 'a' - 'A'
+	}
+	if b < 'a' || b > 'z' {
+		warning("UdpReconnectExitKey: %s is not a valid control key, fallback to %s", value, udpReconnectExitKeyName(defaultUdpReconnectExitKey))
+		return defaultUdpReconnectExitKey
+	}
+	key := byte(b-'a') + 1
+	if key == '\x01' {
+		warning("UdpReconnectExitKey: Ctrl+A is reserved, fallback to %s", udpReconnectExitKeyName(defaultUdpReconnectExitKey))
+		return defaultUdpReconnectExitKey
+	}
+	return key
+}
+
+func udpReconnectExitKeyName(key byte) string {
+	if key >= 0x01 && key <= 0x1a {
+		return fmt.Sprintf("Ctrl+%c", 'A'+key-1)
+	}
+	return string(key)
+}
+
 func setupUdpNotification(sshConn *sshConnection) {
 	if lastJumpUdpClient == nil || !isTerminal || !sshConn.tty {
 		return
@@ -497,6 +554,7 @@ func setupUdpNotification(sshConn *sshConnection) {
 	ni := notifInterceptor{client: lastJumpUdpClient, interceptChan: make(chan byte, 1)}
 	ni.noticeOnTop = strings.ToLower(getExOptionConfig(sshConn.param.args, "ShowNotificationOnTop")) != "no"
 	ni.showFullNotif.Store(strings.ToLower(getExOptionConfig(sshConn.param.args, "ShowFullNotifications")) != "no")
+	ni.exitKey = parseUdpReconnectExitKey(getExOptionConfig(sshConn.param.args, "UdpReconnectExitKey"))
 
 	inReader, inWriter := io.Pipe()
 	outReader, outWriter := io.Pipe()
