@@ -614,7 +614,7 @@ func tcpLogin(param *sshParam, proxy *proxyJump, requireUDP udpModeType) (SshCli
 	if err != nil {
 		return nil, err
 	}
-	if err := setupCiphersConfig(param.args, config); err != nil {
+	if err := setupAlgorithmsConfig(param.args, config); err != nil {
 		return nil, err
 	}
 
