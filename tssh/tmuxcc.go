@@ -234,15 +234,15 @@ func handleAndDecodeTmuxInput(buf []byte) ([]byte, []byte, string, bool) {
 	return input, last, paneId, detach
 }
 
-func handleTmuxDiscardedInput(input []byte) {
-	if len(input) == 0 || !isRunningTmuxIntegration() {
+func handleTmuxDiscardedInput(discardedInput []byte, discardedOutputLines, discardedOutputByte uint64) {
+	if len(discardedInput) == 0 || !isRunningTmuxIntegration() {
 		return
 	}
 
 	// iTerm2 expects to receive the %begin %end block
 	now := time.Now().Unix()
 	ack := fmt.Appendf(nil, "%%begin %d 1 1\r\n%%end %d 1 1\r\n", now, now)
-	for _, b := range input {
+	for _, b := range discardedInput {
 		if b == ';' || b == '\r' {
 			_, _ = os.Stderr.Write(ack)
 		}
