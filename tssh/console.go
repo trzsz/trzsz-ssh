@@ -222,7 +222,7 @@ func runConsole(escapeChar byte, writer io.WriteCloser, sshConn *sshConnection) 
 			exiting.Store(true)
 			go func() {
 				<-quitted
-				sshConn.forceExit(kExitCodeConsoleKill, fmt.Sprintf("user action in the console or entering the escape sequence ( %sd )", char))
+				sshConn.forceExit(kExitCodeUdpDetach, fmt.Sprintf("user action in the console or entering the escape sequence ( %sd )", char))
 			}()
 			model.quitting = true
 			return model, tea.Quit
@@ -246,6 +246,6 @@ func runConsole(escapeChar byte, writer io.WriteCloser, sshConn *sshConnection) 
 	}
 
 	if !exiting.Load() {
-		sshConn.session.RedrawScreen()
+		_ = sshConn.session.RedrawScreen(true)
 	}
 }

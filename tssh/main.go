@@ -434,7 +434,7 @@ func sshStart(args *sshArgs) (int, error) {
 	}
 
 	// run command or start shell
-	if sess, ok := sshConn.session.(*detachableSession); ok && udpAttachSessionID > 0 {
+	if sess, ok := sshConn.session.(*tsshd.SshUdpSession); ok && udpAttachSessionID > 0 {
 		if err := sess.Attach(udpAttachSessionID); err != nil {
 			wantExit.Store(true)
 			if sshConn.tty {

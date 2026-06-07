@@ -141,8 +141,11 @@ type SshSession interface {
 	// A subsystem is a predefined command that runs in the background when the ssh session is initiated
 	RequestSubsystem(subsystem string) error
 
-	// RedrawScreen clear and redraw the screen right now
-	RedrawScreen()
+	// RedrawScreen forces the terminal application to repaint the screen.
+	// If discardPreviousOutput is true, any buffered output generated before
+	// the redraw will be discarded so that only the refreshed screen state
+	// is sent to the client.
+	RedrawScreen(discardPreviousOutput bool) error
 
 	// GetTerminalWidth returns the width of the terminal
 	GetTerminalWidth() int
@@ -314,8 +317,9 @@ func (c *sshConnection) forceExit(code int, cause string) {
 	}
 
 	verb, detach := "Exited", false
-	if sess, ok := c.session.(*detachableSession); ok && sess.attachMode && !wantExit.Load() {
+	if client, ok := c.client.(*sshUdpClient); ok && client.attachMode && !wantExit.Load() {
 		verb, detach = "Detached", true
+		client.Detach()
 	}
 
 	if enableWarningLogging {
@@ -352,9 +356,7 @@ func (c *sshConnection) forceExit(code int, cause string) {
 		c.exitChan <- code
 
 		go func() {
-			if !detach {
-				time.Sleep(300 * time.Millisecond)
-			}
+			time.Sleep(300 * time.Millisecond)
 			if enableDebugLogging && debugCleanuped.Load() {
 				debugCleanupWG.Wait()
 				// the process is expected to exit before sleep returns
@@ -390,14 +392,14 @@ func (s *sshSessionWrapper) WindowChange(height, width int) error {
 	return s.Session.WindowChange(height, width)
 }
 
-func (s *sshSessionWrapper) RedrawScreen() {
+func (s *sshSessionWrapper) RedrawScreen(discardPreviousOutput bool) error {
 	if s.height <= 0 || s.width <= 0 {
-		return
+		return fmt.Errorf("invalid terminal size: width=%d height=%d", s.width, s.height)
 	}
 	height, width := s.height, s.width
 	_ = s.WindowChange(height, width+1)
 	time.Sleep(10 * time.Millisecond) // fix redraw issue in `screen`
-	_ = s.WindowChange(height, width)
+	return s.WindowChange(height, width)
 }
 
 func (s *sshSessionWrapper) GetTerminalWidth() int {

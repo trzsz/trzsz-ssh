@@ -160,7 +160,8 @@ func wrapStdIO(serverIn io.WriteCloser, serverOut, serverErr io.Reader, escapeCh
 			if enableDebugLogging {
 				debug("ssh session stderr forward completed")
 				if tmuxDebugPaneID == "" && time.Since(beginTime) < 3*time.Second {
-					sshConn.session.RedrawScreen()
+					// debug log output may obscure the prompt, attempt to force a screen refresh
+					_ = sshConn.session.RedrawScreen(true)
 				}
 			}
 		})

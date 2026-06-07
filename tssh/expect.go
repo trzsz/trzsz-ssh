@@ -538,7 +538,8 @@ func execExpectInteractions(sshConn *sshConnection) {
 
 	if ctx.Err() == context.DeadlineExceeded {
 		warning("expect timeout after %d seconds", expectTimeout)
-		sshConn.session.RedrawScreen()
+		// The prompt may be obscured after timeout, trigger a screen refresh.
+		_ = sshConn.session.RedrawScreen(true)
 	}
 
 	sshConn.serverOut = outReader

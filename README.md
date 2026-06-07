@@ -295,6 +295,8 @@ Welcome and thank you for considering contributing. We appreciate all forms of s
 
 ### Screenshot
 
+![tsshd attach](https://trzsz.github.io/images/tsshd_attach.gif)
+
 ![tssh tiny](https://trzsz.github.io/images/tssh_tiny.gif)
 
 ![tssh simple](https://trzsz.github.io/images/tssh_simple.gif)

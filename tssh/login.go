@@ -720,14 +720,18 @@ func keepAlive(sshConn *sshConnection) {
 	}
 
 	sendKeepAlive := func(idx int) {
-		debug("keep alive [%d] sending", idx)
+		if enableDebugLogging {
+			writeDebugLog(time.Now().UnixMilli(), sshConn.param.args.Destination, fmt.Sprintf("keep alive [%d] sending", idx))
+		}
 		if _, _, err := sshConn.client.SendRequest("keepalive@openssh.com", true, nil); err != nil {
 			if !isClosedError(err) {
 				debug("keep alive [%d] failed: %v", idx, err)
 			}
 			return
 		}
-		debug("keep alive [%d] success", idx)
+		if enableDebugLogging {
+			writeDebugLog(time.Now().UnixMilli(), sshConn.param.args.Destination, fmt.Sprintf("keep alive [%d] success", idx))
+		}
 	}
 
 	go func() {

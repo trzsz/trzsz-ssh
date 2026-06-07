@@ -82,7 +82,9 @@ func showConnectionLostNotif(client *sshUdpClient) {
 
 	_, _ = doWithTimeout(func() (int, error) {
 		client.debug("requesting screen redraw")
-		client.sshConn.Load().session.RedrawScreen()
+		if err := client.sshConn.Load().session.RedrawScreen(true); err != nil {
+			client.debug("redraw screen failed: %v", err)
+		}
 		client.debug("screen redraw completed")
 		return 0, nil
 	}, client.reconnectTimeout)
@@ -388,7 +390,7 @@ func (ni *notifInterceptor) forwardInput(reader io.Reader, writer io.WriteCloser
 				// Cursor position reports are not considered real user input. Ignore them and keep filtering.
 				if n > 5 && buf[0] == '\x1b' && buf[1] == '[' && buf[n-1] == 'R' { // cursor pos
 					if enableDebugLogging {
-						debug("ignored cursor position report: %q", string(buf))
+						ni.client.debug("ignored cursor position report: %q", string(buf))
 					}
 					continue
 				}

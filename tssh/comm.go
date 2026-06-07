@@ -76,6 +76,7 @@ const (
 	kExitCodeKeepAlive   = 205
 	kExitCodeSignalKill  = 206
 	kExitCodeTmuxDetach  = 207
+	kExitCodeUdpDetach   = 208
 )
 
 var debugLogFile *os.File

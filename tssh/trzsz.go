@@ -152,7 +152,7 @@ func setupTrzszFilter(sshConn *sshConnection) error {
 	})
 
 	// setup redraw screen
-	trzszFilter.SetRedrawScreenFunc(sshConn.session.RedrawScreen)
+	trzszFilter.SetRedrawScreenFunc(func() { _ = sshConn.session.RedrawScreen(true) })
 
 	// setup transfer state callback
 	if lastJumpUdpClient != nil {

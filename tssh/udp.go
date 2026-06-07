@@ -82,44 +82,8 @@ type sshUdpClient struct {
 	sshConn          atomic.Pointer[sshConnection]
 }
 
-type detachableWriter struct {
-	io.WriteCloser
-	attachMode bool
-}
-
-func (w *detachableWriter) Close() error {
-	if w.attachMode && !wantExit.Load() {
-		return nil
-	}
-	return w.WriteCloser.Close()
-}
-
-type detachableSession struct {
-	*tsshd.SshUdpSession
-	attachMode bool
-}
-
-func (s *detachableSession) StdinPipe() (io.WriteCloser, error) {
-	writer, err := s.SshUdpSession.StdinPipe()
-	if err != nil {
-		return nil, err
-	}
-	return &detachableWriter{writer, s.attachMode}, nil
-}
-
-func (s *detachableSession) Close() error {
-	if s.attachMode && !wantExit.Load() {
-		return nil
-	}
-	return s.SshUdpSession.Close()
-}
-
 func (c *sshUdpClient) NewSession() (SshSession, error) {
-	session, err := c.SshUdpClient.NewSession()
-	if err != nil {
-		return nil, err
-	}
-	return &detachableSession{session, c.attachMode}, nil
+	return c.SshUdpClient.NewSession()
 }
 
 func (c *sshUdpClient) DialTimeout(network, addr string, timeout time.Duration) (net.Conn, error) {
@@ -127,16 +91,19 @@ func (c *sshUdpClient) DialTimeout(network, addr string, timeout time.Duration) 
 }
 
 func (c *sshUdpClient) Close() (err error) {
-	if !c.attachMode || wantExit.Load() {
+	if c.attachMode && !wantExit.Load() {
+		c.Detach()
+	} else {
 		err = c.SshUdpClient.Close()
 	}
+
 	if c.waitCloseChan != nil {
 		select {
 		case c.waitCloseChan <- struct{}{}:
 		default:
 		}
 	}
-	return err
+	return
 }
 
 func (c *sshUdpClient) Wait() error {
