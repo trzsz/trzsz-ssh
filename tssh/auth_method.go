@@ -28,6 +28,7 @@ import (
 	"bytes"
 	"crypto/x509"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -170,12 +171,11 @@ func newPassphraseSigner(path string, priKey []byte, err *ssh.PassphraseMissingE
 	return newSshSigner(path, priKey, pubKey, nil)
 }
 
-func getSigner(param *sshParam, path string) sshSigner {
+func getSigner(param *sshParam, path string) (sshSigner, error) {
 	path = resolveHomeDir(path)
 	privateKey, err := os.ReadFile(path)
 	if err != nil {
-		warning("read private key [%s] failed: %v", path, err)
-		return nil
+		return nil, err
 	}
 	signer, err := parsePrivateKey(privateKey)
 	if err != nil {
@@ -183,18 +183,37 @@ func getSigner(param *sshParam, path string) sshSigner {
 			if passphrase := getSecretConfig(param, "Passphrase"); passphrase != "" {
 				signer, err = parsePrivateKeyWithPassphrase(privateKey, []byte(passphrase))
 			} else {
-				return newPassphraseSigner(path, privateKey, e)
+				return newPassphraseSigner(path, privateKey, e), nil
 			}
 		}
 		if skErr, ok := err.(*unsupportedSecurityKeyError); ok {
 			signer, err = parseSecurityKey(path, skErr)
 		}
 		if err != nil {
-			warning("parse private key [%s] failed: %v", path, err)
-			return nil
+			return nil, err
 		}
 	}
-	return newSshSigner(path, nil, signer.PublicKey(), signer)
+	return newSshSigner(path, nil, signer.PublicKey(), signer), nil
+}
+
+func getIdentityAgentSigner(path string, agentSigners []ssh.Signer) (ssh.PublicKey, ssh.Signer) {
+	pubPath := resolveHomeDir(path)
+	if !strings.HasSuffix(pubPath, ".pub") {
+		pubPath += ".pub"
+	}
+	if !isFileExist(pubPath) {
+		return nil, nil
+	}
+	pubKey := parsePublicKey(pubPath)
+	if pubKey == nil {
+		return nil, nil
+	}
+	for _, agentSigner := range agentSigners {
+		if bytes.Equal(pubKey.Marshal(), agentSigner.PublicKey().Marshal()) {
+			return pubKey, agentSigner
+		}
+	}
+	return nil, nil
 }
 
 func appendSignerCerts(path string, signer sshSigner, certFiles []string) []sshSigner {
@@ -382,7 +401,12 @@ var getDefaultSigners = func() func() []sshSigner {
 				if !isFileExist(path) {
 					continue
 				}
-				if signer := getSigner(&sshParam{args: &sshArgs{Destination: name}}, path); signer != nil {
+				signer, err := getSigner(&sshParam{args: &sshArgs{Destination: name}}, path)
+				if err != nil {
+					warning("get signer failed: %v", err)
+					continue
+				}
+				if signer != nil {
 					signers = append(signers, signer)
 				}
 			}
@@ -457,27 +481,32 @@ func getPublicKeysAuthMethod(param *sshParam) ssh.AuthMethod {
 	out:
 		for _, path := range identities {
 			if strings.HasSuffix(path, ".pub") {
-				path = resolveHomeDir(path)
-				if pubKey := parsePublicKey(path); pubKey != nil {
-					for _, agentSigner := range agentSigners {
-						if bytes.Equal(pubKey.Marshal(), agentSigner.PublicKey().Marshal()) {
-							addSignerWithCerts("", newSshSigner(path+" (agent)", nil, pubKey, agentSigner))
-							continue out
-						}
+				if pubKey, agentSigner := getIdentityAgentSigner(path, agentSigners); agentSigner != nil {
+					addSignerWithCerts("", newSshSigner(path+" (agent)", nil, pubKey, agentSigner))
+					continue
+				}
+			}
+			signer, err := getSigner(param, path)
+			if errors.Is(err, os.ErrNotExist) {
+				if strings.HasSuffix(path, ".pub") {
+					continue
+				}
+				if pubKey, agentSigner := getIdentityAgentSigner(path, agentSigners); agentSigner != nil {
+					resolvedPath := resolveHomeDir(path)
+					addSignerWithCerts(resolvedPath, newSshSigner(resolvedPath+" (agent)", nil, pubKey, agentSigner))
+					continue
+				}
+			} else if err != nil {
+				warning("get signer for IdentityFile [%s] failed: %v", path, err)
+			} else if signer != nil {
+				for _, agentSigner := range agentSigners {
+					if bytes.Equal(signer.PublicKey().Marshal(), agentSigner.PublicKey().Marshal()) {
+						addSignerWithCerts(signer.getPath(), newSshSigner(signer.getPath()+" (agent)", nil, signer.PublicKey(), agentSigner))
+						continue out
 					}
 				}
+				addSignerWithCerts(signer.getPath(), signer)
 			}
-			signer := getSigner(param, path)
-			if signer == nil {
-				continue
-			}
-			for _, agentSigner := range agentSigners {
-				if bytes.Equal(signer.PublicKey().Marshal(), agentSigner.PublicKey().Marshal()) {
-					addSignerWithCerts(signer.getPath(), newSshSigner(signer.getPath()+" (agent)", nil, signer.PublicKey(), agentSigner))
-					continue out
-				}
-			}
-			addSignerWithCerts(signer.getPath(), signer)
 		}
 	}
 

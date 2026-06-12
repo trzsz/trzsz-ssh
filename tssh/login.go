@@ -277,13 +277,13 @@ func getProxyParam(param *sshParam) {
 	}
 
 	proxyJump = getConfig(args.Destination, "ProxyJump")
-	if proxyJump != "" {
+	if proxyJump != "" && strings.ToLower(proxyJump) != "none" {
 		param.proxies = strings.Split(proxyJump, ",")
 		return
 	}
 
 	proxyCommand = getConfig(args.Destination, "ProxyCommand")
-	if proxyCommand != "" {
+	if proxyCommand != "" && strings.ToLower(proxyCommand) != "none" {
 		param.command = proxyCommand
 		return
 	}
@@ -829,8 +829,10 @@ func sshConnect(args *sshArgs) (*sshConnection, error) {
 	return sshConn, nil
 }
 
-var afterLoginFuncs []func()
-var afterLoginMutex sync.Mutex
+var (
+	afterLoginFuncs []func()
+	afterLoginMutex sync.Mutex
+)
 
 func cleanupAfterLogin() {
 	afterLoginMutex.Lock()
