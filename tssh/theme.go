@@ -97,11 +97,11 @@ func getTinyTheme() *promptTheme {
 		Label: fmt.Sprintf(`{{ "? " | %s }}{{ . | %s }}{{ ":" | %s }}`,
 			getThemeColor("label_icon"), getThemeColor("label_text"), getThemeColor("label_text")),
 		Active: fmt.Sprintf(`{{ "%s" | %s }} {{ if .Selected }}{{ "✔ " | %s }}{{ else }}{{ "  " }}{{ end }}`+
-			`{{ .Alias | %s }} ({{ .Host | %s }}){{ "\t" }}{{ .GroupLabels | %s }}`,
+			`{{ .Alias | %s }}{{ if and .Host (ne .Host .Alias) }} ({{ .Host | %s }}){{ end }}{{ "\t" }}{{ .GroupLabels | %s }}`,
 			promptCursorIcon, getThemeColor("cursor_icon"), getThemeColor("active_selected"),
 			getThemeColor("active_alias"), getThemeColor("active_host"), getThemeColor("active_group")),
 		Inactive: fmt.Sprintf(`   {{ if .Selected }}{{ "✔ " | %s }}{{ else }}{{ "  " }}{{ end }}`+
-			`{{ .Alias | %s }} ({{ .Host | %s }}){{ "\t" }}{{ .GroupLabels | %s }}`,
+			`{{ .Alias | %s }}{{ if and .Host (ne .Host .Alias) }} ({{ .Host | %s }}){{ end }}{{ "\t" }}{{ .GroupLabels | %s }}`,
 			getThemeColor("inactive_selected"),
 			getThemeColor("inactive_alias"), getThemeColor("inactive_host"), getThemeColor("inactive_group")),
 		Details:   getDefaultDetailsTemplate(),
