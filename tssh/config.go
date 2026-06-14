@@ -572,11 +572,12 @@ func getAllExConfig(alias, key string) []string {
 func getAllHosts() []*sshHost {
 	userConfig.loadHosts.Do(func() {
 		userConfig.doLoadConfig()
+		seen := make(map[string]bool)
 		if userConfig.config != nil {
-			userConfig.allHosts = append(userConfig.allHosts, recursiveGetHosts(userConfig.config.Hosts)...)
+			userConfig.allHosts = append(userConfig.allHosts, recursiveGetHosts(userConfig.config.Hosts, seen)...)
 		}
 		if userConfig.sysConfig != nil {
-			userConfig.allHosts = append(userConfig.allHosts, recursiveGetHosts(userConfig.sysConfig.Hosts)...)
+			userConfig.allHosts = append(userConfig.allHosts, recursiveGetHosts(userConfig.sysConfig.Hosts, seen)...)
 		}
 		addAfterLoginFunc(func() { userConfig.allHosts = nil; userConfig.wildcardPatterns = nil })
 	})
@@ -585,27 +586,33 @@ func getAllHosts() []*sshHost {
 }
 
 // recursiveGetHosts recursive get hosts (contains include file's hosts)
-func recursiveGetHosts(cfgHosts []*ssh_config.Host) []*sshHost {
+func recursiveGetHosts(cfgHosts []*ssh_config.Host, seen map[string]bool) []*sshHost {
 	var hosts []*sshHost
 	for _, host := range cfgHosts {
 		for _, node := range host.Nodes {
 			if include, ok := node.(*ssh_config.Include); ok && include != nil {
 				for _, config := range include.GetFiles() {
 					if config != nil {
-						hosts = append(hosts, recursiveGetHosts(config.Hosts)...)
+						hosts = append(hosts, recursiveGetHosts(config.Hosts, seen)...)
 					}
 				}
 			}
 		}
-		hosts = appendPromptHosts(hosts, host)
+		hosts = appendPromptHosts(hosts, seen, host)
 	}
 	return hosts
 }
 
-func appendPromptHosts(hosts []*sshHost, cfgHosts ...*ssh_config.Host) []*sshHost {
+func appendPromptHosts(hosts []*sshHost, seen map[string]bool, cfgHosts ...*ssh_config.Host) []*sshHost {
 	for _, host := range cfgHosts {
 		for _, pattern := range host.Patterns {
 			alias := pattern.String()
+
+			if seen[alias] {
+				continue
+			}
+			seen[alias] = true
+
 			if strings.ContainsRune(alias, '*') || strings.ContainsRune(alias, '?') {
 				if alias != "*" && !pattern.Not() {
 					userConfig.wildcardPatterns = append(userConfig.wildcardPatterns, pattern)
@@ -615,6 +622,7 @@ func appendPromptHosts(hosts []*sshHost, cfgHosts ...*ssh_config.Host) []*sshHos
 			if strings.ToLower(getConfig(alias, "HideHost")) == "yes" { // treat as not extended config
 				continue
 			}
+
 			hosts = append(hosts, &sshHost{
 				Alias:         alias,
 				Host:          getConfig(alias, "HostName"),
