@@ -172,7 +172,7 @@ func getSshParam(args *sshArgs, proxy bool) (*sshParam, error) {
 			if err != nil {
 				return nil, err
 			}
-			param.host, destHost = host, host
+			param.host, destHost, args.Destination = host, host, host
 		}
 	}
 
