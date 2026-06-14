@@ -117,7 +117,7 @@ func canonicalizeHost(args *sshArgs, host string) (string, error) {
 			maxDots = int(val)
 		}
 	}
-	if dotCount := strings.Count(host, "."); dotCount >= maxDots {
+	if dotCount := strings.Count(host, "."); dotCount > maxDots {
 		return host, nil
 	}
 
