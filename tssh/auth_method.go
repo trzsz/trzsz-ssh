@@ -456,12 +456,16 @@ func getPublicKeysAuthMethod(param *sshParam) ssh.AuthMethod {
 	if len(identities) > 0 {
 	out:
 		for _, path := range identities {
-			if strings.HasSuffix(path, ".pub") {
-				path = resolveHomeDir(path)
-				if pubKey := parsePublicKey(path); pubKey != nil {
+			pubPath := path
+			if !strings.HasSuffix(pubPath, ".pub") {
+				pubPath += ".pub"
+			}
+			if isFileExist(pubPath) {
+				pubPath = resolveHomeDir(pubPath)
+				if pubKey := parsePublicKey(pubPath); pubKey != nil {
 					for _, agentSigner := range agentSigners {
 						if bytes.Equal(pubKey.Marshal(), agentSigner.PublicKey().Marshal()) {
-							addSignerWithCerts("", newSshSigner(path+" (agent)", nil, pubKey, agentSigner))
+							addSignerWithCerts("", newSshSigner(pubPath+" (agent)", nil, pubKey, agentSigner))
 							continue out
 						}
 					}

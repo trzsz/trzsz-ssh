@@ -278,13 +278,13 @@ func getProxyParam(param *sshParam) {
 	}
 
 	proxyJump = getConfig(args.Destination, "ProxyJump")
-	if proxyJump != "" {
+	if proxyJump != "" && strings.ToLower(proxyJump) != "none" {
 		param.proxies = strings.Split(proxyJump, ",")
 		return
 	}
 
 	proxyCommand = getConfig(args.Destination, "ProxyCommand")
-	if proxyCommand != "" {
+	if proxyCommand != "" && strings.ToLower(proxyCommand) != "none" {
 		param.command = proxyCommand
 		return
 	}
