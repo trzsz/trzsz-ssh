@@ -27,6 +27,7 @@ package tssh
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -40,13 +41,9 @@ import (
 
 var udpAttachSessionID uint64
 
-type attachSelectError struct {
-	err error
-}
+var errAttachSessionSelection = errors.New("attach session selection failed")
 
-func (e *attachSelectError) Error() string {
-	return e.err.Error()
-}
+var errAttachTsshdTooOld = errors.New("tsshd is too old and does not support the attach feature")
 
 type previewResultMsg struct {
 	idx     int
@@ -294,7 +291,7 @@ func attachToSession(tcpClient SshClient, tsshdPath, sessionName string) (*strin
 		return nil, fmt.Errorf("tsshd list output is empty")
 	}
 	if bytes.HasPrefix(listOutput, []byte("\a{\"")) {
-		return nil, fmt.Errorf("tsshd is too old and does not support the attach feature")
+		return nil, errAttachTsshdTooOld
 	}
 
 	var items []tsshd.ServerItem
@@ -336,11 +333,11 @@ func attachToSession(tcpClient SshClient, tsshdPath, sessionName string) (*strin
 	}
 	p := tea.NewProgram(model)
 	if _, err := p.Run(); err != nil {
-		return nil, &attachSelectError{fmt.Errorf("select session failed: %v", err)}
+		return nil, fmt.Errorf("%w: %v", errAttachSessionSelection, err)
 	}
 
 	if model.chosen < 0 {
-		return nil, &attachSelectError{fmt.Errorf("session selection canceled")}
+		return nil, fmt.Errorf("%w: canceled by user", errAttachSessionSelection)
 	}
 	if model.chosen == 0 {
 		return nil, nil

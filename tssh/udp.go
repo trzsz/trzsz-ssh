@@ -27,6 +27,7 @@ package tssh
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -240,19 +241,23 @@ func udpLogin(param *sshParam, tcpClient SshClient) (SshClient, error) {
 	sessionName := getExOptionConfig(args, "UdpSessionName")
 	var tsshdCmdBuf *strings.Builder
 	if args.Attach || strings.ToLower(getExOptionConfig(args, "UdpSessionAttach")) == "yes" {
+		attachMode = true
 		var err error
 		tsshdCmdBuf, err = attachToSession(tcpClient, tsshdPath, sessionName)
 		if err != nil {
-			if _, ok := err.(*attachSelectError); ok {
+			if errors.Is(err, errAttachTsshdTooOld) {
+				attachMode = false
+			} else if errors.Is(err, errAttachSessionSelection) {
 				return nil, fmt.Errorf("failed to select tsshd session to attach: %v", err)
 			}
 			warning("falling back to new session due to attach failed: %v", err)
 		}
 		if tsshdCmdBuf == nil {
 			tsshdCmdBuf = getTsshdCommand(param, tsshdPath, mtu, connectTimeout)
-			tsshdCmdBuf.WriteString(" --attachable --socket")
+			if attachMode {
+				tsshdCmdBuf.WriteString(" --attachable --socket")
+			}
 		}
-		attachMode = true
 	} else {
 		tsshdCmdBuf = getTsshdCommand(param, tsshdPath, mtu, connectTimeout)
 	}
