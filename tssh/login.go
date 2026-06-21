@@ -492,23 +492,23 @@ func setupLogLevel(args *sshArgs) func() {
 	return reset
 }
 
-func getNetworkAddressFamily(args *sshArgs) string {
+func getNetworkAddressFamily(args *sshArgs) (string, bool, bool) {
 	if args.IPv4Only {
 		if args.IPv6Only {
-			return "tcp"
+			return "tcp", false, false
 		}
-		return "tcp4"
+		return "tcp4", true, false
 	}
 	if args.IPv6Only {
-		return "tcp6"
+		return "tcp6", false, true
 	}
 	switch strings.ToLower(getOptionConfig(args, "AddressFamily")) {
 	case "inet":
-		return "tcp4"
+		return "tcp4", true, false
 	case "inet6":
-		return "tcp6"
+		return "tcp6", false, true
 	default:
-		return "tcp"
+		return "tcp", false, false
 	}
 }
 
@@ -551,7 +551,7 @@ func getClientConfig(param *sshParam) (*ssh.ClientConfig, error) {
 
 func connectViaProxyJump(param *sshParam, config *ssh.ClientConfig) (SshClient, error) {
 	debug("login to [%s] via proxy jump [%s] addr: %s", param.args.Destination, param.proxy.name, param.addr)
-	network := getNetworkAddressFamily(param.args)
+	network, _, _ := getNetworkAddressFamily(param.args)
 	conn, err := param.proxy.client.DialTimeout(network, param.addr, config.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("proxy jump [%s] dial [%s] [%s] failed: %v", param.proxy.name, network, param.addr, err)
@@ -589,7 +589,7 @@ func connectDirectly(param *sshParam, config *ssh.ClientConfig) (SshClient, erro
 	if config.Timeout > 0 {
 		dialer.Timeout = config.Timeout
 	}
-	network := getNetworkAddressFamily(param.args)
+	network, _, _ := getNetworkAddressFamily(param.args)
 	conn, err := dialer.Dial(network, param.addr)
 	if err != nil {
 		return nil, fmt.Errorf("login to [%s] dial [%s] [%s] failed: %v", param.args.Destination, network, param.addr, err)

@@ -281,6 +281,12 @@ func udpLogin(param *sshParam, tcpClient SshClient) (SshClient, error) {
 	intervalTime := min(globalUdpAliveTimeout/10, min(heartbeatTimeout, reconnectTimeout)/3)
 	debug("udp keep alive interval time [%v] for [%s]", intervalTime, args.Destination)
 
+	ipv4, ipv6 := param.ipv4, param.ipv6
+	if ipv4 == ipv6 { // (ipv4 && ipv6) || (!ipv4 && !ipv6)
+		// If the IP version is ambiguous from the current SSH connection (e.g., via ControlPath), fall back to user settings.
+		_, ipv4, ipv6 = getNetworkAddressFamily(args)
+	}
+
 	// new udp client
 	udpClient := &sshUdpClient{
 		proxyClient:      proxyClient,
@@ -295,8 +301,8 @@ func udpLogin(param *sshParam, tcpClient SshClient) (SshClient, error) {
 	clientOpts := &tsshd.UdpClientOptions{
 		EnableDebugging:  enableDebugLogging,
 		EnableWarning:    enableWarningLogging,
-		IPv4:             param.ipv4,
-		IPv6:             param.ipv6,
+		IPv4:             ipv4,
+		IPv6:             ipv6,
 		TsshdAddr:        tsshdAddr,
 		SessionName:      sessionName,
 		ServerInfo:       serverInfo,
@@ -451,11 +457,11 @@ func getTsshdCommand(param *sshParam, tsshdPath string, mtu uint16, connectTimeo
 		buf.WriteString(" --debug")
 	}
 
-	network := getNetworkAddressFamily(args)
-	if strings.HasSuffix(network, "4") {
+	_, ipv4, ipv6 := getNetworkAddressFamily(args)
+	if ipv4 {
 		buf.WriteString(" --ipv4")
 	}
-	if strings.HasSuffix(network, "6") {
+	if ipv6 {
 		buf.WriteString(" --ipv6")
 	}
 
