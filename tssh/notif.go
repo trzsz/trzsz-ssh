@@ -44,10 +44,10 @@ func showConnectionLostNotif(client *sshUdpClient) {
 	client.notifInterceptor.tmuxFlag.Store(tmux)
 	client.notifInterceptor.cursorPos.Store(nil)
 
-	client.debug("start intercepting user input")
+	client.debug("start intercepting user input and server output")
 	client.notifInterceptor.interceptFlag.Store(true)
 	defer func() {
-		client.debug("releasing intercepted user input")
+		client.debug("releasing intercepted user input and server output")
 		client.notifInterceptor.filterESC6n.Store(true)
 		client.notifInterceptor.interceptFlag.Store(false)
 	}()
@@ -88,6 +88,7 @@ func showConnectionLostNotif(client *sshUdpClient) {
 		client.debug("screen redraw completed")
 		return 0, nil
 	}, client.reconnectTimeout)
+
 	notif.renderView(false, false)
 }
 
@@ -419,25 +420,19 @@ func (ni *notifInterceptor) forwardInput(reader io.Reader, writer io.WriteCloser
 
 func (ni *notifInterceptor) forwardOutput(reader io.Reader, writer io.WriteCloser) {
 	defer func() { _ = writer.Close() }()
-	cache := &outputCache{client: ni.client}
 	buffer := make([]byte, 32*1024)
 	for {
 		n, err := reader.Read(buffer)
 		if n > 0 {
 			if ni.interceptFlag.Load() {
-				cache.appendOutput(buffer[:n])
+				ni.client.debug("intercepted and discarded server output %d bytes", n)
 			} else {
-				if len(cache.chunks) > 0 {
-					if err := cache.flushOutput(writer); err != nil {
-						break
-					}
-				}
 				buf := buffer[:n]
 				if ni.filterESC6n.Load() {
 					if enableDebugLogging {
 						n := bytes.Count(buf, []byte("\x1b[6n"))
 						if n > 0 {
-							ni.client.debug("filtered %d ESC[6n sequence(s) from live output", n)
+							ni.client.debug("filtered %d ESC[6n sequence(s) from server output", n)
 						}
 					}
 					buf = bytes.ReplaceAll(buf, []byte("\x1b[6n"), []byte(""))
@@ -451,60 +446,6 @@ func (ni *notifInterceptor) forwardOutput(reader io.Reader, writer io.WriteClose
 			break
 		}
 	}
-	_ = cache.flushOutput(writer)
-}
-
-type outputCache struct {
-	client *sshUdpClient
-	chunks [][]byte
-}
-
-func (c *outputCache) appendOutput(data []byte) {
-	for len(data) > 0 {
-		var last []byte
-		if len(c.chunks) > 0 {
-			last = c.chunks[len(c.chunks)-1]
-		}
-		if len(last) == cap(last) {
-			last = make([]byte, 0, max(len(data), 64*1024))
-			c.chunks = append(c.chunks, last)
-		}
-
-		n := min(len(data), cap(last)-len(last))
-		c.chunks[len(c.chunks)-1] = append(last, data[:n]...)
-		data = data[n:]
-	}
-}
-
-func (c *outputCache) flushOutput(writer io.Writer) error {
-	if c.chunks == nil {
-		return nil
-	}
-
-	if enableDebugLogging {
-		cacheSize, filteredCount := 0, 0
-		for _, chunk := range c.chunks {
-			cacheSize += len(chunk)
-			filteredCount += bytes.Count(chunk, []byte("\x1b[6n"))
-		}
-		if cacheSize > 0 {
-			c.client.debug("session output cache size [%d]", cacheSize)
-		}
-		if filteredCount > 0 {
-			c.client.debug("filtered %d ESC[6n sequence(s) from cache output", filteredCount)
-		}
-	}
-
-	for _, chunk := range c.chunks {
-		chunk = bytes.ReplaceAll(chunk, []byte("\x1b[6n"), []byte(""))
-		if len(chunk) > 0 {
-			if _, err := writer.Write(chunk); err != nil {
-				return err
-			}
-		}
-	}
-	c.chunks = nil
-	return nil
 }
 
 const defaultUdpReconnectExitKey byte = '\x04' // Ctrl+D
