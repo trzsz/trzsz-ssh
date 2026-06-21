@@ -38,6 +38,7 @@ import (
 	"time"
 
 	"github.com/trzsz/shellescape"
+	"github.com/trzsz/tsshd/tsshd"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -724,7 +725,7 @@ func keepAlive(sshConn *sshConnection) {
 			writeDebugLog(time.Now().UnixMilli(), sshConn.param.args.Destination, fmt.Sprintf("keep alive [%d] sending", idx))
 		}
 		if _, _, err := sshConn.client.SendRequest("keepalive@openssh.com", true, nil); err != nil {
-			if !isClosedError(err) {
+			if !tsshd.IsClosedError(err) {
 				debug("keep alive [%d] failed: %v", idx, err)
 			}
 			return

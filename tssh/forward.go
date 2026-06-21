@@ -25,7 +25,6 @@ SOFTWARE.
 package tssh
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -36,7 +35,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/quic-go/quic-go"
 	"github.com/trzsz/tsshd/tsshd"
 	"golang.org/x/crypto/ssh"
 )
@@ -251,29 +249,6 @@ func parseForwardArg(str string) (*forwardCfg, error) {
 
 func isGatewayPorts(args *sshArgs) bool {
 	return args.Gateway || strings.ToLower(getConfig(args.Destination, "GatewayPorts")) == "yes"
-}
-
-func isClosedError(err error) bool {
-	if err == nil {
-		return false
-	}
-	if errors.Is(err, io.EOF) {
-		return true
-	}
-	if errors.Is(err, net.ErrClosed) {
-		return true
-	}
-	if errors.Is(err, io.ErrClosedPipe) {
-		return true
-	}
-	var qse *quic.StreamError
-	if errors.As(err, &qse) && qse.ErrorCode == 0 {
-		return true
-	}
-	if strings.Contains(err.Error(), "io: read/write on closed pipe") {
-		return true
-	}
-	return false
 }
 
 func forwardDeniedReason(err error, network string) string {

@@ -34,6 +34,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/trzsz/tsshd/tsshd"
 )
 
 const kWarnIntervalSeconds = 60
@@ -96,7 +98,7 @@ func (f *udpLocalForwarder) run() {
 	for {
 		n, addr, err := f.localConn.ReadFrom(buf)
 		if err != nil {
-			if isClosedError(err) {
+			if tsshd.IsClosedError(err) {
 				debug("udp local forwarding [%v] local closed: %v", f.fwdConfig, err)
 				break
 			}
@@ -158,7 +160,7 @@ func (f *udpLocalForwarder) handlePacket(clientAddr net.Addr, data []byte) {
 				}
 				return nil
 			}); err != nil {
-				if isClosedError(err) {
+				if tsshd.IsClosedError(err) {
 					debug("udp local forwarding [%v] consume closed: %v", f.fwdConfig, err)
 					return
 				}
@@ -229,7 +231,7 @@ func (f *udpRemoteForwarder) run() {
 		_ = f.remoteConn.Consume(func(buf []byte) error {
 			f.lastActive.Store(time.Now().Unix())
 			if _, err := f.localConn.Write(buf); err != nil {
-				if isClosedError(err) {
+				if tsshd.IsClosedError(err) {
 					debug("udp remote forwarding [%s] write to local closed: %v", f.fwdConfig, err)
 					return err
 				}
@@ -247,7 +249,7 @@ func (f *udpRemoteForwarder) run() {
 		for {
 			n, err := f.localConn.Read(buffer)
 			if err != nil {
-				if isClosedError(err) {
+				if tsshd.IsClosedError(err) {
 					debug("udp remote forwarding [%s] read from local closed: %v", f.fwdConfig, err)
 					return
 				}
@@ -256,7 +258,7 @@ func (f *udpRemoteForwarder) run() {
 			}
 			f.lastActive.Store(time.Now().Unix())
 			if err := f.remoteConn.Write(buffer[:n]); err != nil {
-				if isClosedError(err) {
+				if tsshd.IsClosedError(err) {
 					debug("udp remote forwarding [%s] write to remote closed: %v", f.fwdConfig, err)
 					return
 				}
@@ -501,7 +503,7 @@ func remoteForwardUDP(sshConn *sshConnection, f *forwardCfg, gateway bool, timeo
 			for {
 				remoteConn, err := listener.AcceptUDP()
 				if err != nil {
-					if isClosedError(err) {
+					if tsshd.IsClosedError(err) {
 						debug("remote forwarding [%v] closed: %v", f, err)
 						break
 					}

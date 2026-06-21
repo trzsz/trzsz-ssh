@@ -39,6 +39,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/trzsz/go-socks5"
+	"github.com/trzsz/tsshd/tsshd"
 )
 
 // OpenSSH's default StreamLocalBindMask.
@@ -217,7 +218,7 @@ func dynamicForward(sshConn *sshConnection, b *bindCfg, gateway bool, timeout ti
 			for {
 				conn, err := listener.Accept()
 				if err != nil {
-					if isClosedError(err) {
+					if tsshd.IsClosedError(err) {
 						debug("dynamic forwarding [%v] closed: %v", b, err)
 						break
 					}
@@ -229,7 +230,7 @@ func dynamicForward(sshConn *sshConnection, b *bindCfg, gateway bool, timeout ti
 						if !enableDebugLogging {
 							return
 						}
-						if isClosedError(err) {
+						if tsshd.IsClosedError(err) {
 							return
 						}
 						errMsg := err.Error()
@@ -269,7 +270,7 @@ func localForwardTCP(sshConn *sshConnection, f *forwardCfg, gateway bool, timeou
 			for {
 				local, err := listener.Accept()
 				if err != nil {
-					if isClosedError(err) {
+					if tsshd.IsClosedError(err) {
 						debug("local forwarding [%v] closed: %v", f, err)
 						break
 					}
@@ -308,7 +309,7 @@ func remoteForwardTCP(sshConn *sshConnection, f *forwardCfg, gateway bool, timeo
 			for {
 				remote, err := listener.Accept()
 				if err != nil {
-					if isClosedError(err) {
+					if tsshd.IsClosedError(err) {
 						debug("remote forwarding [%v] closed: %v", f, err)
 						break
 					}

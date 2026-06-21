@@ -245,7 +245,7 @@ func appendSignerCerts(path string, signer sshSigner, certFiles []string) []sshS
 	return signers
 }
 
-func readSecret(prompt string) (secret []byte, err error) {
+func readSecret(prompt string) ([]byte, error) {
 	_, _ = os.Stderr.WriteString(prompt)
 	defer func() { _, _ = os.Stderr.WriteString("\r\n") }()
 
