@@ -28,6 +28,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/trzsz/ssh_config"
 )
 
 func TestParseDestination(t *testing.T) {
@@ -67,4 +68,32 @@ func TestParseDestination(t *testing.T) {
 	assertDestEqual("user@fe80::6358:bbae:26f8:7859", "user", "fe80::6358:bbae:26f8:7859", "")
 	assertDestEqual("[fe80::6358:bbae:26f8:7859]:1022", "", "fe80::6358:bbae:26f8:7859", "1022")
 	assertDestEqual("user@[fe80::6358:bbae:26f8:7859]:1022", "user", "fe80::6358:bbae:26f8:7859", "1022")
+}
+
+func TestGetProxyParamIgnoresNoneFromConfig(t *testing.T) {
+	assert := assert.New(t)
+
+	origUserConfig := userConfig
+	defer func() { userConfig = origUserConfig }()
+
+	cfg, err := ssh_config.DecodeBytes([]byte(`
+Host proxy-disabled
+    ProxyJump none
+
+Host command-disabled
+    ProxyCommand none
+`))
+	assert.NoError(err)
+
+	userConfig = &tsshConfig{config: cfg}
+
+	jumpParam := &sshParam{args: &sshArgs{Destination: "proxy-disabled"}}
+	getProxyParam(jumpParam)
+	assert.Empty(jumpParam.proxies)
+	assert.Empty(jumpParam.command)
+
+	commandParam := &sshParam{args: &sshArgs{Destination: "command-disabled"}}
+	getProxyParam(commandParam)
+	assert.Empty(commandParam.proxies)
+	assert.Empty(commandParam.command)
 }
