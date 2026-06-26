@@ -554,12 +554,12 @@ func matchHost(h *sshHost, keywords []string) bool {
 	return true
 }
 
-func chooseAlias(keywords string) (string, bool, error) {
+func chooseAlias(args *sshArgs, keywords string) (string, bool, error) {
 	if state, _ := makeStdinRaw(); state != nil {
 		defer resetStdin(state)
 	}
 
-	hosts := getAllHosts()
+	hosts := getAllHosts(args)
 
 	searcher := func(input string, index int) bool {
 		return matchHost(hosts[index], strings.Fields(strings.ToLower(input)))
@@ -631,7 +631,7 @@ func chooseAlias(keywords string) (string, bool, error) {
 	return selectedHosts[0].Alias, false, nil
 }
 
-func predictDestination(dest string) (string, bool, error) {
+func predictDestination(args *sshArgs, dest string) (string, bool, error) {
 	if !isTerminal || strings.ContainsAny(dest, ".:[]@") {
 		return dest, false, nil
 	}
@@ -640,7 +640,7 @@ func predictDestination(dest string) (string, bool, error) {
 		return dest, false, nil
 	}
 
-	hosts := getAllHosts()
+	hosts := getAllHosts(args)
 	for _, host := range hosts {
 		if host.Alias == dest {
 			return dest, false, nil
@@ -669,5 +669,5 @@ func predictDestination(dest string) (string, bool, error) {
 		return dest, false, nil
 	}
 
-	return chooseAlias(dest)
+	return chooseAlias(args, dest)
 }

@@ -248,7 +248,7 @@ func parseForwardArg(str string) (*forwardCfg, error) {
 }
 
 func isGatewayPorts(args *sshArgs) bool {
-	return args.Gateway || strings.ToLower(getConfig(args.Destination, "GatewayPorts")) == "yes"
+	return args.Gateway || strings.ToLower(getOptionConfig(args, "GatewayPorts")) == "yes"
 }
 
 func forwardDeniedReason(err error, network string) string {
@@ -348,7 +348,7 @@ func sshPortForward(sshConn *sshConnection) {
 	for _, b := range args.DynamicForward.binds {
 		dynamicForward(sshConn, b, gateway, timeout, unlinkUnix, bindMask)
 	}
-	for _, s := range getAllExOptionConfig(args, "DynamicForward") {
+	for _, s := range getAllExOptionConfig(args, "DynamicForward", false) {
 		b, err := parseBindCfg(s)
 		if err != nil {
 			warning("parse dynamic forwarding failed: %v", err)
@@ -365,7 +365,7 @@ func sshPortForward(sshConn *sshConnection) {
 		}
 		localForward(sshConn, f, gateway, timeout, unlinkUnix, bindMask)
 	}
-	for _, s := range getAllExOptionConfig(args, "LocalForward") {
+	for _, s := range getAllExOptionConfig(args, "LocalForward", false) {
 		f, err := parseForwardCfg(sshConn.param, false, s)
 		if err != nil {
 			warning("parse local forwarding failed: %v", err)
@@ -373,7 +373,7 @@ func sshPortForward(sshConn *sshConnection) {
 		}
 		localForward(sshConn, f, gateway, timeout, unlinkUnix, bindMask)
 	}
-	for _, s := range getAllExOptionConfig(args, "UdpLocalForward") {
+	for _, s := range getAllExOptionConfig(args, "UdpLocalForward", true) {
 		if sshConn.param.udpMode == kUdpModeNo {
 			warnRequiredUDP()
 			break
@@ -394,7 +394,7 @@ func sshPortForward(sshConn *sshConnection) {
 		}
 		remoteForward(sshConn, f, gateway, timeout)
 	}
-	for _, s := range getAllExOptionConfig(args, "RemoteForward") {
+	for _, s := range getAllExOptionConfig(args, "RemoteForward", false) {
 		f, err := parseForwardCfg(sshConn.param, false, s)
 		if err != nil {
 			warning("parse remote forwarding failed: %v", err)
@@ -402,7 +402,7 @@ func sshPortForward(sshConn *sshConnection) {
 		}
 		remoteForward(sshConn, f, gateway, timeout)
 	}
-	for _, s := range getAllExOptionConfig(args, "UdpRemoteForward") {
+	for _, s := range getAllExOptionConfig(args, "UdpRemoteForward", true) {
 		if sshConn.param.udpMode == kUdpModeNo {
 			warnRequiredUDP()
 			break

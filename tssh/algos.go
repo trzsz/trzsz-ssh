@@ -29,7 +29,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/trzsz/ssh_config"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -115,12 +114,10 @@ func getCiphersConfig(args *sshArgs) string {
 	if args.CipherSpec != "" {
 		return args.CipherSpec
 	}
-	ssh_config.SetDefault("Ciphers", "")
 	return getOptionConfig(args, "Ciphers")
 }
 
 func getKexAlgorithmsConfig(args *sshArgs) string {
-	ssh_config.SetDefault("KexAlgorithms", "")
 	return getOptionConfig(args, "KexAlgorithms")
 }
 

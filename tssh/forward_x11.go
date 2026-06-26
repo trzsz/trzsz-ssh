@@ -34,7 +34,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/trzsz/ssh_config"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -73,7 +72,6 @@ func sshX11Forward(sshConn *sshConnection) {
 			return true
 		}
 
-		ssh_config.SetDefault("ForwardX11Trusted", "")
 		switch strings.ToLower(getOptionConfig(args, "ForwardX11Trusted")) {
 		case "yes":
 			return true

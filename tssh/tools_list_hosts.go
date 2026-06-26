@@ -31,8 +31,8 @@ import (
 	"strings"
 )
 
-func execListHosts() (int, bool) {
-	hosts := getAllHosts()
+func execListHosts(args *sshArgs) (int, bool) {
+	hosts := getAllHosts(args)
 
 	if hosts == nil {
 		hosts = []*sshHost{}

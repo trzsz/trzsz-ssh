@@ -456,12 +456,12 @@ func (e *sshExpect) execInteractions(writer io.Writer, expectCount int) {
 			warning("expect %d pattern is empty, no output will be matched", idx)
 		}
 		caseSends := &caseSendList{e, writer, nil}
-		for _, cfg := range getAllExOptionConfig(e.param.args, fmt.Sprintf("%sExpectCaseSendPass%d", e.pre, idx)) {
+		for _, cfg := range getAllExOptionConfig(e.param.args, fmt.Sprintf("%sExpectCaseSendPass%d", e.pre, idx), true) {
 			if err := caseSends.addCaseSendPass(cfg); err != nil {
 				warning("Invalid ExpectCaseSendPass%d: %v", idx, err)
 			}
 		}
-		for _, cfg := range getAllExOptionConfig(e.param.args, fmt.Sprintf("%sExpectCaseSendText%d", e.pre, idx)) {
+		for _, cfg := range getAllExOptionConfig(e.param.args, fmt.Sprintf("%sExpectCaseSendText%d", e.pre, idx), true) {
 			if err := caseSends.addCaseSendText(cfg); err != nil {
 				warning("Invalid ExpectCaseSendText%d: %v", idx, err)
 			}

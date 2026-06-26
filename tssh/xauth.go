@@ -35,8 +35,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-
-	"github.com/trzsz/ssh_config"
 )
 
 const kSshX11Proto = "MIT-MAGIC-COOKIE-1"
@@ -138,7 +136,6 @@ func genListXauthInfo(args *sshArgs, display string, trusted bool, timeout uint3
 }
 
 func getXauthPath(args *sshArgs) string {
-	ssh_config.SetDefault("XAuthLocation", "")
 	xauthPath := getOptionConfig(args, "XAuthLocation")
 	if xauthPath != "" {
 		if isFileExist(xauthPath) {

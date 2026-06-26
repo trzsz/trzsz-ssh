@@ -64,10 +64,12 @@ func parseOpenSSHConfigDump(out []byte) *effectiveSshConfig {
 	return cfg
 }
 
-func getOpenSSHEffectiveConfig(dest string, args *sshArgs, user, port string) *effectiveSshConfig {
+func getOpenSSHEffectiveConfig(args *sshArgs, user, port string) *effectiveSshConfig {
 	if userConfig == nil || !userConfig.useOpenSSHConfig {
 		return nil
 	}
+
+	dest := args.Destination
 
 	openSSHEffectiveCfgCache.mu.Lock()
 	if openSSHEffectiveCfgCache.m == nil {

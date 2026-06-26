@@ -138,14 +138,16 @@ func addHostKey(path, host string, key ssh.PublicKey, ask bool) error {
 func getHostKeyCallback(param *sshParam) (ssh.HostKeyCallback, []string, error) {
 	primaryPath := ""
 	var files []string
-	addKnownHostsFiles := func(key string, user bool) error {
+	addKnownHostsFiles := func(key string, user bool, defaults []string) error {
 		knownHostsFiles := getOptionConfigSplits(param.args, key)
 		if len(knownHostsFiles) == 0 {
-			debug("%s is empty", key)
-			return nil
+			if enableDebugLogging {
+				debug("%s not configured, using default: %s", key, strings.Join(defaults, ", "))
+			}
+			knownHostsFiles = defaults
 		}
 		if len(knownHostsFiles) == 1 && strings.ToLower(knownHostsFiles[0]) == "none" {
-			debug("%s is none", key)
+			debug("%s disabled (set to 'none')", key)
 			return nil
 		}
 		for _, path := range knownHostsFiles {
@@ -179,10 +181,10 @@ func getHostKeyCallback(param *sshParam) (ssh.HostKeyCallback, []string, error) 
 		}
 		return nil
 	}
-	if err := addKnownHostsFiles("UserKnownHostsFile", true); err != nil {
+	if err := addKnownHostsFiles("UserKnownHostsFile", true, []string{"~/.ssh/known_hosts", "~/.ssh/known_hosts2"}); err != nil {
 		return nil, nil, err
 	}
-	if err := addKnownHostsFiles("GlobalKnownHostsFile", false); err != nil {
+	if err := addKnownHostsFiles("GlobalKnownHostsFile", false, []string{"/etc/ssh/ssh_known_hosts", "/etc/ssh/ssh_known_hosts2"}); err != nil {
 		return nil, nil, err
 	}
 

@@ -309,9 +309,9 @@ func TsshMain(argv []string) int {
 			fmt.Fprintln(os.Stderr, "destination is required when running tssh in non-interactive mode")
 			return kExitCodeNoDestHost
 		}
-		dest, quit, err = chooseAlias("")
+		dest, quit, err = chooseAlias(&args, "")
 	} else {
-		dest, quit, err = predictDestination(args.Destination)
+		dest, quit, err = predictDestination(&args, args.Destination)
 	}
 	if quit {
 		err = nil

@@ -104,6 +104,7 @@ type sshArgs struct {
 	UploadFile     multiStr    `arg:"--upload-file" placeholder:"path" help:"[tools] upload the local file to remote server"`
 	DownloadPath   string      `arg:"--download-path" placeholder:"path" help:"[tools] the local saving path for downloading"`
 	originalDest   string
+	canonicalDest  string
 }
 
 func (sshArgs) Description() string {

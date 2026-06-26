@@ -111,7 +111,7 @@ func parseDestination(dest string) (user, host, port string) {
 
 func canonicalizeHost(args *sshArgs, host string) (string, error) {
 	maxDots := 1
-	if canonicalizeMaxDots := getConfig(host, "CanonicalizeMaxDots"); canonicalizeMaxDots != "" {
+	if canonicalizeMaxDots := getOptionConfig(args, "CanonicalizeMaxDots"); canonicalizeMaxDots != "" {
 		if val, err := strconv.ParseUint(canonicalizeMaxDots, 10, 16); err != nil {
 			warning("CanonicalizeMaxDots [%s] invalid: %v", canonicalizeMaxDots, err)
 		} else {
@@ -122,7 +122,7 @@ func canonicalizeHost(args *sshArgs, host string) (string, error) {
 		return host, nil
 	}
 
-	domains := getConfigSplits(host, "CanonicalDomains")
+	domains := getOptionConfigSplits(args, "CanonicalDomains")
 	if len(domains) == 0 {
 		return host, nil
 	}
@@ -135,7 +135,7 @@ func canonicalizeHost(args *sshArgs, host string) (string, error) {
 		}
 	}
 
-	if strings.ToLower(getConfig(host, "CanonicalizeFallbackLocal")) == "no" {
+	if strings.ToLower(getOptionConfig(args, "CanonicalizeFallbackLocal")) == "no" {
 		return "", fmt.Errorf("could not resolve canonical hostname for [%s]", host)
 	}
 
@@ -156,25 +156,29 @@ func getSshParam(args *sshArgs, proxy bool) (*sshParam, error) {
 	// Preload effective OpenSSH configuration using `ssh -G`, allowing getConfig()
 	// to evaluate Match blocks and other complex OpenSSH rules.
 	if userConfig.useOpenSSHConfig {
-		_ = getOpenSSHEffectiveConfig(args.Destination, args, destUser, destPort)
+		_ = getOpenSSHEffectiveConfig(args, destUser, destPort)
+	}
+
+	// canonicalize
+	canonMode := strings.ToLower(getOptionConfig(args, "CanonicalizeHostname"))
+	if canonMode == "always" || (!proxy && canonMode == "yes") {
+		host, err := canonicalizeHost(args, destHost)
+		if err != nil {
+			return nil, err
+		}
+		if host != destHost {
+			args.canonicalDest, destHost = host, host
+		}
 	}
 
 	// login host
 	param.host = destHost
-	if hostName := getConfig(destHost, "HostName"); hostName != "" {
+	if hostName := getOptionConfig(args, "HostName"); hostName != "" {
 		expandedHostName, err := expandTokens(hostName, param, "%h")
 		if err != nil {
 			return nil, fmt.Errorf("expand HostName [%s] failed: %v", hostName, err)
 		}
 		param.host = expandedHostName
-	} else if canonicalize := strings.ToLower(getConfig(destHost, "CanonicalizeHostname")); canonicalize != "" {
-		if canonicalize == "always" || (!proxy && canonicalize == "yes") {
-			host, err := canonicalizeHost(args, destHost)
-			if err != nil {
-				return nil, err
-			}
-			param.host, destHost, args.Destination = host, host, host
-		}
 	}
 
 	// login user
@@ -183,7 +187,7 @@ func getSshParam(args *sshArgs, proxy bool) (*sshParam, error) {
 	} else if destUser != "" {
 		param.user = destUser
 	} else {
-		userName := getConfig(destHost, "User")
+		userName := getOptionConfig(args, "User")
 		if userName != "" {
 			param.user = userName
 		} else {
@@ -205,7 +209,7 @@ func getSshParam(args *sshArgs, proxy bool) (*sshParam, error) {
 	} else if destPort != "" {
 		param.port = destPort
 	} else {
-		port := getConfig(destHost, "Port")
+		port := getOptionConfig(args, "Port")
 		if port != "" {
 			param.port = port
 		} else {
@@ -277,13 +281,13 @@ func getProxyParam(param *sshParam) {
 		return
 	}
 
-	proxyJump = getConfig(args.Destination, "ProxyJump")
+	proxyJump = getConfig(args, "ProxyJump")
 	if proxyJump != "" && strings.ToLower(proxyJump) != "none" {
 		param.proxies = strings.Split(proxyJump, ",")
 		return
 	}
 
-	proxyCommand = getConfig(args.Destination, "ProxyCommand")
+	proxyCommand = getConfig(args, "ProxyCommand")
 	if proxyCommand != "" && strings.ToLower(proxyCommand) != "none" {
 		param.command = proxyCommand
 		return
@@ -382,18 +386,21 @@ func parseRemoteCommand(param *sshParam) (string, error) {
 	if args.Command != "" && command != "" && strings.ToLower(command) != "none" {
 		return "", fmt.Errorf("cannot execute command-line and remote command")
 	}
+
 	if args.Command != "" {
 		if len(args.Argument) == 0 {
 			return args.Command, nil
 		}
 		return shellescape.QuoteCommand(append([]string{args.Command}, args.Argument...)), nil
 	}
-	if strings.ToLower(command) == "none" {
+
+	if command == "" {
+		command = getConfig(args, "RemoteCommand")
+	}
+	if command == "" || strings.ToLower(command) == "none" {
 		return "", nil
 	}
-	if command == "" {
-		command = getConfig(args.Destination, "RemoteCommand")
-	}
+
 	expandedCmd, err := expandTokens(command, param, "%CdhijkLlnpru")
 	if err != nil {
 		return "", fmt.Errorf("expand RemoteCommand [%s] failed: %v", command, err)
@@ -421,7 +428,7 @@ func parseCmdAndTTY(param *sshParam) (cmd string, tty bool, err error) {
 		return
 	}
 
-	requestTTY := getConfig(args.Destination, "RequestTTY")
+	requestTTY := getOptionConfig(args, "RequestTTY")
 	switch strings.ToLower(requestTTY) {
 	case "", "auto":
 		tty = isTerminal && (cmd == "")

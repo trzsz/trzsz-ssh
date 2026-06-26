@@ -616,7 +616,7 @@ func getUdpMode(args *sshArgs) udpModeType {
 		return kUdpModeKcp
 	}
 
-	udpMode := getExConfig(args.Destination, "UdpMode")
+	udpMode := getExConfig(args, "UdpMode")
 	switch strings.ToLower(udpMode) {
 	case "", "no":
 		break

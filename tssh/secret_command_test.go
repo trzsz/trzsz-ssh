@@ -73,8 +73,7 @@ func TestGetSecretConfigWithCommand(t *testing.T) {
 	enableWarningLogging, userConfig = false, &tsshConfig{}
 	defer func() { enableWarningLogging, userConfig = oriEnableWarning, oriUserConfig }()
 
-	var err error
-	userConfig.exConfig, err = ssh_config.DecodeBytes([]byte(`
+	config, err := ssh_config.DecodeBytes([]byte(`
 Host cmdhost
     HostName 10.0.0.1
     User testuser
@@ -95,6 +94,8 @@ Host tokenhost
     PasswordCommand echo password-for-%n
 `))
 	require.NoError(t, err)
+
+	userConfig.exConfig = &sshConfig{"", config}
 
 	param := func(alias string) *sshParam {
 		param, err := getSshParam(&sshArgs{Destination: alias}, false)
