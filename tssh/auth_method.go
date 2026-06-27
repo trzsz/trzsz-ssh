@@ -171,7 +171,6 @@ func newPassphraseSigner(path string, priKey []byte, err *ssh.PassphraseMissingE
 }
 
 func getSigner(param *sshParam, path string) sshSigner {
-	path = resolveHomeDir(path)
 	privateKey, err := os.ReadFile(path)
 	if err != nil {
 		warning("read private key [%s] failed: %v", path, err)
@@ -427,20 +426,24 @@ func getPublicKeysAuthMethod(param *sshParam) ssh.AuthMethod {
 		addPubKeySigners(appendSignerCerts(path, signer, certFiles))
 	}
 
-	identities := args.Identity.values
+	var identities []string
+	for _, identity := range args.Identity.values {
+		identities = append(identities, resolveHomeDir(identity))
+	}
 	for _, identity := range getAllOptionConfig(args, "IdentityFile") {
 		expandedIdentity, err := expandTokens(identity, param, "%CdhijkLlnpru")
 		if err != nil {
 			warning("expand IdentityFile [%s] failed: %v", identity, err)
 			continue
 		}
-		if userConfig.useOpenSSHConfig {
-			expandedIdentity = resolveHomeDir(expandedIdentity)
-			if !isFileExist(expandedIdentity) {
-				debug("IdentityFile [%s] does not exist", expandedIdentity)
-				continue
-			}
+
+		expandedIdentity = resolveHomeDir(expandedIdentity)
+
+		if userConfig.useOpenSSHConfig && !isFileExist(expandedIdentity) {
+			debug("IdentityFile [%s] does not exist", expandedIdentity)
+			continue
 		}
+
 		identities = append(identities, expandedIdentity)
 	}
 
@@ -461,11 +464,10 @@ func getPublicKeysAuthMethod(param *sshParam) ssh.AuthMethod {
 				pubPath += ".pub"
 			}
 			if isFileExist(pubPath) {
-				pubPath = resolveHomeDir(pubPath)
 				if pubKey := parsePublicKey(pubPath); pubKey != nil {
 					for _, agentSigner := range agentSigners {
 						if bytes.Equal(pubKey.Marshal(), agentSigner.PublicKey().Marshal()) {
-							addSignerWithCerts("", newSshSigner(pubPath+" (agent)", nil, pubKey, agentSigner))
+							addSignerWithCerts("", newSshSigner(path+" (agent)", nil, pubKey, agentSigner))
 							continue out
 						}
 					}
