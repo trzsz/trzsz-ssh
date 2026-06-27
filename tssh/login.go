@@ -727,16 +727,26 @@ func keepAlive(sshConn *sshConnection) {
 		}
 	}
 
+	showRTT := strings.ToLower(userConfig.setTerminalTitle) == "rtt"
+
 	sendKeepAlive := func(idx int) {
 		if enableDebugLogging {
 			writeDebugLog(time.Now().UnixMilli(), sshConn.param.args.Destination, fmt.Sprintf("keep alive [%d] sending", idx))
 		}
+
+		beginMilli := time.Now().UnixMilli()
+
 		if _, _, err := sshConn.client.SendRequest("keepalive@openssh.com", true, nil); err != nil {
 			if !tsshd.IsClosedError(err) {
 				debug("keep alive [%d] failed: %v", idx, err)
 			}
 			return
 		}
+
+		if showRTT {
+			setTerminalTitle(fmt.Sprintf("%s %dms", sshConn.param.args.Destination, time.Now().UnixMilli()-beginMilli))
+		}
+
 		if enableDebugLogging {
 			writeDebugLog(time.Now().UnixMilli(), sshConn.param.args.Destination, fmt.Sprintf("keep alive [%d] success", idx))
 		}

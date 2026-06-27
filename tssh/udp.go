@@ -323,6 +323,17 @@ func udpLogin(param *sshParam, tcpClient SshClient) (SshClient, error) {
 		debug("udp login to [%s] tsshd server addr: %s", param.args.Destination, tsshdAddr)
 	}
 
+	if strings.ToLower(userConfig.setTerminalTitle) == "rtt" {
+		clientOpts.RttCallback = func(rtt int64) {
+			if lastJumpUdpClient == nil {
+				return
+			}
+			if sshConn := lastJumpUdpClient.sshConn.Load(); sshConn != nil && sshConn.client == udpClient {
+				setTerminalTitle(fmt.Sprintf("%s %dms", args.Destination, rtt))
+			}
+		}
+	}
+
 	udpClient.SshUdpClient, err = tsshd.NewSshUdpClient(clientOpts)
 	if err != nil {
 		return nil, fmt.Errorf("udp login to [%s] failed: %v", args.Destination, err)

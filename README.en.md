@@ -794,6 +794,7 @@ trzsz-ssh ( tssh ) with [tsshd](https://github.com/trzsz/tsshd) also supports in
   PromptSelectedIcon = 🍺
 
   # Auto set terminal title after login. It will not be reset after exiting. Please set PROMPT_COMMAND in local shell.
+  # Set this to rtt to display the current connection RTT in the title (e.g. server 12ms).
   SetTerminalTitle = yes
 
   # Use `ssh -G` to evaluate OpenSSH config, including `Match` blocks.
@@ -908,6 +909,8 @@ trzsz-ssh ( tssh ) with [tsshd](https://github.com/trzsz/tsshd) also supports in
   - If obtaining the latest version of `tsshd` fails, you can specify it through `--tsshd-version x.x.x`.
   - If downloading the `tsshd` installation package fails, you can download and specify it through `--tsshd-bin-path /path/to/tsshd.tar.gz`.
   - Note: `--install-tsshd` does not support Windows server, and does not support jump server (unless using `ProxyJump`).
+
+- If `SetTerminalTitle = rtt` is set in `$XDG_CONFIG_HOME/tssh/tssh.conf` ( or `~/.tssh.conf` ), the terminal title will display the current connection RTT (round-trip time), for example: server 12ms. For non-UDP mode, `ServerAliveInterval` must also be configured for RTT to be displayed.
 
 - About changing the terminal title, it can be achieved without `tssh`. It only needs to be configured in the server's shell configuration file (such as `~/.bashrc`):
 
