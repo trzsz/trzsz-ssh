@@ -67,6 +67,9 @@ func TestSshArgs(t *testing.T) {
 	assertArgsEqual("-x", sshArgs{NoX11Forward: true})
 	assertArgsEqual("-Y", sshArgs{X11Trusted: true})
 	assertArgsEqual("-S none", sshArgs{ControlPath: "none"})
+	assertArgsEqual("-O exit host", sshArgs{ControlCmd: "exit", Destination: "host"})
+	assertArgsEqual("-O check host", sshArgs{ControlCmd: "check", Destination: "host"})
+	assertArgsEqual("-Ostop host", sshArgs{ControlCmd: "stop", Destination: "host"})
 
 	assertArgsEqual("-p1022", sshArgs{Port: 1022})
 	assertArgsEqual("-p 2049", sshArgs{Port: 2049})
@@ -140,6 +143,16 @@ func TestSshArgs(t *testing.T) {
 
 	if got := assertArgsError("-v", arg.ErrVersion.Error()); got != arg.ErrVersion {
 		t.Errorf("-v expected error %v, got %v", arg.ErrVersion, got)
+	}
+}
+
+func TestControlCommands(t *testing.T) {
+	assert := assert.New(t)
+	for _, cmd := range []string{"check", "forward", "cancel", "exit", "stop", "proxy"} {
+		assert.True(validControlCommands[cmd], "expected [%s] to be a valid control command", cmd)
+	}
+	for _, cmd := range []string{"", "bogus", "Exit", "restart"} {
+		assert.False(validControlCommands[cmd], "expected [%s] to be rejected", cmd)
 	}
 }
 
