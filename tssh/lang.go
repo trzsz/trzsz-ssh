@@ -101,7 +101,7 @@ func chooseLanguage() {
 		userConfig.language = "chinese"
 	}
 
-	path := getTsshConfigPath(true)
+	path := createTsshConfigPath()
 	if err := writeLanguage(path, language); err != nil {
 		warning("write language [%s] to %s failed: %v", language, path, err)
 		return

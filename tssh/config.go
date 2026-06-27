@@ -108,39 +108,51 @@ type tsshConfig struct {
 
 var userConfig *tsshConfig
 
-func getTsshConfigPath(forCreating bool) string {
+func getTsshConfigPath() []string {
+	var paths []string
+
 	xdgConfigHome := os.Getenv("XDG_CONFIG_HOME")
 	if xdgConfigHome == "" {
 		xdgConfigHome = filepath.Join(userHomeDir, ".config")
 	}
 	xdgPath := filepath.Join(xdgConfigHome, "tssh/tssh.conf")
 	if isFileExist(xdgPath) {
-		return xdgPath
+		paths = append(paths, xdgPath)
 	}
+
 	homePath := filepath.Join(userHomeDir, ".tssh.conf")
 	if isFileExist(homePath) {
-		return homePath
+		paths = append(paths, homePath)
 	}
-	if forCreating {
-		if isDirExist(xdgConfigHome) {
-			cfgPath := filepath.Join(xdgConfigHome, "tssh")
-			if err := os.Mkdir(cfgPath, 0700); err != nil {
-				warning("create config path [%s] failed: %v", cfgPath, err)
-			}
-			return xdgPath
-		}
-		return homePath
+
+	if enableDebugLogging && len(paths) == 0 {
+		debug("%s or %s does not exist", xdgPath, homePath)
 	}
-	debug("%s or %s does not exist", xdgPath, homePath)
-	return ""
+
+	return paths
 }
 
-func parseTsshConfig() {
-	path := getTsshConfigPath(false)
-	if path == "" {
-		return
+func createTsshConfigPath() string {
+	xdgConfigHome := os.Getenv("XDG_CONFIG_HOME")
+	if xdgConfigHome == "" {
+		xdgConfigHome = filepath.Join(userHomeDir, ".config")
 	}
 
+	if isDirExist(xdgConfigHome) {
+		cfgPath := filepath.Join(xdgConfigHome, "tssh")
+		if !isDirExist(cfgPath) {
+			if err := os.Mkdir(cfgPath, 0700); err != nil {
+				warning("create config path [%s] failed: %v", cfgPath, err)
+				return filepath.Join(userHomeDir, ".tssh.conf")
+			}
+		}
+		return filepath.Join(cfgPath, "tssh.conf")
+	}
+
+	return filepath.Join(userHomeDir, ".tssh.conf")
+}
+
+func loadTsshConfig(path string) {
 	file, err := os.Open(path)
 	if err != nil {
 		warning("open %s failed: %v", path, err)
@@ -209,6 +221,12 @@ func parseTsshConfig() {
 		case name == "setterminaltitle" && userConfig.setTerminalTitle == "":
 			userConfig.setTerminalTitle = value
 		}
+	}
+}
+
+func parseTsshConfig() {
+	for _, path := range getTsshConfigPath() {
+		loadTsshConfig(path)
 	}
 
 	if userConfig.promptCursorIcon != "" {
