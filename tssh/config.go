@@ -599,6 +599,10 @@ func getExConfig(args *sshArgs, key string) string {
 }
 
 func getAllExConfig(args *sshArgs, key string, extend bool) []string {
+	if userConfig.useOpenSSHConfig && !extend {
+		return getAllConfig(args, key)
+	}
+
 	userConfig.doLoadExConfig()
 
 	values := getAllCfg(args.Destination, key, userConfig.exConfig, userConfig.config, userConfig.sysConfig)

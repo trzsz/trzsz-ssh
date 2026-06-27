@@ -161,7 +161,7 @@ func getSshParam(args *sshArgs, proxy bool) (*sshParam, error) {
 
 	// canonicalize
 	canonMode := strings.ToLower(getOptionConfig(args, "CanonicalizeHostname"))
-	if canonMode == "always" || (!proxy && canonMode == "yes") {
+	if canonMode == "true" || canonMode == "always" || (!proxy && canonMode == "yes") {
 		host, err := canonicalizeHost(args, destHost)
 		if err != nil {
 			return nil, err
