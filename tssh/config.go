@@ -561,45 +561,46 @@ func getAllConfigSplits(args *sshArgs, key string) []string {
 func getExConfig(args *sshArgs, key string) string {
 	userConfig.doLoadExConfig()
 
-	alias := args.Destination
-	value := getCfg(alias, key, userConfig.exConfig, userConfig.config, userConfig.sysConfig)
+	value := getCfg(args.Destination, key, userConfig.exConfig, userConfig.config, userConfig.sysConfig)
 
-	if value == "" && args.canonicalDest != "" {
-		alias = args.canonicalDest
-		value = getCfg(alias, key, userConfig.exConfig, userConfig.config, userConfig.sysConfig)
+	if value != "" {
+		debug("get extended config [%s] for [%s] success", key, args.Destination)
+		return value
 	}
 
-	if enableDebugLogging {
+	if args.canonicalDest != "" {
+		value := getCfg(args.canonicalDest, key, userConfig.exConfig, userConfig.config, userConfig.sysConfig)
 		if value != "" {
-			debug("get extended config [%s] for [%s] success", key, alias)
-		} else {
-			debug("no extended config [%s] for [%s]", key, alias)
+			debug("get extended config [%s] for [%s] success", key, args.canonicalDest)
+			return value
 		}
 	}
 
-	return value
+	debug("no extended config [%s] for [%s]", key, args.Destination)
+	return ""
 }
 
 func getAllExConfig(args *sshArgs, key string, extend bool) []string {
 	userConfig.doLoadExConfig()
 
-	alias := args.Destination
-	values := getAllCfg(alias, key, userConfig.exConfig, userConfig.config, userConfig.sysConfig)
+	values := getAllCfg(args.Destination, key, userConfig.exConfig, userConfig.config, userConfig.sysConfig)
+
+	if enableDebugLogging && extend && len(values) > 0 {
+		debug("get all extended config [%s] for [%s] success", key, args.Destination)
+	}
 
 	if args.canonicalDest != "" {
-		alias = args.canonicalDest
-		vals := getAllCfg(alias, key, userConfig.exConfig, userConfig.config, userConfig.sysConfig)
+		vals := getAllCfg(args.canonicalDest, key, userConfig.exConfig, userConfig.config, userConfig.sysConfig)
 		if len(vals) > 0 {
+			if enableDebugLogging && extend {
+				debug("get all extended config [%s] for [%s] success", key, args.canonicalDest)
+			}
 			values = append(values, vals...)
 		}
 	}
 
-	if enableDebugLogging && extend {
-		if len(values) > 0 {
-			debug("get all extended config [%s] for [%s] success", key, alias)
-		} else {
-			debug("no extended config [%s] for [%s]", key, alias)
-		}
+	if enableDebugLogging && extend && len(values) == 0 {
+		debug("no extended config [%s] for [%s]", key, args.Destination)
 	}
 
 	return values
