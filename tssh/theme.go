@@ -58,7 +58,7 @@ func getDefaultDetailsTemplate() string {
 	addItem := func(name string) {
 		fmt.Fprintf(&builder, `{{ if hasField . "%s" }}`+
 			`{{- if .%s }}{{ "%s:" | %s }}{{ "\t" }}{{ .%s | %s }}{{ "\n" }}{{ end }}`+
-			`{{ else }}{{ $value := getExConfig .Alias "%s" }}`+
+			`{{ else }}{{ $value := getExConfig .Args "%s" }}`+
 			`{{- if $value }}{{ "%s:" | %s }}{{ "\t" }}{{ $value | %s }}{{ "\n" }}{{ end }}`+
 			`{{ end }}`,
 			name, name, name, getThemeColor("details_name"), name, getThemeColor("details_value"),
@@ -249,7 +249,7 @@ func (t *tableTheme) renderDetails(item any) string {
 		case "remotecommand":
 			addItem("RemoteCommand", host.RemoteCommand)
 		default:
-			addItem(item, getExConfig(host.args, item))
+			addItem(item, getExConfig(host.Args, item))
 		}
 	}
 	tbl := table.New().BorderRow(true).Rows(data...).

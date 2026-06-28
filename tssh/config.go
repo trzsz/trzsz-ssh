@@ -58,7 +58,7 @@ func resolveHomeDir(path string) string {
 }
 
 type sshHost struct {
-	args          *sshArgs
+	Args          *sshArgs
 	Alias         string
 	Host          string
 	Port          string
@@ -704,7 +704,7 @@ func appendPromptHosts(oriArgs *sshArgs, hosts []*sshHost, seen map[string]bool,
 			}
 
 			hosts = append(hosts, &sshHost{
-				args:          &args,
+				Args:          &args,
 				Alias:         alias,
 				Host:          getOptionConfig(&args, "HostName"),
 				Port:          getOptionConfig(&args, "Port"),
