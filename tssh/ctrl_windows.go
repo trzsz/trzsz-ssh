@@ -30,6 +30,11 @@ import (
 
 const kOpenSSH = "ssh.exe"
 
+func execControlCmd(_ *sshArgs, _ string) int {
+	warning("controlling the multiplexing master process is not supported on Windows")
+	return kExitCodeToolsError
+}
+
 func connectViaControl(param *sshParam) SshClient {
 	ctrlMaster := getOptionConfig(param.args, "ControlMaster")
 	ctrlPath := param.args.ControlPath

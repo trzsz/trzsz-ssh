@@ -105,7 +105,9 @@ func replaceOrAppendDest(args []string, oldDest, newDest string) ([]string, erro
 
 	if oldDest == "" {
 		// No existing destination, append the new one
-		newArgs = append(newArgs, newDest)
+		if newDest != "" {
+			newArgs = append(newArgs, newDest)
+		}
 	} else if oldDest != newDest {
 		// Replace old destination
 		idx := -1
@@ -304,19 +306,18 @@ func TsshMain(argv []string) int {
 	// choose ssh alias
 	dest := ""
 	quit := false
-	if args.Destination == "" || args.Destination == "FAKE_DEST_IN_WARP" {
-		if !isTerminal {
-			fmt.Fprintln(os.Stderr, "destination is required when running tssh in non-interactive mode")
-			return kExitCodeNoDestHost
-		}
-		dest, quit, err = chooseAlias(&args, "")
-	} else {
-		dest, quit, err = predictDestination(&args, args.Destination)
-	}
+	dest, quit, err = chooseOrPredictDest(&args)
 	if quit {
 		err = nil
 		return 0
 	}
+
+	// multiplexing control command
+	if args.ControlCmd != "" {
+		return execControlCmd(&args, dest)
+	}
+
+	// check dest before startup
 	if err != nil || dest == "" {
 		if err == nil {
 			err = fmt.Errorf("missing destination host")

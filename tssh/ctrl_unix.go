@@ -29,6 +29,7 @@ package tssh
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -319,6 +320,42 @@ func startControlMaster(param *sshParam, sshPath string) error {
 	}
 	debug("start control master success")
 	return nil
+}
+
+// execControlCmd forwards an OpenSSH multiplexing control command (`tssh -O <ctl_cmd>`)
+// to the native ssh master process and propagates its exit code.
+func execControlCmd(args *sshArgs, dest string) int {
+	cmdArgs, err := replaceOrAppendDest(os.Args[1:], args.Destination, dest)
+	if err != nil {
+		warning("replace or append destination failed: %v", err)
+		return kExitCodeToolsError
+	}
+
+	sshPath, _, _, err := getOpenSSH()
+	if err != nil {
+		warning("can't find openssh program: %v", err)
+		return kExitCodeToolsError
+	}
+
+	cmd := exec.Command(sshPath, cmdArgs...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if enableDebugLogging {
+		debug("control command: %s %s", sshPath, strings.Join(cmdArgs, " "))
+	}
+
+	if err := cmd.Run(); err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return exitErr.ExitCode()
+		}
+		warning("control command %v failed: %v", cmdArgs, err)
+		return kExitCodeToolsError
+	}
+
+	return 0
 }
 
 func connectViaControl(param *sshParam) SshClient {
