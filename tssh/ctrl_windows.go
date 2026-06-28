@@ -36,14 +36,20 @@ func execControlCmd(_ *sshArgs, _ string) int {
 }
 
 func connectViaControl(param *sshParam) SshClient {
-	ctrlMaster := getOptionConfig(param.args, "ControlMaster")
 	ctrlPath := param.args.ControlPath
 	if ctrlPath == "" {
 		ctrlPath = getOptionConfig(param.args, "ControlPath")
 	}
 
-	switch strings.ToLower(ctrlMaster) {
-	case "auto", "yes", "ask", "autoask", "true":
+	master := param.args.ControlMaster
+	if !master {
+		ctrlMaster := getOptionConfig(param.args, "ControlMaster")
+		switch strings.ToLower(ctrlMaster) {
+		case "auto", "yes", "ask", "autoask", "true":
+			master = true
+		}
+	}
+	if master {
 		warning("ControlMaster is not supported on Windows")
 	}
 

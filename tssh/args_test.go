@@ -66,6 +66,7 @@ func TestSshArgs(t *testing.T) {
 	assertArgsEqual("-X", sshArgs{X11Forward: true})
 	assertArgsEqual("-x", sshArgs{NoX11Forward: true})
 	assertArgsEqual("-Y", sshArgs{X11Trusted: true})
+	assertArgsEqual("-M", sshArgs{ControlMaster: true})
 	assertArgsEqual("-S none", sshArgs{ControlPath: "none"})
 	assertArgsEqual("-O exit host", sshArgs{ControlCmd: "exit", Destination: "host"})
 	assertArgsEqual("-O check host", sshArgs{ControlCmd: "check", Destination: "host"})

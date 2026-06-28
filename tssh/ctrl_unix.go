@@ -391,15 +391,24 @@ func connectViaControl(param *sshParam) SshClient {
 	}
 	socket = resolveHomeDir(socket)
 
-	ctrlMaster := getOptionConfig(args, "ControlMaster")
-	switch strings.ToLower(ctrlMaster) {
-	case "yes", "ask", "true":
-		if isFileExist(socket) {
-			warning("control socket [%s] already exists, disabling multiplexing", socket)
-			return nil
+	auto := false
+	master := args.ControlMaster
+	if !master {
+		ctrlMaster := getOptionConfig(args, "ControlMaster")
+		switch strings.ToLower(ctrlMaster) {
+		case "yes", "ask", "true":
+			master = true
+		case "auto", "autoask":
+			auto = true
 		}
-		fallthrough
-	case "auto", "autoask":
+	}
+
+	if master && isFileExist(socket) {
+		warning("control socket [%s] already exists, disabling multiplexing", socket)
+		return nil
+	}
+
+	if auto || master {
 		if err := startControlMaster(param, sshPath); err != nil {
 			warning("start control master failed: %v", err)
 		}

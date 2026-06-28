@@ -77,6 +77,7 @@ type sshArgs struct {
 	X11Forward     bool        `arg:"-X,--" help:"enables X11 forwarding"`
 	NoX11Forward   bool        `arg:"-x,--" help:"disables X11 forwarding"`
 	X11Trusted     bool        `arg:"-Y,--" help:"enables trusted X11 forwarding"`
+	ControlMaster  bool        `arg:"-M,--" help:"enables master mode for multiplexing"`
 	ControlPath    string      `arg:"-S,--" placeholder:"ctl_path" help:"specify the control socket path"`
 	ControlCmd     string      `arg:"-O,--" placeholder:"ctl_cmd" help:"send command to a multiplex master"`
 	Reconnect      bool        `arg:"--reconnect" help:"reconnect or restart after process exits"`
