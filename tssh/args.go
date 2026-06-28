@@ -78,7 +78,7 @@ type sshArgs struct {
 	NoX11Forward   bool        `arg:"-x,--" help:"disables X11 forwarding"`
 	X11Trusted     bool        `arg:"-Y,--" help:"enables trusted X11 forwarding"`
 	ControlPath    string      `arg:"-S,--" placeholder:"ctl_path" help:"specify the control socket path"`
-	ControlCmd     string      `arg:"-O,--" placeholder:"ctl_cmd" help:"control an active connection multiplexing master process"`
+	ControlCmd     string      `arg:"-O,--" placeholder:"ctl_cmd" help:"send command to a multiplex master"`
 	Reconnect      bool        `arg:"--reconnect" help:"reconnect or restart after process exits"`
 	DragFile       bool        `arg:"--dragfile" help:"enable drag files and directories to upload"`
 	TraceLog       bool        `arg:"--tracelog" help:"enable trzsz detect trace logs for debugging"`

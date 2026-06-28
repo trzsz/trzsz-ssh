@@ -524,26 +524,12 @@ func isFileNotExistOrEmpty(path string) bool {
 	return stat.Size() == 0
 }
 
-// validControlCommands are the OpenSSH `-O <ctl_cmd>` commands that may be
-// forwarded to the native ssh multiplexing master process. Defined in a
-// platform-neutral file so both the Unix handler and the tests can reference it.
-var validControlCommands = map[string]bool{
-	"check":   true,
-	"forward": true,
-	"cancel":  true,
-	"exit":    true,
-	"stop":    true,
-	"proxy":   true,
-}
-
 // execLocalTools execute local tools if necessary
 //
 // return true to quit with return code
 // return false to continue ssh login
 func execLocalTools(args *sshArgs) (int, bool) {
 	switch {
-	case args.ControlCmd != "":
-		return execControlCmd(args)
 	case args.EncSecret:
 		return execEncodeSecret()
 	case args.NewHost || args.Destination == "" && isFileNotExistOrEmpty(userConfig.configPath):

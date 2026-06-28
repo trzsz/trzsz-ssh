@@ -322,113 +322,40 @@ func startControlMaster(param *sshParam, sshPath string) error {
 	return nil
 }
 
-// resolveControlSocket resolves the native ssh program and the control socket
-// path the same way connectViaControl does: read ControlPath from args or the
-// effective config, then expand the version-gated token set and the home directory.
-func resolveControlSocket(param *sshParam) (sshPath, socket string, err error) {
-	args := param.args
-	ctrlPath := args.ControlPath
-	if ctrlPath == "" {
-		ctrlPath = getOptionConfig(args, "ControlPath")
-	}
-	switch strings.ToLower(ctrlPath) {
-	case "", "none":
-		return "", "", fmt.Errorf("no ControlPath configured")
-	}
-
-	sshPath, majorVersion, minorVersion, err := getOpenSSH()
+// execControlCmd forwards an OpenSSH multiplexing control command (`tssh -O <ctl_cmd>`)
+// to the native ssh master process and propagates its exit code.
+func execControlCmd(args *sshArgs, dest string) int {
+	cmdArgs, err := replaceOrAppendDest(os.Args[1:], args.Destination, dest)
 	if err != nil {
-		return "", "", fmt.Errorf("can't find openssh program: %v", err)
-	}
-	if majorVersion < 0 || minorVersion < 0 {
-		return "", "", fmt.Errorf("can't get openssh version of %s", sshPath)
+		warning("replace or append destination failed: %v", err)
+		return kExitCodeToolsError
 	}
 
-	tokens := "%CdhijkLlnpru"
-	if majorVersion < 9 || (majorVersion == 9 && minorVersion < 6) {
-		tokens = "%CdhikLlnpru"
-	}
-	socket, err = expandTokens(ctrlPath, param, tokens)
+	sshPath, _, _, err := getOpenSSH()
 	if err != nil {
-		return "", "", fmt.Errorf("expand ControlPath [%s] failed: %v", ctrlPath, err)
+		warning("can't find openssh program: %v", err)
+		return kExitCodeToolsError
 	}
-	return sshPath, resolveHomeDir(socket), nil
-}
-
-// execControlCmd forwards an OpenSSH multiplexing control command
-// (`tssh -O <ctl_cmd> <destination>`) to the native ssh master process
-// listening on the resolved ControlPath socket, and propagates its exit code.
-func execControlCmd(args *sshArgs) (int, bool) {
-	ctlCmd := strings.ToLower(strings.TrimSpace(args.ControlCmd))
-	if !validControlCommands[ctlCmd] {
-		warning("unsupported control command [%s], expected one of: check, forward, cancel, exit, stop, proxy", args.ControlCmd)
-		return kExitCodeArgsInvalid, true
-	}
-
-	if args.Destination == "" {
-		warning("a destination is required to control the multiplexing master process")
-		return kExitCodeNoDestHost, true
-	}
-
-	param, err := getSshParam(args, false)
-	if err != nil {
-		warning("get ssh param failed: %v", err)
-		return kExitCodeArgsInvalid, true
-	}
-
-	sshPath, socket, err := resolveControlSocket(param)
-	if err != nil {
-		warning("can't control the multiplexing master process: %v", err)
-		return kExitCodeArgsInvalid, true
-	}
-
-	cmdArgs := []string{"-O", ctlCmd, "-S", socket}
-	// `forward` and `cancel` act on specific forwarding specs, so pass the
-	// requested forwarding arguments and the options that shape them through
-	// to the native ssh master (mirroring startControlMaster).
-	if ctlCmd == "forward" || ctlCmd == "cancel" {
-		if args.Gateway {
-			cmdArgs = append(cmdArgs, "-g")
-		}
-		if args.ConfigFile != "" {
-			cmdArgs = append(cmdArgs, "-F", args.ConfigFile)
-		}
-		for key, values := range args.Option.options {
-			if key == "remotecommand" {
-				continue
-			}
-			for _, value := range values {
-				cmdArgs = append(cmdArgs, fmt.Sprintf("-o%s=%s", key, value))
-			}
-		}
-		for _, b := range args.DynamicForward.binds {
-			cmdArgs = append(cmdArgs, "-D", b.argument)
-		}
-		for _, f := range args.LocalForward.cfgs {
-			cmdArgs = append(cmdArgs, "-L", f.argument)
-		}
-		for _, f := range args.RemoteForward.cfgs {
-			cmdArgs = append(cmdArgs, "-R", f.argument)
-		}
-	}
-	cmdArgs = append(cmdArgs, args.Destination)
 
 	cmd := exec.Command(sshPath, cmdArgs...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+
 	if enableDebugLogging {
 		debug("control command: %s %s", sshPath, strings.Join(cmdArgs, " "))
 	}
+
 	if err := cmd.Run(); err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
-			return exitErr.ExitCode(), true
+			return exitErr.ExitCode()
 		}
-		warning("control command [%s] failed: %v", ctlCmd, err)
-		return kExitCodeToolsError, true
+		warning("control command %v failed: %v", cmdArgs, err)
+		return kExitCodeToolsError
 	}
-	return 0, true
+
+	return 0
 }
 
 func connectViaControl(param *sshParam) SshClient {

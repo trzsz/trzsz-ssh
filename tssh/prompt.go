@@ -671,3 +671,18 @@ func predictDestination(args *sshArgs, dest string) (string, bool, error) {
 
 	return chooseAlias(args, dest)
 }
+
+func chooseOrPredictDest(args *sshArgs) (string, bool, error) {
+	if args.ControlCmd != "" && args.ControlPath != "" {
+		return args.Destination, false, nil
+	}
+
+	if args.Destination == "" || args.Destination == "FAKE_DEST_IN_WARP" {
+		if !isTerminal {
+			return "", false, fmt.Errorf("destination is required when running tssh in non-interactive mode")
+		}
+		return chooseAlias(args, "")
+	}
+
+	return predictDestination(args, args.Destination)
+}

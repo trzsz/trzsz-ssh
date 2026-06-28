@@ -146,16 +146,6 @@ func TestSshArgs(t *testing.T) {
 	}
 }
 
-func TestControlCommands(t *testing.T) {
-	assert := assert.New(t)
-	for _, cmd := range []string{"check", "forward", "cancel", "exit", "stop", "proxy"} {
-		assert.True(validControlCommands[cmd], "expected [%s] to be a valid control command", cmd)
-	}
-	for _, cmd := range []string{"", "bogus", "Exit", "restart"} {
-		assert.False(validControlCommands[cmd], "expected [%s] to be rejected", cmd)
-	}
-}
-
 func TestForwardArgs(t *testing.T) {
 	assert := assert.New(t)
 	assertDynamicForwardNil := func(argument string, address *string, port int) {

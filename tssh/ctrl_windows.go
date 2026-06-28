@@ -30,9 +30,9 @@ import (
 
 const kOpenSSH = "ssh.exe"
 
-func execControlCmd(args *sshArgs) (int, bool) {
+func execControlCmd(_ *sshArgs, _ string) int {
 	warning("controlling the multiplexing master process is not supported on Windows")
-	return kExitCodeToolsError, true
+	return kExitCodeToolsError
 }
 
 func connectViaControl(param *sshParam) SshClient {
