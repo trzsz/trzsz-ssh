@@ -30,6 +30,7 @@ require (
 	github.com/trzsz/trzsz-go v1.2.1-0.20260410165008-9be4a4a9e14b
 	github.com/trzsz/tsshd v0.1.9-0.20260627222501-a37e24c39be5
 	golang.org/x/crypto v0.53.0
+	golang.org/x/net v0.56.0
 	golang.org/x/sys v0.46.0
 	golang.org/x/term v0.44.0
 )
@@ -74,7 +75,6 @@ require (
 	github.com/trzsz/smux v1.6.0 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	golang.org/x/image v0.43.0 // indirect
-	golang.org/x/net v0.56.0 // indirect
 	golang.org/x/sync v0.21.0 // indirect
 	golang.org/x/text v0.38.0 // indirect
 	golang.org/x/time v0.15.0 // indirect

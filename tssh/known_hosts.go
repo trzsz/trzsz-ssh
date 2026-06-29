@@ -223,6 +223,17 @@ func getHostKeyCallback(param *sshParam) (ssh.HostKeyCallback, []string, error) 
 			case "accept-new", "no", "off", "false":
 				ask = false
 			}
+			switch strings.ToLower(getOptionConfig(param.args, "VerifyHostKeyDNS")) {
+			case "yes", "true":
+				if verifyHostKeyDNS(host, key) {
+					debug("matching host key fingerprint found in DNS for '%s'", host)
+					return addHostKey(primaryPath, host, key, false)
+				}
+			case "ask":
+				if verifyHostKeyDNS(host, key) {
+					fmt.Fprintf(os.Stderr, "Matching host key fingerprint found in DNS.\r\n")
+				}
+			}
 			return addHostKey(primaryPath, host, key, ask)
 		}
 		switch strictHostKeyChecking {
