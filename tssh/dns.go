@@ -226,9 +226,12 @@ func dnsServers() []string {
 }
 
 // verifyHostKeyDNS reports whether the presented host key matches an SSHFP
-// record published in DNS for the host. The host may include a port, which is
-// stripped before the lookup. Any lookup failure is treated as no match.
-func verifyHostKeyDNS(host string, key ssh.PublicKey) bool {
+// record published in DNS for the host, and whether that record came from a
+// DNSSEC-authenticated response (the AD bit set by the resolver). The host may
+// include a port, which is stripped before the lookup. Any lookup failure is
+// treated as no match. Following OpenSSH, callers must only auto-trust a match
+// when authenticated is true; an unauthenticated match merely informs the user.
+func verifyHostKeyDNS(host string, key ssh.PublicKey) (matched bool, authenticated bool) {
 	name := host
 	if h, _, err := net.SplitHostPort(host); err == nil {
 		name = h
@@ -236,29 +239,32 @@ func verifyHostKeyDNS(host string, key ssh.PublicKey) bool {
 	name = strings.Trim(name, "[]")
 	if name == "" || net.ParseIP(name) != nil {
 		// SSHFP records are keyed by hostname; skip bare IP addresses.
-		return false
+		return false, false
 	}
-	records, err := lookupSSHFP(name)
+	records, authenticated, err := lookupSSHFP(name)
 	if err != nil {
 		debug("SSHFP lookup for '%s' failed: %v", name, err)
-		return false
+		return false, false
 	}
-	return matchSSHFP(records, key)
+	return matchSSHFP(records, key), authenticated
 }
 
-// lookupSSHFP queries DNS for the SSHFP (type 44) records of the given host.
-func lookupSSHFP(host string) ([]sshfpRecord, error) {
+// lookupSSHFP queries DNS for the SSHFP (type 44) records of the given host. It
+// also reports whether the response was DNSSEC-authenticated (AD bit set).
+func lookupSSHFP(host string) ([]sshfpRecord, bool, error) {
 	servers := dnsServers()
 	if len(servers) == 0 {
-		return nil, fmt.Errorf("no dns server available for SSHFP lookup")
+		return nil, false, fmt.Errorf("no dns server available for SSHFP lookup")
 	}
 
 	name, err := dnsmessage.NewName(dnsName(host))
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	query := dnsmessage.Message{
-		Header: dnsmessage.Header{RecursionDesired: true},
+		// AuthenticData asks a validating resolver to perform DNSSEC
+		// validation and echo the AD bit on a verified response.
+		Header: dnsmessage.Header{RecursionDesired: true, AuthenticData: true},
 		Questions: []dnsmessage.Question{{
 			Name:  name,
 			Type:  dnsmessage.Type(44),
@@ -267,41 +273,41 @@ func lookupSSHFP(host string) ([]sshfpRecord, error) {
 	}
 	request, err := query.Pack()
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	var lastErr error
 	for _, server := range servers {
-		records, err := querySSHFP(server, request)
+		records, authenticated, err := querySSHFP(server, request)
 		if err != nil {
 			lastErr = err
 			continue
 		}
-		return records, nil
+		return records, authenticated, nil
 	}
-	return nil, lastErr
+	return nil, false, lastErr
 }
 
-func querySSHFP(server string, request []byte) ([]sshfpRecord, error) {
+func querySSHFP(server string, request []byte) ([]sshfpRecord, bool, error) {
 	conn, err := net.DialTimeout("udp", server, 5*time.Second)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer conn.Close()
 	_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
 	if _, err := conn.Write(request); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	buf := make([]byte, 4096)
 	n, err := conn.Read(buf)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	var response dnsmessage.Message
 	if err := response.Unpack(buf[:n]); err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return parseSSHFP(response.Answers), nil
+	return parseSSHFP(response.Answers), response.Header.AuthenticData, nil
 }
 
 // systemDnsServers returns the nameserver addresses configured in

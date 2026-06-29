@@ -937,7 +937,7 @@ trzsz-ssh ( tssh ) with [tsshd](https://github.com/trzsz/tsshd) also supports in
     #!! DnsSrvName myhost.mydomain.com
   ```
 
-- `VerifyHostKeyDNS`: when an unknown host publishes [SSHFP](https://datatracker.ietf.org/doc/html/rfc4255) records in DNS, `tssh` can check the server's host key against them. Set `VerifyHostKeyDNS yes` to accept and remember a key that matches a DNS SSHFP record without prompting, or `VerifyHostKeyDNS ask` to keep the usual confirmation prompt while showing that a matching record was found. The default `no` leaves the current behavior unchanged. A custom DNS server can be set with `--dns`.
+- `VerifyHostKeyDNS`: when an unknown host publishes [SSHFP](https://datatracker.ietf.org/doc/html/rfc4255) records in DNS, `tssh` can check the server's host key against them. As in OpenSSH, `VerifyHostKeyDNS yes` accepts and remembers a key without prompting only when the matching SSHFP record is DNSSEC-authenticated (the resolver sets the AD bit); a match that is not DNSSEC-authenticated still shows the usual confirmation prompt. `VerifyHostKeyDNS ask` keeps the prompt while noting that a matching record was found. The default `no` leaves the current behavior unchanged. A custom DNS server can be set with `--dns`.
 
   ```
   Host xxx
