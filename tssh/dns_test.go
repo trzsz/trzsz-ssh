@@ -123,25 +123,32 @@ func TestMatchSSHFP(t *testing.T) {
 func TestParseSSHFP(t *testing.T) {
 	assert := assert.New(t)
 
+	want := dnsmessage.MustNewName("example.com.")
+	other := dnsmessage.MustNewName("evil.example.com.")
 	fp := []byte{0xaa, 0xbb, 0xcc}
 	answers := []dnsmessage.Resource{
 		{
-			Header: dnsmessage.ResourceHeader{Type: dnsmessage.Type(44)},
+			Header: dnsmessage.ResourceHeader{Name: want, Type: dnsmessage.Type(44)},
 			Body:   &dnsmessage.UnknownResource{Type: dnsmessage.Type(44), Data: append([]byte{4, 2}, fp...)},
 		},
 		{
 			// Non-SSHFP record is ignored.
-			Header: dnsmessage.ResourceHeader{Type: dnsmessage.TypeA},
+			Header: dnsmessage.ResourceHeader{Name: want, Type: dnsmessage.TypeA},
 			Body:   &dnsmessage.AResource{A: [4]byte{1, 2, 3, 4}},
 		},
 		{
 			// Too short to be a valid SSHFP record.
-			Header: dnsmessage.ResourceHeader{Type: dnsmessage.Type(44)},
+			Header: dnsmessage.ResourceHeader{Name: want, Type: dnsmessage.Type(44)},
 			Body:   &dnsmessage.UnknownResource{Type: dnsmessage.Type(44), Data: []byte{4}},
+		},
+		{
+			// Record for a different owner name is ignored.
+			Header: dnsmessage.ResourceHeader{Name: other, Type: dnsmessage.Type(44)},
+			Body:   &dnsmessage.UnknownResource{Type: dnsmessage.Type(44), Data: append([]byte{4, 2}, fp...)},
 		},
 	}
 
-	records := parseSSHFP(answers)
+	records := parseSSHFP(answers, want)
 	assert.Len(records, 1)
 	assert.Equal(uint8(4), records[0].algorithm)
 	assert.Equal(uint8(2), records[0].fpType)

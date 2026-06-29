@@ -26,8 +26,10 @@ package tssh
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha1"
 	"crypto/sha256"
+	"encoding/binary"
 	"fmt"
 	"net"
 	"net/url"
@@ -192,10 +194,15 @@ func bytesEqual(a, b []byte) bool {
 }
 
 // parseSSHFP extracts the SSHFP records from the answers of a DNS response.
-func parseSSHFP(answers []dnsmessage.Resource) []sshfpRecord {
+// Only answers whose owner name matches expected are accepted, so a response
+// cannot smuggle in records for a different name.
+func parseSSHFP(answers []dnsmessage.Resource, expected dnsmessage.Name) []sshfpRecord {
 	var records []sshfpRecord
 	for _, answer := range answers {
 		if answer.Header.Type != dnsmessage.Type(44) {
+			continue
+		}
+		if !strings.EqualFold(answer.Header.Name.String(), expected.String()) {
 			continue
 		}
 		unknown, ok := answer.Body.(*dnsmessage.UnknownResource)
@@ -261,10 +268,19 @@ func lookupSSHFP(host string) ([]sshfpRecord, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
+
+	// Use a random transaction ID so an off-path attacker cannot trivially
+	// forge a matching UDP response.
+	var idBytes [2]byte
+	if _, err := rand.Read(idBytes[:]); err != nil {
+		return nil, false, err
+	}
+	id := binary.BigEndian.Uint16(idBytes[:])
+
 	query := dnsmessage.Message{
 		// AuthenticData asks a validating resolver to perform DNSSEC
 		// validation and echo the AD bit on a verified response.
-		Header: dnsmessage.Header{RecursionDesired: true, AuthenticData: true},
+		Header: dnsmessage.Header{ID: id, RecursionDesired: true, AuthenticData: true},
 		Questions: []dnsmessage.Question{{
 			Name:  name,
 			Type:  dnsmessage.Type(44),
@@ -278,7 +294,7 @@ func lookupSSHFP(host string) ([]sshfpRecord, bool, error) {
 
 	var lastErr error
 	for _, server := range servers {
-		records, authenticated, err := querySSHFP(server, request)
+		records, authenticated, err := querySSHFP(server, request, id, name)
 		if err != nil {
 			lastErr = err
 			continue
@@ -288,7 +304,7 @@ func lookupSSHFP(host string) ([]sshfpRecord, bool, error) {
 	return nil, false, lastErr
 }
 
-func querySSHFP(server string, request []byte) ([]sshfpRecord, bool, error) {
+func querySSHFP(server string, request []byte, id uint16, name dnsmessage.Name) ([]sshfpRecord, bool, error) {
 	conn, err := net.DialTimeout("udp", server, 5*time.Second)
 	if err != nil {
 		return nil, false, err
@@ -307,7 +323,18 @@ func querySSHFP(server string, request []byte) ([]sshfpRecord, bool, error) {
 	if err := response.Unpack(buf[:n]); err != nil {
 		return nil, false, err
 	}
-	return parseSSHFP(response.Answers), response.Header.AuthenticData, nil
+	// Reject responses that don't correspond to our query: wrong transaction
+	// ID, not a response, an error rcode, or a question that doesn't echo the
+	// name and type we asked for.
+	if !response.Header.Response || response.Header.ID != id || response.Header.RCode != dnsmessage.RCodeSuccess {
+		return nil, false, fmt.Errorf("unexpected dns response for SSHFP query")
+	}
+	if len(response.Questions) != 1 ||
+		response.Questions[0].Type != dnsmessage.Type(44) ||
+		!strings.EqualFold(response.Questions[0].Name.String(), name.String()) {
+		return nil, false, fmt.Errorf("dns response question mismatch for SSHFP query")
+	}
+	return parseSSHFP(response.Answers, name), response.Header.AuthenticData, nil
 }
 
 // systemDnsServers returns the nameserver addresses configured in
