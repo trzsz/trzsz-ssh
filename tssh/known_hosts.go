@@ -226,11 +226,12 @@ func getHostKeyCallback(param *sshParam) (ssh.HostKeyCallback, []string, error) 
 			switch strings.ToLower(getOptionConfig(param.args, "VerifyHostKeyDNS")) {
 			case "yes", "true":
 				if matched, authenticated := verifyHostKeyDNS(host, key); matched {
-					// Like OpenSSH, only auto-trust a match when the SSHFP
-					// record is DNSSEC-authenticated; otherwise fall through
-					// to the prompt after informing the user.
+					// Like OpenSSH, only auto-trust a match when a trusted
+					// local resolver marked the SSHFP response authenticated;
+					// otherwise fall through to the prompt after informing
+					// the user.
 					if authenticated {
-						debug("DNSSEC-verified host key fingerprint found in DNS for '%s'", host)
+						debug("resolver-authenticated host key fingerprint found in DNS for '%s'", host)
 						return addHostKey(primaryPath, host, key, false)
 					}
 					fmt.Fprintf(os.Stderr, "Matching host key fingerprint found in DNS.\r\n")

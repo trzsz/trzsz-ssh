@@ -22,9 +22,9 @@ trzsz-ssh ( tssh ) works exactly like the openssh client. The following common f
 |    Network     |                                                              `-4` `-6` `AddressFamily` `ConnectTimeout`                                                               |
 |    Command     |                                                       `-s` `RemoteCommand` `LocalCommand` `PermitLocalCommand`                                                        |
 |  Multiplexing  |                                                     `-M` `-S` `-O` `ControlMaster` `ControlPath` `ControlPersist`                                                     |
-|  Known Hosts   |                                                  `UserKnownHostsFile` `GlobalKnownHostsFile` `StrictHostKeyChecking`                                                  |
 |   SSH Agent    |                                               `-a` `-A` `ForwardAgent` `IdentityAgent` `IdentitiesOnly` `SSH_AUTH_SOCK`                                               |
 |  X11 Forward   |                                          `-x` `-X` `-Y` `ForwardX11` `ForwardX11Trusted` `ForwardX11Timeout` `XAuthLocation`                                          |
+|  Known Hosts   |                                        `UserKnownHostsFile` `GlobalKnownHostsFile` `StrictHostKeyChecking` `VerifyHostKeyDNS`                                         |
 |  Canonicalize  |                                      `CanonicalizeHostname` `CanonicalDomains` `CanonicalizeMaxDots` `CanonicalizeFallbackLocal`                                      |
 |  Basic Login   |                                   `-l` `-p` `-i` `-F` `HostName` `Port` `User` `IdentityFile` `CertificateFile` `SendEnv` `SetEnv`                                    |
 | Authentication |                                 `PubkeyAuthentication` `PasswordAuthentication` `KbdInteractiveAuthentication` `GSSAPIAuthentication`                                 |
