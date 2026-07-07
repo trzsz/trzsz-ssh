@@ -132,8 +132,8 @@ func TestParseSSHFP(t *testing.T) {
 	fp := []byte{0xaa, 0xbb, 0xcc}
 	answers := []dnsmessage.Resource{
 		{
-			Header: dnsmessage.ResourceHeader{Name: want, Type: dnsmessage.Type(44)},
-			Body:   &dnsmessage.UnknownResource{Type: dnsmessage.Type(44), Data: append([]byte{4, 2}, fp...)},
+			Header: dnsmessage.ResourceHeader{Name: want, Type: dnsTypeSSHFP},
+			Body:   &dnsmessage.UnknownResource{Type: dnsTypeSSHFP, Data: append([]byte{4, 2}, fp...)},
 		},
 		{
 			// Non-SSHFP record is ignored.
@@ -142,13 +142,13 @@ func TestParseSSHFP(t *testing.T) {
 		},
 		{
 			// Too short to be a valid SSHFP record.
-			Header: dnsmessage.ResourceHeader{Name: want, Type: dnsmessage.Type(44)},
-			Body:   &dnsmessage.UnknownResource{Type: dnsmessage.Type(44), Data: []byte{4}},
+			Header: dnsmessage.ResourceHeader{Name: want, Type: dnsTypeSSHFP},
+			Body:   &dnsmessage.UnknownResource{Type: dnsTypeSSHFP, Data: []byte{4}},
 		},
 		{
 			// Record for a different owner name is ignored.
-			Header: dnsmessage.ResourceHeader{Name: other, Type: dnsmessage.Type(44)},
-			Body:   &dnsmessage.UnknownResource{Type: dnsmessage.Type(44), Data: append([]byte{4, 2}, fp...)},
+			Header: dnsmessage.ResourceHeader{Name: other, Type: dnsTypeSSHFP},
+			Body:   &dnsmessage.UnknownResource{Type: dnsTypeSSHFP, Data: append([]byte{4, 2}, fp...)},
 		},
 	}
 
@@ -170,9 +170,9 @@ nameserver 127.0.0.53
 nameserver 2001:4860:4860::8888
 `)
 	assert.Equal([]dnsServer{
-		{network: "udp", addr: "127.0.0.53:53", trustedResolver: true},
-		{network: "udp", addr: "8.8.8.8:53", trustedResolver: false},
-		{network: "udp", addr: "[2001:4860:4860::8888]:53", trustedResolver: false},
+		{network: "udp", addr: "127.0.0.53:53"},
+		{network: "udp", addr: "8.8.8.8:53"},
+		{network: "udp", addr: "[2001:4860:4860::8888]:53"},
 	}, resolvConfServers)
 
 	scutilServers := parseScutilDnsServers(`
@@ -181,8 +181,8 @@ resolver #1
   nameserver[1] : 2606:4700:4700::1111
 `)
 	assert.Equal([]dnsServer{
-		{network: "udp", addr: "127.0.0.1:53", trustedResolver: true},
-		{network: "udp", addr: "[2606:4700:4700::1111]:53", trustedResolver: false},
+		{network: "udp", addr: "127.0.0.1:53"},
+		{network: "udp", addr: "[2606:4700:4700::1111]:53"},
 	}, scutilServers)
 
 	powerShellServers := parseDnsServerAddresses(`
@@ -191,9 +191,9 @@ resolver #1
 fe80::1%12
 `)
 	assert.Equal([]dnsServer{
-		{network: "udp", addr: "192.168.1.1:53", trustedResolver: false},
-		{network: "udp", addr: "[2606:4700:4700::1111]:53", trustedResolver: false},
-		{network: "udp", addr: "[fe80::1%12]:53", trustedResolver: false},
+		{network: "udp", addr: "192.168.1.1:53"},
+		{network: "udp", addr: "[2606:4700:4700::1111]:53"},
+		{network: "udp", addr: "[fe80::1%12]:53"},
 	}, powerShellServers)
 
 	ipconfigServers := parseWindowsIpconfigDnsServers(`
@@ -204,10 +204,10 @@ fe80::1%12
    DNS Servers . . . . . . . . . . . : 8.8.8.8
 `)
 	assert.Equal([]dnsServer{
-		{network: "udp", addr: "192.168.1.1:53", trustedResolver: false},
-		{network: "udp", addr: "[2606:4700:4700::1111]:53", trustedResolver: false},
-		{network: "udp", addr: "[fe80::1%12]:53", trustedResolver: false},
-		{network: "udp", addr: "8.8.8.8:53", trustedResolver: false},
+		{network: "udp", addr: "192.168.1.1:53"},
+		{network: "udp", addr: "[2606:4700:4700::1111]:53"},
+		{network: "udp", addr: "[fe80::1%12]:53"},
+		{network: "udp", addr: "8.8.8.8:53"},
 	}, ipconfigServers)
 }
 
@@ -219,12 +219,11 @@ func TestQuerySSHFPTCPHonorsNetwork(t *testing.T) {
 	done := mockDNSDialer(t, "tcp", response)
 
 	records, authenticated, err := querySSHFP(dnsServer{
-		network:         "tcp",
-		addr:            "dns.test:53",
-		trustedResolver: true,
+		network: "tcp",
+		addr:    "dns.test:53",
 	}, request, id, name)
 	assert.Nil(err)
-	assert.True(authenticated)
+	assert.False(authenticated)
 	assert.Len(records, 1)
 	assert.Equal(uint8(4), records[0].algorithm)
 	assert.Nil(waitDNSServer(t, done))
@@ -238,16 +237,15 @@ func TestQuerySSHFPRejectsNonQueryOpcode(t *testing.T) {
 	done := mockDNSDialer(t, "udp", response)
 
 	_, _, err := querySSHFP(dnsServer{
-		network:         "udp",
-		addr:            "dns.test:53",
-		trustedResolver: true,
+		network: "udp",
+		addr:    "dns.test:53",
 	}, request, id, name)
 	assert.NotNil(err)
 	assert.Contains(err.Error(), "unexpected dns response")
 	assert.Nil(waitDNSServer(t, done))
 }
 
-func TestQuerySSHFPAuthenticatesOnlyTrustedResolver(t *testing.T) {
+func TestQuerySSHFPDoesNotAuthenticateADBit(t *testing.T) {
 	assert := assert.New(t)
 
 	request, id, name := testSSHFPQuery(t)
@@ -255,14 +253,62 @@ func TestQuerySSHFPAuthenticatesOnlyTrustedResolver(t *testing.T) {
 	done := mockDNSDialer(t, "udp", response)
 
 	records, authenticated, err := querySSHFP(dnsServer{
-		network:         "udp",
-		addr:            "dns.test:53",
-		trustedResolver: false,
+		network: "udp",
+		addr:    "dns.test:53",
 	}, request, id, name)
 	assert.Nil(err)
 	assert.False(authenticated)
 	assert.Len(records, 1)
 	assert.Nil(waitDNSServer(t, done))
+}
+
+func TestVerifyHostKeyDNSValidatedChainAccepts(t *testing.T) {
+	assert := assert.New(t)
+
+	sshPub, _, err := ed25519.GenerateKey(nil)
+	assert.Nil(err)
+	sshKey, err := ssh.NewPublicKey(sshPub)
+	assert.Nil(err)
+
+	responses, rootAnchor := testDNSSECChain(t, "host.example.test.", sshKey, false)
+	withDNSSECTestLookup(t, responses, rootAnchor)
+
+	matched, authenticated := verifyHostKeyDNS("host.example.test:22", sshKey)
+	assert.True(matched)
+	assert.True(authenticated)
+}
+
+func TestLookupSSHFPADBitOnlyDoesNotAuthenticate(t *testing.T) {
+	assert := assert.New(t)
+
+	sshPub, _, err := ed25519.GenerateKey(nil)
+	assert.Nil(err)
+	sshKey, err := ssh.NewPublicKey(sshPub)
+	assert.Nil(err)
+	response := testSSHFPOnlyResponse(t, "host.example.test.", sshKey, true)
+	withDNSSECTestLookup(t, map[string]*dnsmessage.Message{
+		testLookupKey("host.example.test.", dnsTypeSSHFP): response,
+	}, nil)
+
+	matched, authenticated := verifyHostKeyDNS("host.example.test", sshKey)
+	assert.True(matched)
+	assert.False(authenticated)
+}
+
+func TestLookupSSHFPRejectsTamperedRRSIG(t *testing.T) {
+	assert := assert.New(t)
+
+	sshPub, _, err := ed25519.GenerateKey(nil)
+	assert.Nil(err)
+	sshKey, err := ssh.NewPublicKey(sshPub)
+	assert.Nil(err)
+
+	responses, rootAnchor := testDNSSECChain(t, "host.example.test.", sshKey, true)
+	withDNSSECTestLookup(t, responses, rootAnchor)
+
+	matched, authenticated := verifyHostKeyDNS("host.example.test", sshKey)
+	assert.True(matched)
+	assert.False(authenticated)
 }
 
 func TestDnsName(t *testing.T) {
@@ -276,12 +322,20 @@ func testSSHFPQuery(t *testing.T) ([]byte, uint16, dnsmessage.Name) {
 	t.Helper()
 	id := uint16(0x1234)
 	name := dnsmessage.MustNewName("example.com.")
+	optHeader := dnsmessage.ResourceHeader{}
+	if err := optHeader.SetEDNS0(dnsEDNSPayload, dnsmessage.RCodeSuccess, true); err != nil {
+		t.Fatal(err)
+	}
 	query := dnsmessage.Message{
-		Header: dnsmessage.Header{ID: id, RecursionDesired: true, AuthenticData: true},
+		Header: dnsmessage.Header{ID: id, RecursionDesired: true, CheckingDisabled: true},
 		Questions: []dnsmessage.Question{{
 			Name:  name,
-			Type:  dnsmessage.Type(44),
+			Type:  dnsTypeSSHFP,
 			Class: dnsmessage.ClassINET,
+		}},
+		Additionals: []dnsmessage.Resource{{
+			Header: optHeader,
+			Body:   &dnsmessage.OPTResource{},
 		}},
 	}
 	request, err := query.Pack()
@@ -303,12 +357,12 @@ func testSSHFPResponse(t *testing.T, id uint16, name dnsmessage.Name, opCode dns
 		},
 		Questions: []dnsmessage.Question{{
 			Name:  name,
-			Type:  dnsmessage.Type(44),
+			Type:  dnsTypeSSHFP,
 			Class: dnsmessage.ClassINET,
 		}},
 		Answers: []dnsmessage.Resource{{
-			Header: dnsmessage.ResourceHeader{Name: name, Type: dnsmessage.Type(44), Class: dnsmessage.ClassINET},
-			Body:   &dnsmessage.UnknownResource{Type: dnsmessage.Type(44), Data: []byte{4, 2, 0xaa, 0xbb}},
+			Header: dnsmessage.ResourceHeader{Name: name, Type: dnsTypeSSHFP, Class: dnsmessage.ClassINET},
+			Body:   &dnsmessage.UnknownResource{Type: dnsTypeSSHFP, Data: []byte{4, 2, 0xaa, 0xbb}},
 		}},
 	}
 	response, err := msg.Pack()
@@ -316,6 +370,227 @@ func testSSHFPResponse(t *testing.T, id uint16, name dnsmessage.Name, opCode dns
 		t.Fatal(err)
 	}
 	return response
+}
+
+func testDNSSECChain(t *testing.T, host string, key ssh.PublicKey, tamper bool) (map[string]*dnsmessage.Message, []dsRecord) {
+	t.Helper()
+
+	rootPub, rootPriv, err := ed25519.GenerateKey(nil)
+	assert.Nil(t, err)
+	tldPub, tldPriv, err := ed25519.GenerateKey(nil)
+	assert.Nil(t, err)
+	zonePub, zonePriv, err := ed25519.GenerateKey(nil)
+	assert.Nil(t, err)
+
+	rootKey := testDNSKEYRecord(".", rootPub)
+	tldKey := testDNSKEYRecord("test.", tldPub)
+	zoneKey := testDNSKEYRecord("example.test.", zonePub)
+	tldDS := testDSRecord(t, "test.", tldKey)
+	zoneDS := testDSRecord(t, "example.test.", zoneKey)
+	sshfp := testSSHFPRecord(host, key)
+
+	rootDigest, ok := dnskeyDigest(".", rootKey, dnssecDigestSHA256)
+	assert.True(t, ok)
+	rootAnchor := []dsRecord{{
+		dnssecRecord: dnssecRecord{name: ".", rrType: dnsTypeDS, class: dnsmessage.ClassINET, ttl: 3600},
+		keyTag:       rootKey.keyTag,
+		algorithm:    rootKey.algorithm,
+		digestType:   dnssecDigestSHA256,
+		digest:       rootDigest,
+	}}
+
+	sshfpResponse := testSignedResponse(t, host, dnsTypeSSHFP, []dnssecRecord{sshfp}, "example.test.", zoneKey, zonePriv)
+	if tamper {
+		testTamperRRSIG(t, sshfpResponse)
+	}
+
+	return map[string]*dnsmessage.Message{
+		testLookupKey(host, dnsTypeSSHFP):             sshfpResponse,
+		testLookupKey("example.test.", dnsTypeDNSKEY): testSignedResponse(t, "example.test.", dnsTypeDNSKEY, []dnssecRecord{zoneKey.dnssecRecord}, "example.test.", zoneKey, zonePriv),
+		testLookupKey("example.test.", dnsTypeDS):     testSignedResponse(t, "example.test.", dnsTypeDS, []dnssecRecord{zoneDS.dnssecRecord}, "test.", tldKey, tldPriv),
+		testLookupKey("test.", dnsTypeDNSKEY):         testSignedResponse(t, "test.", dnsTypeDNSKEY, []dnssecRecord{tldKey.dnssecRecord}, "test.", tldKey, tldPriv),
+		testLookupKey("test.", dnsTypeDS):             testSignedResponse(t, "test.", dnsTypeDS, []dnssecRecord{tldDS.dnssecRecord}, ".", rootKey, rootPriv),
+		testLookupKey(".", dnsTypeDNSKEY):             testSignedResponse(t, ".", dnsTypeDNSKEY, []dnssecRecord{rootKey.dnssecRecord}, ".", rootKey, rootPriv),
+	}, rootAnchor
+}
+
+func testSSHFPOnlyResponse(t *testing.T, host string, key ssh.PublicKey, authenticated bool) *dnsmessage.Message {
+	t.Helper()
+	name := dnsmessage.MustNewName(canonicalDNSName(host))
+	return &dnsmessage.Message{
+		Header: dnsmessage.Header{Response: true, RecursionAvailable: true, AuthenticData: authenticated, RCode: dnsmessage.RCodeSuccess},
+		Questions: []dnsmessage.Question{{
+			Name:  name,
+			Type:  dnsTypeSSHFP,
+			Class: dnsmessage.ClassINET,
+		}},
+		Answers: []dnsmessage.Resource{testResource(testSSHFPRecord(host, key))},
+	}
+}
+
+func withDNSSECTestLookup(t *testing.T, responses map[string]*dnsmessage.Message, anchors []dsRecord) {
+	t.Helper()
+	oldLookup := lookupDNSSEC
+	oldAnchors := dnssecRootTrustAnchors
+	oldNow := dnssecNow
+	now := time.Now()
+	lookupDNSSEC = func(name string, rrType dnsmessage.Type) (*dnsmessage.Message, error) {
+		response := responses[testLookupKey(name, rrType)]
+		if response == nil {
+			return nil, fmt.Errorf("missing test DNS response for %s %d", name, rrType)
+		}
+		return response, nil
+	}
+	if anchors != nil {
+		dnssecRootTrustAnchors = anchors
+	}
+	dnssecNow = func() time.Time { return now }
+	t.Cleanup(func() {
+		lookupDNSSEC = oldLookup
+		dnssecRootTrustAnchors = oldAnchors
+		dnssecNow = oldNow
+	})
+}
+
+func testLookupKey(name string, rrType dnsmessage.Type) string {
+	return fmt.Sprintf("%s/%d", canonicalDNSName(name), rrType)
+}
+
+func testDNSKEYRecord(name string, publicKey ed25519.PublicKey) dnskeyRecord {
+	rdata := make([]byte, 4+len(publicKey))
+	binary.BigEndian.PutUint16(rdata[0:2], 257)
+	rdata[2] = 3
+	rdata[3] = dnssecAlgorithmED25519
+	copy(rdata[4:], publicKey)
+	record := dnssecRecord{
+		name:   canonicalDNSName(name),
+		rrType: dnsTypeDNSKEY,
+		class:  dnsmessage.ClassINET,
+		ttl:    3600,
+		rdata:  rdata,
+	}
+	return dnskeyRecord{
+		dnssecRecord: record,
+		flags:        257,
+		protocol:     3,
+		algorithm:    dnssecAlgorithmED25519,
+		publicKey:    append([]byte(nil), publicKey...),
+		keyTag:       dnskeyTag(rdata),
+	}
+}
+
+func testDSRecord(t *testing.T, name string, key dnskeyRecord) dsRecord {
+	t.Helper()
+	digest, ok := dnskeyDigest(name, key, dnssecDigestSHA256)
+	assert.True(t, ok)
+	rdata := appendUint16(nil, key.keyTag)
+	rdata = append(rdata, key.algorithm, dnssecDigestSHA256)
+	rdata = append(rdata, digest...)
+	return dsRecord{
+		dnssecRecord: dnssecRecord{
+			name:   canonicalDNSName(name),
+			rrType: dnsTypeDS,
+			class:  dnsmessage.ClassINET,
+			ttl:    3600,
+			rdata:  rdata,
+		},
+		keyTag:     key.keyTag,
+		algorithm:  key.algorithm,
+		digestType: dnssecDigestSHA256,
+		digest:     digest,
+	}
+}
+
+func testSSHFPRecord(name string, key ssh.PublicKey) dnssecRecord {
+	sum := sha256.Sum256(key.Marshal())
+	rdata := append([]byte{sshfpAlgorithm(key.Type()), sshfpTypeSHA256}, sum[:]...)
+	return dnssecRecord{
+		name:   canonicalDNSName(name),
+		rrType: dnsTypeSSHFP,
+		class:  dnsmessage.ClassINET,
+		ttl:    3600,
+		rdata:  rdata,
+	}
+}
+
+func testSignedResponse(t *testing.T, owner string, rrType dnsmessage.Type, records []dnssecRecord, signer string, signerKey dnskeyRecord, signerPriv ed25519.PrivateKey) *dnsmessage.Message {
+	t.Helper()
+	owner = canonicalDNSName(owner)
+	now := uint32(time.Now().Unix())
+	sig := rrsigRecord{
+		dnssecRecord: dnssecRecord{
+			name:   owner,
+			rrType: dnsTypeRRSIG,
+			class:  dnsmessage.ClassINET,
+			ttl:    3600,
+		},
+		typeCovered: rrType,
+		algorithm:   signerKey.algorithm,
+		labels:      uint8(dnsLabelCount(owner)),
+		originalTTL: 3600,
+		expiration:  now + 3600,
+		inception:   now - 3600,
+		keyTag:      signerKey.keyTag,
+		signerName:  canonicalDNSName(signer),
+	}
+	signedData, err := rrsetSignedData(records, sig)
+	assert.Nil(t, err)
+	sig.signature = ed25519.Sign(signerPriv, signedData)
+	sig.rdata = testRRSIGRData(t, sig)
+
+	answers := make([]dnsmessage.Resource, 0, len(records)+1)
+	for _, record := range records {
+		answers = append(answers, testResource(record))
+	}
+	answers = append(answers, testResource(sig.dnssecRecord))
+
+	name := dnsmessage.MustNewName(owner)
+	return &dnsmessage.Message{
+		Header: dnsmessage.Header{Response: true, RecursionAvailable: true, RCode: dnsmessage.RCodeSuccess},
+		Questions: []dnsmessage.Question{{
+			Name:  name,
+			Type:  rrType,
+			Class: dnsmessage.ClassINET,
+		}},
+		Answers: answers,
+	}
+}
+
+func testRRSIGRData(t *testing.T, sig rrsigRecord) []byte {
+	t.Helper()
+	rdata := appendUint16(nil, uint16(sig.typeCovered))
+	rdata = append(rdata, sig.algorithm, sig.labels)
+	rdata = appendUint32(rdata, sig.originalTTL)
+	rdata = appendUint32(rdata, sig.expiration)
+	rdata = appendUint32(rdata, sig.inception)
+	rdata = appendUint16(rdata, sig.keyTag)
+	signer, err := packDNSName(sig.signerName)
+	assert.Nil(t, err)
+	rdata = append(rdata, signer...)
+	return append(rdata, sig.signature...)
+}
+
+func testResource(record dnssecRecord) dnsmessage.Resource {
+	name := dnsmessage.MustNewName(canonicalDNSName(record.name))
+	return dnsmessage.Resource{
+		Header: dnsmessage.ResourceHeader{Name: name, Type: record.rrType, Class: record.class, TTL: record.ttl},
+		Body:   &dnsmessage.UnknownResource{Type: record.rrType, Data: append([]byte(nil), record.rdata...)},
+	}
+}
+
+func testTamperRRSIG(t *testing.T, response *dnsmessage.Message) {
+	t.Helper()
+	for i := range response.Answers {
+		if response.Answers[i].Header.Type != dnsTypeRRSIG {
+			continue
+		}
+		unknown, ok := response.Answers[i].Body.(*dnsmessage.UnknownResource)
+		assert.True(t, ok)
+		assert.NotEmpty(t, unknown.Data)
+		unknown.Data[len(unknown.Data)-1] ^= 0xff
+		return
+	}
+	t.Fatal("missing RRSIG to tamper")
 }
 
 func mockDNSDialer(t *testing.T, expectedNetwork string, response []byte) <-chan error {

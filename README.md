@@ -31,6 +31,8 @@ trzsz-ssh ( tssh ) works exactly like the openssh client. The following common f
 |  Port Forward  | `-g` `-f` `-N` `-n` `-L` `-R` `-D` `LocalForward` `RemoteForward` `DynamicForward` `GatewayPorts` `ClearAllForwardings` `StreamLocalBindUnlink` `StreamLocalBindMask` |
 |     Others     |                                                                             `EscapeChar`                                                                              |
 
+`VerifyHostKeyDNS` matches SSHFP records and auto-trusts a matching host key only after local DNSSEC chain validation to the root trust anchor. If a matching SSHFP record is not DNSSEC-validated, it is shown in the interactive prompt but is not trusted automatically.
+
 ### Extra Features
 
 trzsz-ssh ( tssh ) offers additional useful features:
