@@ -241,7 +241,11 @@ func addOnCloseFunc(f func()) {
 	onCloseFuncs = append(onCloseFuncs, f)
 }
 
-var isTerminal bool = isatty.IsTerminal(os.Stdin.Fd()) || isatty.IsCygwinTerminal(os.Stdin.Fd())
+func isTerminalFd(fd uintptr) bool {
+	return isatty.IsTerminal(fd) || isatty.IsCygwinTerminal(fd)
+}
+
+var isTerminal bool = isTerminalFd(os.Stdin.Fd())
 
 // TrzMain is the main function of tssh program.
 func TsshMain(argv []string) int {
