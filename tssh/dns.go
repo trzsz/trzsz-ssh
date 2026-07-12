@@ -238,10 +238,8 @@ type dnssecValidator struct {
 // (RFC 4255 / RFC 6594 / RFC 7479). It returns 0 for unsupported types.
 func sshfpAlgorithm(keyType string) uint8 {
 	switch keyType {
-	case ssh.KeyAlgoRSA:
+	case ssh.KeyAlgoRSA, ssh.KeyAlgoRSASHA256, ssh.KeyAlgoRSASHA512:
 		return 1
-	case ssh.KeyAlgoDSA:
-		return 2
 	case ssh.KeyAlgoECDSA256, ssh.KeyAlgoECDSA384, ssh.KeyAlgoECDSA521:
 		return 3
 	case ssh.KeyAlgoED25519:
@@ -320,44 +318,52 @@ func dnsServers() []dnsServer {
 }
 
 // verifyHostKeyDNS reports whether the presented host key matches an SSHFP
-// record published in DNS for the host, and whether that SSHFP RRset validated
-// through DNSSEC. The host may include a port, which is stripped before the
-// lookup. Any lookup failure is treated as no match. Callers must only
-// auto-trust a match when authenticated is true; an unauthenticated match
-// merely informs the user.
-func verifyHostKeyDNS(host string, key ssh.PublicKey) (matched bool, authenticated bool) {
+// record published in DNS for the host, and returns an authentication function
+// that reports whether that SSHFP RRset validates through DNSSEC. The host may
+// include a port, which is stripped before the lookup. Any lookup failure is
+// treated as no match. Callers must only auto-trust a match when authenticate
+// returns true; an unauthenticated match merely informs the user.
+func verifyHostKeyDNS(host string, key ssh.PublicKey) (found bool, matched bool, authenticate func() bool, err error) {
 	name := host
 	if h, _, err := net.SplitHostPort(host); err == nil {
 		name = h
 	}
+	if idx := strings.LastIndex(name, "%"); idx >= 0 {
+		name = name[:idx]
+	}
 	name = strings.Trim(name, "[]")
 	if name == "" || net.ParseIP(name) != nil {
 		// SSHFP records are keyed by hostname; skip bare IP addresses.
-		return false, false
+		return false, false, nil, nil
 	}
-	records, authenticated, err := lookupSSHFP(name)
+
+	records, authenticate, err := lookupSSHFP(name)
 	if err != nil {
-		debug("SSHFP lookup for '%s' failed: %v", name, err)
-		return false, false
+		return false, false, nil, fmt.Errorf("SSHFP lookup for '%s' failed: %v", name, err)
 	}
-	return matchSSHFP(records, key), authenticated
+
+	found = len(records) > 0
+	matched = matchSSHFP(records, key)
+
+	return found, matched, authenticate, nil
 }
 
 // lookupSSHFP queries DNS for the SSHFP (type 44) records of the given host. It
-// reports authentication only when the SSHFP RRset validates through DNSSEC to
-// the pinned root trust anchor; the response AD bit is never trusted.
-func lookupSSHFP(host string) ([]sshfpRecord, bool, error) {
+// returns an authentication function that reports success only when the SSHFP
+// RRset validates through DNSSEC to the pinned root trust anchor; the response
+// AD bit is never trusted.
+func lookupSSHFP(host string) ([]sshfpRecord, func() bool, error) {
 	name, err := dnsmessage.NewName(dnsName(host))
 	if err != nil {
-		return nil, false, err
+		return nil, nil, err
 	}
 	response, err := lookupDNSSEC(name.String(), dnsTypeSSHFP)
 	if err != nil {
-		return nil, false, err
+		return nil, nil, err
 	}
 	records := parseSSHFP(response.Answers, name)
-	authenticated := validateSSHFPDNSSEC(response, name)
-	return records, authenticated, nil
+	authenticate := func() bool { return validateSSHFPDNSSEC(response, name) }
+	return records, authenticate, nil
 }
 
 func queryDNSSEC(host string, rrType dnsmessage.Type) (*dnsmessage.Message, error) {
@@ -690,7 +696,10 @@ func rrsetSignedData(records []dnssecRecord, sig rrsigRecord) ([]byte, error) {
 	}
 	data = append(data, signerName...)
 
-	canonicalRecords := make([][]byte, 0, len(records))
+	sort.Slice(records, func(i, j int) bool {
+		return bytes.Compare(records[i].rdata, records[j].rdata) < 0
+	})
+
 	for _, record := range records {
 		if record.rrType != sig.typeCovered {
 			return nil, fmt.Errorf("RRSIG type does not match RRset")
@@ -705,20 +714,15 @@ func rrsetSignedData(records []dnssecRecord, sig rrsigRecord) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		canonical := append([]byte(nil), owner...)
-		canonical = appendUint16(canonical, uint16(record.rrType))
-		canonical = appendUint16(canonical, uint16(record.class))
-		canonical = appendUint32(canonical, sig.originalTTL)
-		canonical = appendUint16(canonical, uint16(len(record.rdata)))
-		canonical = append(canonical, record.rdata...)
-		canonicalRecords = append(canonicalRecords, canonical)
+
+		data = append(data, owner...)
+		data = appendUint16(data, uint16(record.rrType))
+		data = appendUint16(data, uint16(record.class))
+		data = appendUint32(data, sig.originalTTL)
+		data = appendUint16(data, uint16(len(record.rdata)))
+		data = append(data, record.rdata...)
 	}
-	sort.Slice(canonicalRecords, func(i, j int) bool {
-		return bytes.Compare(canonicalRecords[i], canonicalRecords[j]) < 0
-	})
-	for _, record := range canonicalRecords {
-		data = append(data, record...)
-	}
+
 	return data, nil
 }
 

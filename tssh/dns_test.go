@@ -86,7 +86,6 @@ func TestDNS(t *testing.T) {
 func TestSSHFPAlgorithm(t *testing.T) {
 	assert := assert.New(t)
 	assert.Equal(uint8(1), sshfpAlgorithm(ssh.KeyAlgoRSA))
-	assert.Equal(uint8(2), sshfpAlgorithm(ssh.KeyAlgoDSA))
 	assert.Equal(uint8(3), sshfpAlgorithm(ssh.KeyAlgoECDSA256))
 	assert.Equal(uint8(3), sshfpAlgorithm(ssh.KeyAlgoECDSA521))
 	assert.Equal(uint8(4), sshfpAlgorithm(ssh.KeyAlgoED25519))
@@ -273,9 +272,11 @@ func TestVerifyHostKeyDNSValidatedChainAccepts(t *testing.T) {
 	responses, rootAnchor := testDNSSECChain(t, "host.example.test.", sshKey, false)
 	withDNSSECTestLookup(t, responses, rootAnchor)
 
-	matched, authenticated := verifyHostKeyDNS("host.example.test:22", sshKey)
+	found, matched, authenticate, err := verifyHostKeyDNS("host.example.test:22", sshKey)
+	assert.Nil(err)
+	assert.True(found)
 	assert.True(matched)
-	assert.True(authenticated)
+	assert.True(authenticate())
 }
 
 func TestLookupSSHFPADBitOnlyDoesNotAuthenticate(t *testing.T) {
@@ -290,9 +291,11 @@ func TestLookupSSHFPADBitOnlyDoesNotAuthenticate(t *testing.T) {
 		testLookupKey("host.example.test.", dnsTypeSSHFP): response,
 	}, nil)
 
-	matched, authenticated := verifyHostKeyDNS("host.example.test", sshKey)
+	found, matched, authenticate, err := verifyHostKeyDNS("host.example.test", sshKey)
+	assert.Nil(err)
+	assert.True(found)
 	assert.True(matched)
-	assert.False(authenticated)
+	assert.False(authenticate())
 }
 
 func TestLookupSSHFPRejectsTamperedRRSIG(t *testing.T) {
@@ -306,9 +309,11 @@ func TestLookupSSHFPRejectsTamperedRRSIG(t *testing.T) {
 	responses, rootAnchor := testDNSSECChain(t, "host.example.test.", sshKey, true)
 	withDNSSECTestLookup(t, responses, rootAnchor)
 
-	matched, authenticated := verifyHostKeyDNS("host.example.test", sshKey)
+	found, matched, authenticate, err := verifyHostKeyDNS("host.example.test", sshKey)
+	assert.Nil(err)
+	assert.True(found)
 	assert.True(matched)
-	assert.False(authenticated)
+	assert.False(authenticate())
 }
 
 func TestDnsName(t *testing.T) {

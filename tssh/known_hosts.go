@@ -40,8 +40,21 @@ import (
 )
 
 var acceptHostKeys []string
+var acceptHostKeyMu sync.Mutex
 var addHostKeyMutex sync.Mutex
 var sshLoginSuccess atomic.Bool
+
+func isAcceptedHostKey(keyNormalizedLine string) bool {
+	acceptHostKeyMu.Lock()
+	defer acceptHostKeyMu.Unlock()
+	return slices.Contains(acceptHostKeys, keyNormalizedLine)
+}
+
+func addAcceptedHostKey(keyNormalizedLine string) {
+	acceptHostKeyMu.Lock()
+	defer acceptHostKeyMu.Unlock()
+	acceptHostKeys = append(acceptHostKeys, keyNormalizedLine)
+}
 
 func ensureNewline(file *os.File) error {
 	if _, err := file.Seek(-1, io.SeekEnd); err != nil {
@@ -75,16 +88,9 @@ func writeKnownHost(path, host string, key ssh.PublicKey) error {
 	return writeAll(file, []byte(line))
 }
 
-func addHostKey(path, host string, key ssh.PublicKey, ask bool) error {
+func addHostKey(path, host string, key ssh.PublicKey, ask bool, dnsHint string) error {
 	addHostKeyMutex.Lock()
 	defer addHostKeyMutex.Unlock()
-	keyNormalizedLine := knownhosts.Line([]string{host}, key)
-	if slices.Contains(acceptHostKeys, keyNormalizedLine) {
-		if enableDebugLogging {
-			debug("host key [%s] has been accepted", ssh.FingerprintSHA256(key))
-		}
-		return nil
-	}
 
 	if sshLoginSuccess.Load() {
 		warning("The public key of the remote server has changed after login")
@@ -96,6 +102,9 @@ func addHostKey(path, host string, key ssh.PublicKey, ask bool) error {
 		fingerprint := ssh.FingerprintSHA256(key)
 		fmt.Fprintf(os.Stderr, "The authenticity of host '%s' can't be established.\r\n"+
 			"%s key fingerprint is %s.\r\n", host, shortKeyType(key.Type()), fingerprint)
+		if dnsHint != "" {
+			fmt.Fprintf(os.Stderr, "%s\r\n", dnsHint)
+		}
 
 		stdin, closer, err := getKeyboardInput()
 		if err != nil {
@@ -123,8 +132,6 @@ func addHostKey(path, host string, key ssh.PublicKey, ask bool) error {
 			_, _ = os.Stderr.WriteString("Please type 'yes', 'no' or the fingerprint: ")
 		}
 	}
-
-	acceptHostKeys = append(acceptHostKeys, keyNormalizedLine)
 
 	if err := writeKnownHost(path, host, key); err != nil {
 		warning("Failed to add the host to the list of known hosts (%s): %v", path, err)
@@ -193,28 +200,55 @@ func getHostKeyCallback(param *sshParam) (ssh.HostKeyCallback, []string, error) 
 		return nil, nil, fmt.Errorf("new knownhosts failed: %v", err)
 	}
 
-	hostKeyCallback := func(host string, remote net.Addr, key ssh.PublicKey) error {
-		err := khdb.HostKeyCallback()(host, remote, key)
+	hostKeyCallback := func(host string, remote net.Addr, key ssh.PublicKey) (err error) {
+		keyNormalizedLine := knownhosts.Line([]string{host}, key)
+		if isAcceptedHostKey(keyNormalizedLine) {
+			if enableDebugLogging {
+				debug("host key [%s] has been accepted", ssh.FingerprintSHA256(key))
+			}
+			return nil
+		}
+
+		defer func() {
+			if err == nil {
+				addAcceptedHostKey(keyNormalizedLine)
+			}
+		}()
+
+		err = khdb.HostKeyCallback()(host, remote, key)
 		if err == nil {
 			return nil
 		}
+
+		var dnsHint string
+		verifyDNS := strings.ToLower(getOptionConfig(param.args, "VerifyHostKeyDNS"))
+		if verifyDNS == "yes" || verifyDNS == "true" || verifyDNS == "ask" {
+			dnsHint = "\033[0;33mNo matching host key fingerprint found in DNS.\033[0m"
+			found, matched, authenticate, err := verifyHostKeyDNS(host, key)
+			if err != nil {
+				warning("Verify host key DNS failed: %v", err)
+			} else if found {
+				if (verifyDNS == "yes" || verifyDNS == "true") && matched && authenticate() {
+					debug("DNSSEC-validated host key fingerprint found in DNS for '%s'", host)
+					return nil
+				}
+				if matched {
+					dnsHint = "\033[0;32mMatching host key fingerprint found in DNS.\033[0m"
+				} else {
+					warnChangedKey(key)
+					fmt.Fprintf(os.Stderr, "Update the SSHFP RR in DNS with the new host key to get rid of this message.\r\n")
+				}
+			}
+		}
+
 		strictHostKeyChecking := strings.ToLower(getOptionConfig(param.args, "StrictHostKeyChecking"))
 		if knownhosts.IsHostKeyChanged(err) {
 			path := primaryPath
 			if path == "" {
 				path = "~/.ssh/known_hosts"
 			}
-			fmt.Fprintf(os.Stderr, "\033[0;31m@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\r\n"+
-				"@    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @\r\n"+
-				"@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\r\n"+
-				"IT IS POSSIBLE THAT SOMEONE IS DOING SOMETHING NASTY!\r\n"+
-				"Someone could be eavesdropping on you right now (man-in-the-middle attack)!\033[0m\r\n"+
-				"It is also possible that a host key has just been changed.\r\n"+
-				"The fingerprint for the %s key sent by the remote host is\r\n"+
-				"%s\r\n"+
-				"Please contact your system administrator.\r\n"+
-				"Add correct host key in %s to get rid of this message.\r\n",
-				shortKeyType(key.Type()), ssh.FingerprintSHA256(key), path)
+			warnChangedKey(key)
+			fmt.Fprintf(os.Stderr, "Add correct host key in %s to get rid of this message.\r\n", path)
 		} else if knownhosts.IsHostUnknown(err) && primaryPath != "" {
 			ask := true
 			switch strictHostKeyChecking {
@@ -223,24 +257,7 @@ func getHostKeyCallback(param *sshParam) (ssh.HostKeyCallback, []string, error) 
 			case "accept-new", "no", "off", "false":
 				ask = false
 			}
-			switch strings.ToLower(getOptionConfig(param.args, "VerifyHostKeyDNS")) {
-			case "yes", "true":
-				if matched, authenticated := verifyHostKeyDNS(host, key); matched {
-					// Only auto-trust a match after local DNSSEC chain
-					// validation; otherwise fall through to the prompt after
-					// informing the user.
-					if authenticated {
-						debug("DNSSEC-validated host key fingerprint found in DNS for '%s'", host)
-						return addHostKey(primaryPath, host, key, false)
-					}
-					fmt.Fprintf(os.Stderr, "Matching host key fingerprint found in DNS.\r\n")
-				}
-			case "ask":
-				if matched, _ := verifyHostKeyDNS(host, key); matched {
-					fmt.Fprintf(os.Stderr, "Matching host key fingerprint found in DNS.\r\n")
-				}
-			}
-			return addHostKey(primaryPath, host, key, ask)
+			return addHostKey(primaryPath, host, key, ask, dnsHint)
 		}
 		switch strictHostKeyChecking {
 		case "no", "off", "false":
@@ -251,4 +268,17 @@ func getHostKeyCallback(param *sshParam) (ssh.HostKeyCallback, []string, error) 
 	}
 
 	return hostKeyCallback, khdb.HostKeyAlgorithms(param.addr), err
+}
+
+func warnChangedKey(key ssh.PublicKey) {
+	fmt.Fprintf(os.Stderr, "\033[0;31m@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\r\n"+
+		"@    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @\r\n"+
+		"@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\r\n"+
+		"IT IS POSSIBLE THAT SOMEONE IS DOING SOMETHING NASTY!\r\n"+
+		"Someone could be eavesdropping on you right now (man-in-the-middle attack)!\033[0m\r\n"+
+		"It is also possible that a host key has just been changed.\r\n"+
+		"The fingerprint for the %s key sent by the remote host is\r\n"+
+		"%s\r\n"+
+		"Please contact your system administrator.\r\n",
+		shortKeyType(key.Type()), ssh.FingerprintSHA256(key))
 }
