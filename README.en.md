@@ -937,6 +937,32 @@ trzsz-ssh ( tssh ) with [tsshd](https://github.com/trzsz/tsshd) also supports in
     #!! DnsSrvName myhost.mydomain.com
   ```
 
+- Custom DNS Server: `tssh` can use a custom DNS server instead of the system resolver. This is useful when connecting through a VPN, testing internal DNS, or using public DNS services.
+
+  - Configure a default DNS server in `$XDG_CONFIG_HOME/tssh/tssh.conf` (or `~/.tssh.conf`):
+
+    ```
+    CustomDnsServer = 1.1.1.1
+    ```
+
+  - You can also specify it for a single connection:
+
+    ```sh
+    tssh --dns 8.8.8.8 server
+    ```
+
+  - You can also specify a custom port or use DNS over TCP:
+
+    ```
+    CustomDnsServer = tcp://1.1.1.1:5353
+    ```
+
+    ```sh
+    tssh --dns tcp://1.1.1.1:5353 server
+    ```
+
+  - If no port is specified, port `53` is used by default. The `--dns` option overrides `CustomDnsServer`.
+
 ### Reconnect Mode
 
 - In foreground mode (not `-f`), use `--reconnect` to be prompted to restart the tssh process and log in to the remote server when it exits.

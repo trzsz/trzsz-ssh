@@ -170,3 +170,19 @@ func expandTokens(str string, param *sshParam, tokens string) (string, error) {
 	}
 	return buf.String(), nil
 }
+
+func containsToken(s string, token byte) bool {
+	for i, n := 0, len(s)-1; i < n; i++ {
+		if s[i] != '%' {
+			continue
+		}
+		i++
+		switch s[i] {
+		case '%':
+			// skip %%
+		case token:
+			return true
+		}
+	}
+	return false
+}

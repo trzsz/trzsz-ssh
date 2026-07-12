@@ -94,6 +94,7 @@ type tsshConfig struct {
 	promptCursorIcon      string
 	promptSelectedIcon    string
 	setTerminalTitle      string
+	customDnsServer       string
 	loadConfig            sync.Once
 	loadExConfig          sync.Once
 	loadHosts             sync.Once
@@ -220,6 +221,8 @@ func loadTsshConfig(path string) {
 			userConfig.promptSelectedIcon = value
 		case name == "setterminaltitle" && userConfig.setTerminalTitle == "":
 			userConfig.setTerminalTitle = value
+		case name == "customdnsserver" && userConfig.customDnsServer == "":
+			userConfig.customDnsServer = value
 		}
 	}
 }
@@ -289,6 +292,9 @@ func showTsshConfig() {
 	}
 	if userConfig.setTerminalTitle != "" {
 		debug("SetTerminalTitle = %s", userConfig.setTerminalTitle)
+	}
+	if userConfig.customDnsServer != "" {
+		debug("CustomDnsServer = %s", userConfig.customDnsServer)
 	}
 }
 

@@ -183,8 +183,8 @@ github.com/trzsz/ssh_config v1.3.8 h1:es62z3daBPSHkM+GxQRFQP5DuBM9P4b3qAA/kQNKdz
 github.com/trzsz/ssh_config v1.3.8/go.mod h1:uSVHpGOTpBwE1FwyUrtnanlFuxZKt4dvdKFVKe41h58=
 github.com/trzsz/trzsz-go v1.2.1-0.20260410165008-9be4a4a9e14b h1:+hiaucaU1H975S5+sPSxwxDmX6t90E4AnSQmyaXi4/k=
 github.com/trzsz/trzsz-go v1.2.1-0.20260410165008-9be4a4a9e14b/go.mod h1:J468+9Rz6TiEf4wX2WJ1XXWA9d41IJZhk1/aCHHcdfM=
-github.com/trzsz/tsshd v0.1.9-0.20260627222501-a37e24c39be5 h1:XI6KJb8un7vmerj0h3q+n7takmG1eg2yM/PK417Uh6s=
-github.com/trzsz/tsshd v0.1.9-0.20260627222501-a37e24c39be5/go.mod h1:gHBCmzoWTcvQCHC8Cnq7PQaeOLF61sXlYMrEOlBKq48=
+github.com/trzsz/tsshd v0.1.9-0.20260704223320-5e1359d97be8 h1:7DeEC30yJEu4RjT/W4o5QV4mX2I/KBtyaHamAhlZZ+s=
+github.com/trzsz/tsshd v0.1.9-0.20260704223320-5e1359d97be8/go.mod h1:gHBCmzoWTcvQCHC8Cnq7PQaeOLF61sXlYMrEOlBKq48=
 github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e h1:JVG44RsyaB9T2KIHavMF/ppJZNG9ZpyihvCd0w101no=
 github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e/go.mod h1:RbqR21r5mrJuqunuUZ/Dhy/avygyECGrLceyNeo4LiM=
 github.com/xtaci/lossyconn v0.0.0-20190602105132-8df528c0c9ae h1:J0GxkO96kL4WF+AIT3M4mfUVinOCPgf2uUWYFUzN0sM=

@@ -87,9 +87,11 @@ type sshArgs struct {
 	Client         bool        `arg:"--client" help:"force trzsz run as a client on the jump server"`
 	Debug          bool        `arg:"--debug" help:"verbose mode for debugging, same as ssh's -vvv"`
 	Zmodem         bool        `arg:"--zmodem" help:"enable zmodem lrzsz ( rz / sz ) feature"`
-	Dns            string      `arg:"--dns" placeholder:"[udp://|tcp://]host[:port]" help:"custom DNS server"`
+	DNS            string      `arg:"--dns" placeholder:"[udp://|tcp://]host[:port]" help:"custom DNS server"`
+	TCP            bool        `arg:"--tcp" help:"force standard TCP SSH (overrides UdpMode)"`
 	UDP            bool        `arg:"--udp" help:"ssh over UDP like mosh (default: QUIC)"`
 	KCP            bool        `arg:"--kcp" help:"[udp] use KCP protocol for ssh over UDP"`
+	QUIC           bool        `arg:"--quic" help:"[udp] use QUIC protocol for ssh over UDP"`
 	Attach         bool        `arg:"--attach" help:"[udp] attach to session (implies --udp)"`
 	TsshdPath      string      `arg:"--tsshd-path" placeholder:"path" help:"[udp] tsshd absolute path on the server"`
 	TsshdPort      string      `arg:"--tsshd-port" placeholder:"low-high" help:"[udp] port range that tsshd listens on"`

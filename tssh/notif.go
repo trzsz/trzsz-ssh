@@ -103,8 +103,8 @@ func interactWithUserInput(client *sshUdpClient) {
 			case ch == '\x01': // Ctrl+A toggles full notifications.
 				client.notifInterceptor.showFullNotif.Store(!client.notifInterceptor.showFullNotif.Load())
 			case client.notifInterceptor.exitKey != 0 && ch == client.notifInterceptor.exitKey:
-				client.exit(kExitCodeUdpCtrlC, fmt.Sprintf("lost connection and %s keystroke",
-					udpReconnectExitKeyName(client.notifInterceptor.exitKey)))
+				client.sshConn.Load().forceExit(kExitCodeUdpCtrlC,
+					fmt.Sprintf("lost connection and %s keystroke", udpReconnectExitKeyName(client.notifInterceptor.exitKey)))
 				return
 			}
 		case <-time.After(200 * time.Millisecond):

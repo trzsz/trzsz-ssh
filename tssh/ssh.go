@@ -316,6 +316,13 @@ func (c *sshConnection) forceExit(code int, cause string) {
 		return
 	}
 
+	if lastJumpUdpClient != nil {
+		if notif := lastJumpUdpClient.notifModel.Load(); notif != nil {
+			notif.clientExiting.Store(true)
+			notif.renderView(true, false)
+		}
+	}
+
 	verb, detach := "Exited", false
 	if client, ok := c.client.(*sshUdpClient); ok && client.attachMode && !wantExit.Load() {
 		verb, detach = "Detached", true

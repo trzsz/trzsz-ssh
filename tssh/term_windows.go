@@ -84,6 +84,10 @@ func enableVirtualTerminal() error {
 		return err
 	}
 
+	if !isTerminalFd(os.Stdout.Fd()) {
+		return nil
+	}
+
 	outHandle, err := syscall.GetStdHandle(syscall.STD_OUTPUT_HANDLE)
 	if err != nil {
 		return err

@@ -31,6 +31,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"charm.land/bubbletea/v2"
@@ -50,26 +51,76 @@ type previewResultMsg struct {
 	content string
 }
 
+type previewRequest struct {
+	idx    int
+	viewID string
+	result chan *previewResultMsg
+}
+
 type attachModel struct {
-	tsshd    string
-	client   SshClient
-	items    []tsshd.ServerItem
-	infos    []*tsshd.BaseInfo
-	width    int
-	height   int
-	cursor   int
-	offset   int
-	chosen   int
-	preview  string
-	quitting bool
+	tsshd      string
+	client     SshClient
+	items      []tsshd.ServerItem
+	infos      []*tsshd.BaseInfo
+	cursor     int
+	offset     int
+	chosen     int
+	preview    string
+	quitting   bool
+	boxWidth   int
+	boxHeight  int
+	footer     string
+	boxStyle   lipgloss.Style
+	titleStyle lipgloss.Style
+	curStyle   lipgloss.Style
+	lineStyle  lipgloss.Style
+	previewMu  sync.Mutex
+	previewReq chan *previewRequest
+	doneCh     chan struct{}
 }
 
 func (m *attachModel) Init() tea.Cmd {
+	m.preview = "Loading..."
+	m.boxStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#7D56F4"))
+	m.titleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7D56F4")).MarginBottom(1)
+	m.curStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#7D56F4")).Bold(true)
+	m.lineStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFF"))
+	m.footer = lipgloss.NewStyle().MarginTop(1).Render(
+		"  Navigate : ↑/↓ · j/k · Tab/Shift+Tab    Select : Enter    Quit : q · Ctrl+C",
+	)
+
+	go func() {
+		for {
+			select {
+			case req, ok := <-m.previewReq:
+				if !ok {
+					return
+				}
+
+				output, err := execTsshdCommand(m.client, m.tsshd, fmt.Sprintf(" --view %s", req.viewID))
+
+				var content string
+				if err != nil {
+					content = fmt.Sprintf("ERROR: %v", err)
+				} else {
+					content = string(output)
+				}
+
+				req.result <- &previewResultMsg{idx: req.idx, content: content}
+
+				close(req.result)
+
+			case <-m.doneCh:
+				return
+			}
+		}
+	}()
+
 	return tea.Batch(doTick(), m.fetchPreviewCmd(m.cursor))
 }
 
 func doTick() tea.Cmd {
-	return tea.Tick(500*time.Millisecond, func(t time.Time) tea.Msg {
+	return tea.Tick(1*time.Second, func(t time.Time) tea.Msg {
 		return tickMsg(t)
 	})
 }
@@ -88,12 +139,39 @@ func (m *attachModel) fetchPreviewCmd(idx int) tea.Cmd {
 			return previewResultMsg{idx: idx, content: "<< NO SESSION >>"}
 		}
 
-		output, err := execTsshdCommand(m.client, m.tsshd, fmt.Sprintf(" --view %d.%d", item.Pid, info.Sessions[0].ID))
-		if err != nil {
-			return previewResultMsg{idx: idx, content: fmt.Sprintf("ERROR: %v", err)}
+		m.previewMu.Lock()
+
+		select {
+		case req := <-m.previewReq: // discard old request
+			req.result <- nil
+			close(req.result)
+		default:
 		}
 
-		return previewResultMsg{idx: idx, content: string(output)}
+		req := &previewRequest{
+			idx:    idx,
+			viewID: fmt.Sprintf("%d.%d", item.Pid, info.Sessions[0].ID),
+			result: make(chan *previewResultMsg, 1),
+		}
+
+		select {
+		case <-m.doneCh:
+			m.previewMu.Unlock()
+			return nil
+		case m.previewReq <- req:
+		}
+
+		m.previewMu.Unlock()
+
+		select {
+		case <-m.doneCh:
+			return nil
+		case msg := <-req.result:
+			if msg == nil {
+				return nil
+			}
+			return *msg
+		}
 	}
 }
 
@@ -101,8 +179,10 @@ func (m *attachModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 
 	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
+		const footerHeight = 2
+		m.boxHeight = msg.Height - footerHeight - 2
+		m.boxWidth = (msg.Width / 2) - 2
+		m.boxStyle = m.boxStyle.Width(m.boxWidth).Height(m.boxHeight)
 		return m, nil
 
 	case tickMsg:
@@ -151,37 +231,21 @@ func (m *attachModel) View() tea.View {
 		return tea.NewView("")
 	}
 
-	if m.width == 0 || m.height == 0 {
+	if m.boxWidth == 0 || m.boxHeight == 0 {
 		v := tea.NewView("Initializing...")
 		v.AltScreen = true
 		return v
 	}
 
-	footerHeight := 2
-	boxHeight := m.height - footerHeight - 2
-	boxWidth := (m.width / 2) - 2
-
-	if boxHeight < 5 || boxWidth < 10 {
+	if m.boxHeight < 5 || m.boxWidth < 10 {
 		v := tea.NewView("Terminal window too small")
 		v.AltScreen = true
 		return v
 	}
 
-	boxStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("#7D56F4")).
-		Width(boxWidth).
-		Height(boxHeight)
+	leftLines := []string{m.titleStyle.Render(" Sessions ")}
 
-	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7D56F4")).MarginBottom(1)
-	curStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#7D56F4")).Bold(true)
-	lineStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FFF"))
-
-	var leftView strings.Builder
-	leftView.WriteString(titleStyle.Render(" Sessions "))
-	leftView.WriteString("\n")
-
-	listAvailableHeight := boxHeight - 2
+	listAvailableHeight := m.boxHeight - 4
 	if m.cursor < m.offset {
 		m.offset = m.cursor
 	} else if m.cursor >= m.offset+listAvailableHeight {
@@ -219,30 +283,27 @@ func (m *attachModel) View() tea.View {
 			row = fmt.Sprintf("💻 %s | Name: %s | Title: %s | StartTime: %s", strconv.Itoa(item.Pid), name, title, startTime)
 		}
 
-		row = clipString(cursorStr+row, boxWidth-2)
+		row = clipString(cursorStr+row, m.boxWidth-2)
 		if m.cursor == i {
-			leftView.WriteString(curStyle.Render(row) + "\n")
+			leftLines = append(leftLines, m.curStyle.Render(row))
 		} else {
-			leftView.WriteString(lineStyle.Render(row) + "\n")
+			leftLines = append(leftLines, m.lineStyle.Render(row))
 		}
 	}
-	leftStr := boxStyle.Render(leftView.String())
+	leftStr := m.boxStyle.Render(strings.Join(leftLines, "\n"))
 
 	var rightView strings.Builder
-	rightView.WriteString(titleStyle.Render(" Preview "))
+	rightView.WriteString(m.titleStyle.Render(" Preview "))
 	rightView.WriteString("\n")
 
-	clippedPreview := clipText(m.preview, boxWidth-2, boxHeight-4)
+	clippedPreview := clipText(m.preview, m.boxWidth-2, m.boxHeight-4)
 	rightView.WriteString(clippedPreview)
 
-	rightStr := boxStyle.Render(rightView.String())
+	rightStr := m.boxStyle.Render(rightView.String())
 
 	mainContent := lipgloss.JoinHorizontal(lipgloss.Top, leftStr, rightStr)
-	footer := lipgloss.NewStyle().MarginTop(1).Render(
-		"  Navigate : ↑/↓ · j/k · Tab/Shift+Tab    Select : Enter    Quit : q · Ctrl+C",
-	)
 
-	content := lipgloss.JoinVertical(lipgloss.Left, mainContent, footer)
+	content := lipgloss.JoinVertical(lipgloss.Left, mainContent, m.footer)
 
 	v := tea.NewView(content)
 	v.AltScreen = true
@@ -326,11 +387,16 @@ func attachToSession(tcpClient SshClient, tsshdPath, sessionName string) (*strin
 	}
 
 	model := &attachModel{
-		tsshd:  tsshdPath,
-		client: tcpClient,
-		items:  items,
-		infos:  infos,
+		tsshd:      tsshdPath,
+		client:     tcpClient,
+		items:      items,
+		infos:      infos,
+		previewReq: make(chan *previewRequest, 1),
+		doneCh:     make(chan struct{}),
 	}
+
+	defer func() { close(model.doneCh) }()
+
 	p := tea.NewProgram(model)
 	if _, err := p.Run(); err != nil {
 		return nil, fmt.Errorf("%w: %v", errAttachSessionSelection, err)

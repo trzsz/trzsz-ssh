@@ -25,6 +25,7 @@ SOFTWARE.
 package tssh
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"net"
@@ -236,13 +237,6 @@ func getSshParam(args *sshArgs, proxy bool) (*sshParam, error) {
 	getProxyParam(param)
 
 	// expand proxy
-	if param.command != "" {
-		expandedCommand, err := expandTokens(param.command, param, "%hnpr")
-		if err != nil {
-			return nil, fmt.Errorf("expand ProxyCommand [%s] failed: %v", param.command, err)
-		}
-		param.command = expandedCommand
-	}
 	for i := 0; i < len(param.proxies); i++ {
 		proxy := strings.TrimSpace(param.proxies[i])
 		expandedProxy, err := expandTokens(proxy, param, "%hnpr")
@@ -307,9 +301,11 @@ func (a *cmdAddr) String() string {
 }
 
 type cmdPipe struct {
+	cmd    *exec.Cmd
 	stdin  io.WriteCloser
 	stdout io.ReadCloser
 	addr   string
+	closed atomic.Bool
 }
 
 func (p *cmdPipe) LocalAddr() net.Addr {
@@ -341,16 +337,26 @@ func (p *cmdPipe) SetWriteDeadline(t time.Time) error {
 }
 
 func (p *cmdPipe) Close() error {
-	err := p.stdin.Close()
-	err2 := p.stdout.Close()
-	if err != nil {
-		return err
+	if !p.closed.CompareAndSwap(false, true) {
+		return nil
 	}
-	return err2
+
+	_ = p.stdin.Close()
+	_ = p.stdout.Close()
+
+	if p.cmd.Process != nil {
+		_ = p.cmd.Process.Kill()
+	}
+
+	return nil
 }
 
 func execProxyCommand(param *sshParam) (net.Conn, string, error) {
-	command := resolveHomeDir(param.command)
+	expandedCommand, err := expandTokens(param.command, param, "%hnpr")
+	if err != nil {
+		return nil, "", fmt.Errorf("expand proxy command [%s] failed: %v", param.command, err)
+	}
+	command := resolveHomeDir(expandedCommand)
 	debug("exec proxy command: %s", command)
 
 	argv, err := splitCommandLine(command)
@@ -372,12 +378,35 @@ func execProxyCommand(param *sshParam) (net.Conn, string, error) {
 	if err != nil {
 		return nil, command, err
 	}
-	cmd.Stderr = os.Stderr
+
+	if enableDebugLogging {
+		stderr, err := cmd.StderrPipe()
+		if err != nil {
+			return nil, command, err
+		}
+		go func() {
+			scanner := bufio.NewScanner(stderr)
+			for scanner.Scan() {
+				debug("proxy command stderr: %s", scanner.Text())
+			}
+		}()
+	} else {
+		cmd.Stderr = io.Discard
+	}
+
 	if err := cmd.Start(); err != nil {
 		return nil, command, err
 	}
 
-	return &cmdPipe{stdin: cmdIn, stdout: cmdOut, addr: param.addr}, command, nil
+	pipe := &cmdPipe{cmd: cmd, stdin: cmdIn, stdout: cmdOut, addr: param.addr}
+
+	go func() {
+		if err := cmd.Wait(); err != nil && !pipe.closed.Load() {
+			debug("proxy command [%s] exited: %v", command, err)
+		}
+	}()
+
+	return pipe, command, nil
 }
 
 func parseRemoteCommand(param *sshParam) (string, error) {
