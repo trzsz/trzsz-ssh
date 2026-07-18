@@ -1,3 +1,27 @@
+/*
+MIT License
+
+Copyright (c) 2023-2026 The Trzsz SSH Authors.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
+
 package tssh
 
 import (
@@ -43,16 +67,20 @@ func TestParseSystemDNSServers(t *testing.T) {
 	assert.Equal(t, []dnsServer{{network: "udp", addr: "127.0.0.53:53"}, {network: "udp", addr: "[2001:4860:4860::8888]:53"}}, parseResolvConfDnsServers("nameserver 127.0.0.53\nnameserver 2001:4860:4860::8888\n"))
 }
 
-func TestDnsName(t *testing.T) {
-	assert.Equal(t, "example.com.", dnsName("[example.com]"))
-}
-
 func TestParseSSHFP(t *testing.T) {
 	records := parseSSHFP([]dns.RR{
 		&dns.SSHFP{Hdr: dns.RR_Header{Name: "example.com.", Rrtype: dns.TypeSSHFP, Class: dns.ClassINET}, Algorithm: 4, Type: 2, FingerPrint: "aabbcc"},
 		&dns.SSHFP{Hdr: dns.RR_Header{Name: "evil.example.com.", Rrtype: dns.TypeSSHFP, Class: dns.ClassINET}, Algorithm: 4, Type: 2, FingerPrint: "aabbcc"},
 	}, "example.com.")
 	assert.Equal(t, []sshfpRecord{{algorithm: 4, fpType: 2, fingerprint: []byte{0xaa, 0xbb, 0xcc}}}, records)
+}
+
+func querySSHFP(server dnsServer, request []byte, id uint16, name string) ([]sshfpRecord, bool, error) {
+	response, err := queryDNSSECServer(server, request, id, name, dns.TypeSSHFP)
+	if err != nil {
+		return nil, false, err
+	}
+	return parseSSHFP(response.Answer, name), validateSSHFPDNSSEC(response, name), nil
 }
 
 func TestQuerySSHFPRejectsNonQueryOpcode(t *testing.T) {
@@ -118,6 +146,21 @@ func TestCompressedRRSIGSignerNameValidates(t *testing.T) {
 	_, _, authenticate, err := verifyHostKeyDNS("host.example.test", key)
 	assert.NoError(t, err)
 	assert.True(t, authenticate())
+}
+
+func TestAppendDnsServerIPv6Zone(t *testing.T) {
+	servers := appendDnsServer(
+		nil,
+		map[string]bool{},
+		"fe80::1%12",
+	)
+
+	assert.Equal(t, []dnsServer{
+		{
+			network: "udp",
+			addr:    "[fe80::1%12]:53",
+		},
+	}, servers)
 }
 
 func testSSHKey(t *testing.T) ssh.PublicKey {
@@ -209,7 +252,7 @@ func withDNSSECTestLookup(t *testing.T, responses map[string]*dns.Msg, anchors [
 }
 
 func testLookupKey(name string, rrtype uint16) string {
-	return fmt.Sprintf("%s/%d", canonicalDNSName(name), rrtype)
+	return fmt.Sprintf("%s/%d", dns.CanonicalName(name), rrtype)
 }
 
 func mockDNSDialer(t *testing.T, expectedNetwork string, response []byte) <-chan error {
@@ -222,7 +265,7 @@ func mockDNSDialer(t *testing.T, expectedNetwork string, response []byte) <-chan
 		}
 		client, server := net.Pipe()
 		go func() {
-			defer server.Close()
+			defer func() { _ = server.Close() }()
 			if network == "tcp" {
 				done <- serveTCP(server, response)
 			} else {

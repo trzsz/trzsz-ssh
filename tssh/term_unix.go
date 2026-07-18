@@ -161,3 +161,7 @@ func suspendProcess() {
 func injectConsoleSpace() error {
 	return nil
 }
+
+func windowsDnsServers() []dnsServer {
+	return nil
+}

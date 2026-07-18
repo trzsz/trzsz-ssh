@@ -27,7 +27,6 @@ package tssh
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/binary"
@@ -35,12 +34,14 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/netip"
 	"net/url"
 	"os"
 	"os/exec"
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/miekg/dns"
@@ -74,10 +75,16 @@ func setDNS(dns string) {
 
 	customDnsServer = newDnsServer(network, dns)
 
+	var once sync.Once
+
 	net.DefaultResolver = &net.Resolver{
 		PreferGo: true,
 		Dial: func(ctx context.Context, _, addr string) (net.Conn, error) {
-			debug("use custom DNS: %s://%s", network, dns)
+			if enableDebugLogging {
+				once.Do(func() {
+					debug("using custom DNS: %s://%s", network, dns)
+				})
+			}
 			var d net.Dialer
 			return d.DialContext(ctx, network, dns)
 		},
@@ -140,7 +147,14 @@ const (
 	sshfpTypeSHA256 = 2
 )
 
-var dnssecRootTrustAnchors = []*dns.DS{{Hdr: dns.RR_Header{Name: ".", Rrtype: dns.TypeDS, Class: dns.ClassINET}, KeyTag: 20326, Algorithm: dns.RSASHA256, DigestType: dns.SHA256, Digest: "e06d44b80b8f1d39a95c0b0d7c65d08458e880409bbc683457104237c7f8ec8d"}}
+// dnssecRootTrustAnchors is the IANA DNSSEC Root Zone Trust Anchor.
+// See: https://data.iana.org/root-anchors/root-anchors.xml
+var dnssecRootTrustAnchors = []*dns.DS{{
+	Hdr:        dns.RR_Header{Name: ".", Rrtype: dns.TypeDS, Class: dns.ClassINET},
+	KeyTag:     20326,
+	Algorithm:  dns.RSASHA256,
+	DigestType: dns.SHA256,
+	Digest:     "e06d44b80b8f1d39a95c0b0d7c65d08458e880409bbc683457104237c7f8ec8d"}}
 
 var dnssecNow = time.Now
 var lookupDNSSEC = queryDNSSEC
@@ -211,9 +225,14 @@ func parseSSHFP(answers []dns.RR, expected string) []sshfpRecord {
 		if !ok || !strings.EqualFold(sshfp.Hdr.Name, expected) {
 			continue
 		}
+		decodedFingerprint, err := hex.DecodeString(sshfp.FingerPrint)
+		if err != nil {
+			debug("invalid hex in SSHFP record for %s: %v", expected, err)
+			continue
+		}
 		records = append(records, sshfpRecord{
 			algorithm: sshfp.Algorithm, fpType: sshfp.Type,
-			fingerprint: mustDecodeHex(sshfp.FingerPrint),
+			fingerprint: decodedFingerprint,
 		})
 	}
 	return records
@@ -282,16 +301,7 @@ func queryDNSSEC(host string, rrType uint16) (*dns.Msg, error) {
 
 	name := dns.Fqdn(host)
 
-	// Use a random transaction ID so an off-path attacker cannot trivially
-	// forge a matching UDP response.
-	var idBytes [2]byte
-	if _, err := rand.Read(idBytes[:]); err != nil {
-		return nil, err
-	}
-	id := binary.BigEndian.Uint16(idBytes[:])
-
 	query := new(dns.Msg)
-	query.Id = id
 	query.RecursionDesired = true
 	query.CheckingDisabled = true
 	query.SetQuestion(name, rrType)
@@ -300,6 +310,9 @@ func queryDNSSEC(host string, rrType uint16) (*dns.Msg, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// Capture the ID assigned by SetQuestion to use for response verification.
+	id := query.Id
 
 	var lastErr error
 	for _, server := range servers {
@@ -320,20 +333,12 @@ func queryDNSSEC(host string, rrType uint16) (*dns.Msg, error) {
 	return nil, lastErr
 }
 
-func querySSHFP(server dnsServer, request []byte, id uint16, name string) ([]sshfpRecord, bool, error) {
-	response, err := queryDNSSECServer(server, request, id, name, dns.TypeSSHFP)
-	if err != nil {
-		return nil, false, err
-	}
-	return parseSSHFP(response.Answer, name), validateSSHFPDNSSEC(response, name), nil
-}
-
 func queryDNSSECServer(server dnsServer, request []byte, id uint16, name string, rrType uint16) (*dns.Msg, error) {
 	conn, err := dialDNS(server.network, server.addr, dnsQueryTimeout)
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	_ = conn.SetDeadline(time.Now().Add(dnsQueryTimeout))
 	if err := writeDNSMessage(conn, server.network, request); err != nil {
 		return nil, err
@@ -386,7 +391,7 @@ func validateSSHFPDNSSEC(response *dns.Msg, owner string) bool {
 }
 
 func (v *dnssecValidator) validateDNSKEY(zone string) ([]*dns.DNSKEY, error) {
-	zone = canonicalDNSName(zone)
+	zone = dns.CanonicalName(zone)
 	if keys, ok := v.dnskeyCache[zone]; ok {
 		return keys, nil
 	}
@@ -398,11 +403,11 @@ func (v *dnssecValidator) validateDNSKEY(zone string) ([]*dns.DNSKEY, error) {
 	rrset := dnssecRecords(response.Answer, zone, dns.TypeDNSKEY)
 	keys := dnskeyRecords(rrset)
 	if len(keys) == 0 {
-		return nil, fmt.Errorf("no DNSKEY records for %s", zone)
+		return nil, fmt.Errorf("no DNSKEY records for zone %q", zone)
 	}
 	sigs := rrsigRecords(response.Answer, zone, dns.TypeDNSKEY)
 	if len(sigs) == 0 {
-		return nil, fmt.Errorf("no DNSKEY RRSIG records for %s", zone)
+		return nil, fmt.Errorf("no DNSKEY RRSIG records for zone %q", zone)
 	}
 
 	var trustedDS []*dns.DS
@@ -428,12 +433,12 @@ func (v *dnssecValidator) validateDNSKEY(zone string) ([]*dns.DNSKEY, error) {
 			break
 		}
 		if len(trustedDS) == 0 {
-			return nil, fmt.Errorf("no validated DS records for %s", zone)
+			return nil, fmt.Errorf("no validated DS records for zone %q", zone)
 		}
 	}
 
 	for _, key := range keys {
-		if !dnskeyMatchesAnyDS(zone, key, trustedDS) {
+		if !dnskeyMatchesAnyDS(key, trustedDS) {
 			continue
 		}
 		for _, sig := range sigs {
@@ -445,18 +450,18 @@ func (v *dnssecValidator) validateDNSKEY(zone string) ([]*dns.DNSKEY, error) {
 			return keys, nil
 		}
 	}
-	return nil, fmt.Errorf("DNSKEY RRset for %s did not validate to trust anchor", zone)
+	return nil, fmt.Errorf("DNSKEY RRset for zone %q did not validate to trust anchor", zone)
 }
 
 func dnssecRecords(resources []dns.RR, owner string, rrType uint16) []dns.RR {
-	owner = canonicalDNSName(owner)
+	owner = dns.CanonicalName(owner)
 	var records []dns.RR
 	for _, resource := range resources {
 		if resource.Header().Rrtype != rrType || resource.Header().Class != dns.ClassINET {
 			continue
 		}
-		name := canonicalDNSName(resource.Header().Name)
-		if !strings.EqualFold(name, owner) {
+		name := dns.CanonicalName(resource.Header().Name)
+		if name != owner {
 			continue
 		}
 		records = append(records, resource)
@@ -515,7 +520,7 @@ func verifyRRSet(records []dns.RR, sig *dns.RRSIG, keys []*dns.DNSKEY) error {
 	return fmt.Errorf("no DNSKEY verified RRSIG")
 }
 
-func dnskeyMatchesAnyDS(owner string, key *dns.DNSKEY, records []*dns.DS) bool {
+func dnskeyMatchesAnyDS(key *dns.DNSKEY, records []*dns.DS) bool {
 	for _, ds := range records {
 		if key.KeyTag() == ds.KeyTag && key.Algorithm == ds.Algorithm {
 			if candidate := key.ToDS(ds.DigestType); candidate != nil && strings.EqualFold(candidate.Digest, ds.Digest) {
@@ -527,7 +532,7 @@ func dnskeyMatchesAnyDS(owner string, key *dns.DNSKEY, records []*dns.DS) bool {
 }
 
 func parentDNSName(name string) string {
-	name = strings.TrimSuffix(canonicalDNSName(name), ".")
+	name = strings.TrimSuffix(dns.CanonicalName(name), ".")
 	if name == "" {
 		return "."
 	}
@@ -536,24 +541,6 @@ func parentDNSName(name string) string {
 		return "."
 	}
 	return strings.Join(parts[1:], ".") + "."
-}
-
-func canonicalDNSName(name string) string {
-	name = strings.TrimSpace(name)
-	if name == "" || name == "." {
-		return "."
-	}
-	name = strings.Trim(name, "[]")
-	name = strings.TrimSuffix(name, ".") + "."
-	return strings.ToLower(name)
-}
-
-func mustDecodeHex(value string) []byte {
-	decoded, err := hex.DecodeString(value)
-	if err != nil {
-		panic(err)
-	}
-	return decoded
 }
 
 func writeDNSMessage(conn net.Conn, network string, request []byte) error {
@@ -623,21 +610,6 @@ func darwinDnsServers() []dnsServer {
 	return parseScutilDnsServers(string(data))
 }
 
-func windowsDnsServers() []dnsServer {
-	data, err := exec.Command("powershell.exe", "-NoProfile", "-Command",
-		"Get-DnsClientServerAddress | Select-Object -ExpandProperty ServerAddresses").Output()
-	if err == nil {
-		if servers := parseDnsServerAddresses(string(data)); len(servers) > 0 {
-			return servers
-		}
-	}
-	data, err = exec.Command("ipconfig", "/all").Output()
-	if err != nil {
-		return nil
-	}
-	return parseWindowsIpconfigDnsServers(string(data))
-}
-
 func resolvConfDnsServers() []dnsServer {
 	data, err := os.ReadFile("/etc/resolv.conf")
 	if err != nil {
@@ -649,7 +621,7 @@ func resolvConfDnsServers() []dnsServer {
 func parseResolvConfDnsServers(data string) []dnsServer {
 	var servers []dnsServer
 	seen := make(map[string]bool)
-	for _, line := range strings.Split(data, "\n") {
+	for line := range strings.SplitSeq(data, "\n") {
 		line = strings.TrimSpace(line)
 		if !strings.HasPrefix(line, "nameserver") {
 			continue
@@ -666,59 +638,14 @@ func parseResolvConfDnsServers(data string) []dnsServer {
 func parseScutilDnsServers(data string) []dnsServer {
 	var servers []dnsServer
 	seen := make(map[string]bool)
-	for _, line := range strings.Split(data, "\n") {
-		if !strings.Contains(strings.ToLower(line), "nameserver") {
+	for line := range strings.SplitSeq(data, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "nameserver[") {
 			continue
 		}
-		servers = appendDnsServersFromText(servers, seen, line)
-	}
-	return servers
-}
-
-func parseWindowsIpconfigDnsServers(data string) []dnsServer {
-	var servers []dnsServer
-	seen := make(map[string]bool)
-	inDNSServers := false
-	for _, line := range strings.Split(data, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			inDNSServers = false
-			continue
+		if _, after, ok := strings.Cut(line, ":"); ok {
+			servers = appendDnsServer(servers, seen, after)
 		}
-		lower := strings.ToLower(trimmed)
-		if strings.Contains(lower, "dns servers") {
-			inDNSServers = true
-			if idx := strings.Index(trimmed, ":"); idx >= 0 {
-				servers = appendDnsServersFromText(servers, seen, trimmed[idx+1:])
-			}
-			continue
-		}
-		if !inDNSServers {
-			continue
-		}
-		before, _, hasColon := strings.Cut(trimmed, ":")
-		if hasColon && strings.ContainsAny(before, " .\t") {
-			inDNSServers = false
-			continue
-		}
-		servers = appendDnsServersFromText(servers, seen, trimmed)
-	}
-	return servers
-}
-
-func parseDnsServerAddresses(data string) []dnsServer {
-	var servers []dnsServer
-	seen := make(map[string]bool)
-	for _, line := range strings.Split(data, "\n") {
-		servers = appendDnsServersFromText(servers, seen, line)
-	}
-	return servers
-}
-
-func appendDnsServersFromText(servers []dnsServer, seen map[string]bool, text string) []dnsServer {
-	text = strings.NewReplacer(",", " ", ";", " ").Replace(text)
-	for _, field := range strings.Fields(text) {
-		servers = appendDnsServer(servers, seen, field)
 	}
 	return servers
 }
@@ -731,17 +658,15 @@ func appendDnsServer(servers []dnsServer, seen map[string]bool, host string) []d
 	if host == "" {
 		return servers
 	}
-	parseHost := host
+
 	if h, _, err := net.SplitHostPort(host); err == nil {
-		parseHost = h
 		host = h
 	}
-	if idx := strings.LastIndex(parseHost, "%"); idx >= 0 {
-		parseHost = parseHost[:idx]
-	}
-	if net.ParseIP(parseHost) == nil {
+
+	if _, err := netip.ParseAddr(host); err != nil {
 		return servers
 	}
+
 	addr := net.JoinHostPort(host, "53")
 	if seen[addr] {
 		return servers
@@ -755,14 +680,4 @@ func newDnsServer(network, addr string) dnsServer {
 		network: network,
 		addr:    addr,
 	}
-}
-
-// dnsName returns a fully qualified domain name (with a trailing dot) for the
-// given host, stripping any surrounding brackets.
-func dnsName(host string) string {
-	host = strings.Trim(host, "[]")
-	if !strings.HasSuffix(host, ".") {
-		host += "."
-	}
-	return host
 }
