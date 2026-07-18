@@ -27,37 +27,28 @@ package tssh
 import (
 	"bytes"
 	"context"
-	"crypto"
-	"crypto/ecdsa"
-	"crypto/ed25519"
-	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/rsa"
 	"crypto/sha1"
 	"crypto/sha256"
-	"crypto/sha512"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"io"
-	"math/big"
 	"net"
 	"net/url"
 	"os"
 	"os/exec"
 	"runtime"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/miekg/dns"
 	"golang.org/x/crypto/ssh"
-	"golang.org/x/net/dns/dnsmessage"
 )
 
 const (
 	dnsQueryTimeout = 2 * time.Second
-	dnsOpCodeQuery  = dnsmessage.OpCode(0)
 	dnsEDNSPayload  = 4096
 )
 
@@ -149,38 +140,7 @@ const (
 	sshfpTypeSHA256 = 2
 )
 
-const (
-	dnsTypeDS     = dnsmessage.Type(43)
-	dnsTypeSSHFP  = dnsmessage.Type(44)
-	dnsTypeRRSIG  = dnsmessage.Type(46)
-	dnsTypeDNSKEY = dnsmessage.Type(48)
-)
-
-const (
-	dnssecAlgorithmRSASHA1         = 5
-	dnssecAlgorithmRSASHA1NSEC3    = 7
-	dnssecAlgorithmRSASHA256       = 8
-	dnssecAlgorithmRSASHA512       = 10
-	dnssecAlgorithmECDSAP256SHA256 = 13
-	dnssecAlgorithmECDSAP384SHA384 = 14
-	dnssecAlgorithmED25519         = 15
-)
-
-const (
-	dnssecDigestSHA1   = 1
-	dnssecDigestSHA256 = 2
-	dnssecDigestSHA384 = 4
-)
-
-var dnssecRootTrustAnchors = []dsRecord{
-	{
-		dnssecRecord: dnssecRecord{name: ".", rrType: dnsTypeDS, class: dnsmessage.ClassINET},
-		keyTag:       20326,
-		algorithm:    8,
-		digestType:   dnssecDigestSHA256,
-		digest:       mustDecodeHex("e06d44b80b8f1d39a95c0b0d7c65d08458e880409bbc683457104237c7f8ec8d"),
-	},
-}
+var dnssecRootTrustAnchors = []*dns.DS{{Hdr: dns.RR_Header{Name: ".", Rrtype: dns.TypeDS, Class: dns.ClassINET}, KeyTag: 20326, Algorithm: dns.RSASHA256, DigestType: dns.SHA256, Digest: "e06d44b80b8f1d39a95c0b0d7c65d08458e880409bbc683457104237c7f8ec8d"}}
 
 var dnssecNow = time.Now
 var lookupDNSSEC = queryDNSSEC
@@ -192,46 +152,8 @@ type sshfpRecord struct {
 	fingerprint []byte
 }
 
-type dnssecRecord struct {
-	name   string
-	rrType dnsmessage.Type
-	class  dnsmessage.Class
-	ttl    uint32
-	rdata  []byte
-}
-
-type dnskeyRecord struct {
-	dnssecRecord
-	flags     uint16
-	protocol  uint8
-	algorithm uint8
-	publicKey []byte
-	keyTag    uint16
-}
-
-type dsRecord struct {
-	dnssecRecord
-	keyTag     uint16
-	algorithm  uint8
-	digestType uint8
-	digest     []byte
-}
-
-type rrsigRecord struct {
-	dnssecRecord
-	typeCovered dnsmessage.Type
-	algorithm   uint8
-	labels      uint8
-	originalTTL uint32
-	expiration  uint32
-	inception   uint32
-	keyTag      uint16
-	signerName  string
-	signature   []byte
-}
-
 type dnssecValidator struct {
-	dnskeyCache map[string][]dnskeyRecord
+	dnskeyCache map[string][]*dns.DNSKEY
 }
 
 // sshfpAlgorithm maps an SSH public key type to its SSHFP algorithm number
@@ -282,27 +204,16 @@ func matchSSHFP(records []sshfpRecord, key ssh.PublicKey) bool {
 // parseSSHFP extracts the SSHFP records from the answers of a DNS response.
 // Only answers whose owner name matches expected are accepted, so a response
 // cannot smuggle in records for a different name.
-func parseSSHFP(answers []dnsmessage.Resource, expected dnsmessage.Name) []sshfpRecord {
+func parseSSHFP(answers []dns.RR, expected string) []sshfpRecord {
 	var records []sshfpRecord
 	for _, answer := range answers {
-		if answer.Header.Type != dnsTypeSSHFP {
-			continue
-		}
-		if !strings.EqualFold(answer.Header.Name.String(), expected.String()) {
-			continue
-		}
-		unknown, ok := answer.Body.(*dnsmessage.UnknownResource)
-		if !ok {
-			continue
-		}
-		data := unknown.Data
-		if len(data) < 3 {
+		sshfp, ok := answer.(*dns.SSHFP)
+		if !ok || !strings.EqualFold(sshfp.Hdr.Name, expected) {
 			continue
 		}
 		records = append(records, sshfpRecord{
-			algorithm:   data[0],
-			fpType:      data[1],
-			fingerprint: append([]byte(nil), data[2:]...),
+			algorithm: sshfp.Algorithm, fpType: sshfp.Type,
+			fingerprint: mustDecodeHex(sshfp.FingerPrint),
 		})
 	}
 	return records
@@ -353,29 +264,23 @@ func verifyHostKeyDNS(host string, key ssh.PublicKey) (found bool, matched bool,
 // RRset validates through DNSSEC to the pinned root trust anchor; the response
 // AD bit is never trusted.
 func lookupSSHFP(host string) ([]sshfpRecord, func() bool, error) {
-	name, err := dnsmessage.NewName(dnsName(host))
+	name := dns.Fqdn(host)
+	response, err := lookupDNSSEC(name, dns.TypeSSHFP)
 	if err != nil {
 		return nil, nil, err
 	}
-	response, err := lookupDNSSEC(name.String(), dnsTypeSSHFP)
-	if err != nil {
-		return nil, nil, err
-	}
-	records := parseSSHFP(response.Answers, name)
+	records := parseSSHFP(response.Answer, name)
 	authenticate := func() bool { return validateSSHFPDNSSEC(response, name) }
 	return records, authenticate, nil
 }
 
-func queryDNSSEC(host string, rrType dnsmessage.Type) (*dnsmessage.Message, error) {
+func queryDNSSEC(host string, rrType uint16) (*dns.Msg, error) {
 	servers := dnsServers()
 	if len(servers) == 0 {
 		return nil, fmt.Errorf("no dns server available for DNSSEC lookup")
 	}
 
-	name, err := dnsmessage.NewName(dnsName(host))
-	if err != nil {
-		return nil, err
-	}
+	name := dns.Fqdn(host)
 
 	// Use a random transaction ID so an off-path attacker cannot trivially
 	// forge a matching UDP response.
@@ -385,22 +290,12 @@ func queryDNSSEC(host string, rrType dnsmessage.Type) (*dnsmessage.Message, erro
 	}
 	id := binary.BigEndian.Uint16(idBytes[:])
 
-	optHeader := dnsmessage.ResourceHeader{}
-	if err := optHeader.SetEDNS0(dnsEDNSPayload, dnsmessage.RCodeSuccess, true); err != nil {
-		return nil, err
-	}
-	query := dnsmessage.Message{
-		Header: dnsmessage.Header{ID: id, RecursionDesired: true, CheckingDisabled: true},
-		Questions: []dnsmessage.Question{{
-			Name:  name,
-			Type:  rrType,
-			Class: dnsmessage.ClassINET,
-		}},
-		Additionals: []dnsmessage.Resource{{
-			Header: optHeader,
-			Body:   &dnsmessage.OPTResource{},
-		}},
-	}
+	query := new(dns.Msg)
+	query.Id = id
+	query.RecursionDesired = true
+	query.CheckingDisabled = true
+	query.SetQuestion(name, rrType)
+	query.SetEdns0(dnsEDNSPayload, true)
 	request, err := query.Pack()
 	if err != nil {
 		return nil, err
@@ -413,7 +308,7 @@ func queryDNSSEC(host string, rrType dnsmessage.Type) (*dnsmessage.Message, erro
 			lastErr = err
 			continue
 		}
-		if response.Header.Truncated && server.network == "udp" {
+		if response.Truncated && server.network == "udp" {
 			tcpServer := server
 			tcpServer.network = "tcp"
 			if tcpResponse, err := queryDNSSECServer(tcpServer, request, id, name, rrType); err == nil {
@@ -425,15 +320,15 @@ func queryDNSSEC(host string, rrType dnsmessage.Type) (*dnsmessage.Message, erro
 	return nil, lastErr
 }
 
-func querySSHFP(server dnsServer, request []byte, id uint16, name dnsmessage.Name) ([]sshfpRecord, bool, error) {
-	response, err := queryDNSSECServer(server, request, id, name, dnsTypeSSHFP)
+func querySSHFP(server dnsServer, request []byte, id uint16, name string) ([]sshfpRecord, bool, error) {
+	response, err := queryDNSSECServer(server, request, id, name, dns.TypeSSHFP)
 	if err != nil {
 		return nil, false, err
 	}
-	return parseSSHFP(response.Answers, name), validateSSHFPDNSSEC(response, name), nil
+	return parseSSHFP(response.Answer, name), validateSSHFPDNSSEC(response, name), nil
 }
 
-func queryDNSSECServer(server dnsServer, request []byte, id uint16, name dnsmessage.Name, rrType dnsmessage.Type) (*dnsmessage.Message, error) {
+func queryDNSSECServer(server dnsServer, request []byte, id uint16, name string, rrType uint16) (*dns.Msg, error) {
 	conn, err := dialDNS(server.network, server.addr, dnsQueryTimeout)
 	if err != nil {
 		return nil, err
@@ -447,46 +342,42 @@ func queryDNSSECServer(server dnsServer, request []byte, id uint16, name dnsmess
 	if err != nil {
 		return nil, err
 	}
-	var response dnsmessage.Message
+	var response dns.Msg
 	if err := response.Unpack(buf); err != nil {
 		return nil, err
 	}
 	// Reject responses that don't correspond to our query: wrong transaction
 	// ID, not a response, a non-query opcode, an error rcode, or a question
 	// that doesn't echo the name and type we asked for.
-	if !response.Header.Response ||
-		response.Header.ID != id ||
-		response.Header.OpCode != dnsOpCodeQuery ||
-		response.Header.RCode != dnsmessage.RCodeSuccess {
+	if !response.Response || response.Id != id || response.Opcode != dns.OpcodeQuery || response.Rcode != dns.RcodeSuccess {
 		return nil, fmt.Errorf("unexpected dns response")
 	}
-	if len(response.Questions) != 1 ||
-		response.Questions[0].Type != rrType ||
-		response.Questions[0].Class != dnsmessage.ClassINET ||
-		!strings.EqualFold(response.Questions[0].Name.String(), name.String()) {
+	if len(response.Question) != 1 ||
+		response.Question[0].Qtype != rrType || response.Question[0].Qclass != dns.ClassINET ||
+		!strings.EqualFold(response.Question[0].Name, name) {
 		return nil, fmt.Errorf("dns response question mismatch")
 	}
 	return &response, nil
 }
 
-func validateSSHFPDNSSEC(response *dnsmessage.Message, owner dnsmessage.Name) bool {
-	rrset := dnssecRecords(response.Answers, owner.String(), dnsTypeSSHFP)
+func validateSSHFPDNSSEC(response *dns.Msg, owner string) bool {
+	rrset := dnssecRecords(response.Answer, owner, dns.TypeSSHFP)
 	if len(rrset) == 0 {
 		return false
 	}
-	sigs := rrsigRecords(response.Answers, owner.String(), dnsTypeSSHFP)
+	sigs := rrsigRecords(response.Answer, owner, dns.TypeSSHFP)
 	if len(sigs) == 0 {
 		return false
 	}
-	validator := &dnssecValidator{dnskeyCache: make(map[string][]dnskeyRecord)}
+	validator := &dnssecValidator{dnskeyCache: make(map[string][]*dns.DNSKEY)}
 	for _, sig := range sigs {
-		keys, err := validator.validateDNSKEY(sig.signerName)
+		keys, err := validator.validateDNSKEY(sig.SignerName)
 		if err != nil {
-			debug("DNSSEC DNSKEY validation for '%s' failed: %v", sig.signerName, err)
+			debug("DNSSEC DNSKEY validation for '%s' failed: %v", sig.SignerName, err)
 			continue
 		}
 		if err := verifyRRSet(rrset, sig, keys); err != nil {
-			debug("DNSSEC SSHFP signature validation for '%s' failed: %v", owner.String(), err)
+			debug("DNSSEC SSHFP signature validation for '%s' failed: %v", owner, err)
 			continue
 		}
 		return true
@@ -494,27 +385,27 @@ func validateSSHFPDNSSEC(response *dnsmessage.Message, owner dnsmessage.Name) bo
 	return false
 }
 
-func (v *dnssecValidator) validateDNSKEY(zone string) ([]dnskeyRecord, error) {
+func (v *dnssecValidator) validateDNSKEY(zone string) ([]*dns.DNSKEY, error) {
 	zone = canonicalDNSName(zone)
 	if keys, ok := v.dnskeyCache[zone]; ok {
 		return keys, nil
 	}
 
-	response, err := lookupDNSSEC(zone, dnsTypeDNSKEY)
+	response, err := lookupDNSSEC(zone, dns.TypeDNSKEY)
 	if err != nil {
 		return nil, err
 	}
-	rrset := dnssecRecords(response.Answers, zone, dnsTypeDNSKEY)
+	rrset := dnssecRecords(response.Answer, zone, dns.TypeDNSKEY)
 	keys := dnskeyRecords(rrset)
 	if len(keys) == 0 {
 		return nil, fmt.Errorf("no DNSKEY records for %s", zone)
 	}
-	sigs := rrsigRecords(response.Answers, zone, dnsTypeDNSKEY)
+	sigs := rrsigRecords(response.Answer, zone, dns.TypeDNSKEY)
 	if len(sigs) == 0 {
 		return nil, fmt.Errorf("no DNSKEY RRSIG records for %s", zone)
 	}
 
-	var trustedDS []dsRecord
+	var trustedDS []*dns.DS
 	if zone == "." {
 		trustedDS = dnssecRootTrustAnchors
 	} else {
@@ -523,12 +414,12 @@ func (v *dnssecValidator) validateDNSKEY(zone string) ([]dnskeyRecord, error) {
 		if err != nil {
 			return nil, err
 		}
-		dsResponse, err := lookupDNSSEC(zone, dnsTypeDS)
+		dsResponse, err := lookupDNSSEC(zone, dns.TypeDS)
 		if err != nil {
 			return nil, err
 		}
-		dsRRSet := dnssecRecords(dsResponse.Answers, zone, dnsTypeDS)
-		for _, dsSig := range rrsigRecords(dsResponse.Answers, zone, dnsTypeDS) {
+		dsRRSet := dnssecRecords(dsResponse.Answer, zone, dns.TypeDS)
+		for _, dsSig := range rrsigRecords(dsResponse.Answer, zone, dns.TypeDS) {
 			if err := verifyRRSet(dsRRSet, dsSig, parentKeys); err != nil {
 				debug("DNSSEC DS signature validation for '%s' failed: %v", zone, err)
 				continue
@@ -546,7 +437,7 @@ func (v *dnssecValidator) validateDNSKEY(zone string) ([]dnskeyRecord, error) {
 			continue
 		}
 		for _, sig := range sigs {
-			if err := verifyRRSet(rrset, sig, []dnskeyRecord{key}); err != nil {
+			if err := verifyRRSet(rrset, sig, []*dns.DNSKEY{key}); err != nil {
 				debug("DNSSEC DNSKEY signature validation for '%s' failed: %v", zone, err)
 				continue
 			}
@@ -557,47 +448,27 @@ func (v *dnssecValidator) validateDNSKEY(zone string) ([]dnskeyRecord, error) {
 	return nil, fmt.Errorf("DNSKEY RRset for %s did not validate to trust anchor", zone)
 }
 
-func dnssecRecords(resources []dnsmessage.Resource, owner string, rrType dnsmessage.Type) []dnssecRecord {
+func dnssecRecords(resources []dns.RR, owner string, rrType uint16) []dns.RR {
 	owner = canonicalDNSName(owner)
-	var records []dnssecRecord
+	var records []dns.RR
 	for _, resource := range resources {
-		if resource.Header.Type != rrType || resource.Header.Class != dnsmessage.ClassINET {
+		if resource.Header().Rrtype != rrType || resource.Header().Class != dns.ClassINET {
 			continue
 		}
-		name := canonicalDNSName(resource.Header.Name.String())
+		name := canonicalDNSName(resource.Header().Name)
 		if !strings.EqualFold(name, owner) {
 			continue
 		}
-		unknown, ok := resource.Body.(*dnsmessage.UnknownResource)
-		if !ok {
-			continue
-		}
-		records = append(records, dnssecRecord{
-			name:   name,
-			rrType: resource.Header.Type,
-			class:  resource.Header.Class,
-			ttl:    resource.Header.TTL,
-			rdata:  append([]byte(nil), unknown.Data...),
-		})
+		records = append(records, resource)
 	}
 	return records
 }
 
-func dnskeyRecords(records []dnssecRecord) []dnskeyRecord {
-	var keys []dnskeyRecord
+func dnskeyRecords(records []dns.RR) []*dns.DNSKEY {
+	var keys []*dns.DNSKEY
 	for _, record := range records {
-		if len(record.rdata) < 4 {
-			continue
-		}
-		key := dnskeyRecord{
-			dnssecRecord: record,
-			flags:        binary.BigEndian.Uint16(record.rdata[0:2]),
-			protocol:     record.rdata[2],
-			algorithm:    record.rdata[3],
-			publicKey:    append([]byte(nil), record.rdata[4:]...),
-			keyTag:       dnskeyTag(record.rdata),
-		}
-		if key.protocol != 3 {
+		key, ok := record.(*dns.DNSKEY)
+		if !ok || key.Protocol != 3 {
 			continue
 		}
 		keys = append(keys, key)
@@ -605,318 +476,66 @@ func dnskeyRecords(records []dnssecRecord) []dnskeyRecord {
 	return keys
 }
 
-func dsRecords(records []dnssecRecord) []dsRecord {
-	var dsRecords []dsRecord
+func dsRecords(records []dns.RR) []*dns.DS {
+	var dsRecords []*dns.DS
 	for _, record := range records {
-		if len(record.rdata) < 4 {
-			continue
+		if ds, ok := record.(*dns.DS); ok {
+			dsRecords = append(dsRecords, ds)
 		}
-		dsRecords = append(dsRecords, dsRecord{
-			dnssecRecord: record,
-			keyTag:       binary.BigEndian.Uint16(record.rdata[0:2]),
-			algorithm:    record.rdata[2],
-			digestType:   record.rdata[3],
-			digest:       append([]byte(nil), record.rdata[4:]...),
-		})
 	}
 	return dsRecords
 }
 
-func rrsigRecords(resources []dnsmessage.Resource, owner string, covered dnsmessage.Type) []rrsigRecord {
-	var sigs []rrsigRecord
-	for _, record := range dnssecRecords(resources, owner, dnsTypeRRSIG) {
-		sig, ok := parseRRSIG(record)
-		if !ok || sig.typeCovered != covered {
-			continue
+func rrsigRecords(resources []dns.RR, owner string, covered uint16) []*dns.RRSIG {
+	var sigs []*dns.RRSIG
+	for _, record := range dnssecRecords(resources, owner, dns.TypeRRSIG) {
+		if sig, ok := record.(*dns.RRSIG); ok && sig.TypeCovered == covered {
+			sigs = append(sigs, sig)
 		}
-		sigs = append(sigs, sig)
 	}
 	return sigs
 }
 
-func parseRRSIG(record dnssecRecord) (rrsigRecord, bool) {
-	if len(record.rdata) < 18 {
-		return rrsigRecord{}, false
-	}
-	signerName, off, ok := unpackDNSName(record.rdata, 18)
-	if !ok || off > len(record.rdata) {
-		return rrsigRecord{}, false
-	}
-	return rrsigRecord{
-		dnssecRecord: record,
-		typeCovered:  dnsmessage.Type(binary.BigEndian.Uint16(record.rdata[0:2])),
-		algorithm:    record.rdata[2],
-		labels:       record.rdata[3],
-		originalTTL:  binary.BigEndian.Uint32(record.rdata[4:8]),
-		expiration:   binary.BigEndian.Uint32(record.rdata[8:12]),
-		inception:    binary.BigEndian.Uint32(record.rdata[12:16]),
-		keyTag:       binary.BigEndian.Uint16(record.rdata[16:18]),
-		signerName:   signerName,
-		signature:    append([]byte(nil), record.rdata[off:]...),
-	}, true
-}
-
-func verifyRRSet(records []dnssecRecord, sig rrsigRecord, keys []dnskeyRecord) error {
+func verifyRRSet(records []dns.RR, sig *dns.RRSIG, keys []*dns.DNSKEY) error {
 	if len(records) == 0 {
 		return fmt.Errorf("empty RRset")
 	}
 	now := uint32(dnssecNow().Unix())
-	if now < sig.inception || now > sig.expiration {
+	if now < sig.Inception || now > sig.Expiration {
 		return fmt.Errorf("RRSIG validity period check failed")
 	}
-	signedData, err := rrsetSignedData(records, sig)
-	if err != nil {
-		return err
-	}
 	for _, key := range keys {
-		if key.algorithm != sig.algorithm || key.keyTag != sig.keyTag {
+		if key.Algorithm != sig.Algorithm || key.KeyTag() != sig.KeyTag || !strings.EqualFold(key.Hdr.Name, sig.SignerName) {
 			continue
 		}
-		if !strings.EqualFold(key.name, sig.signerName) {
-			continue
-		}
-		if err := verifyDNSSECSignature(key, sig.signature, signedData); err == nil {
+		if err := sig.Verify(key, records); err == nil {
 			return nil
 		}
 	}
 	return fmt.Errorf("no DNSKEY verified RRSIG")
 }
 
-func rrsetSignedData(records []dnssecRecord, sig rrsigRecord) ([]byte, error) {
-	var data []byte
-	data = appendUint16(data, uint16(sig.typeCovered))
-	data = append(data, sig.algorithm, sig.labels)
-	data = appendUint32(data, sig.originalTTL)
-	data = appendUint32(data, sig.expiration)
-	data = appendUint32(data, sig.inception)
-	data = appendUint16(data, sig.keyTag)
-	signerName, err := packDNSName(sig.signerName)
-	if err != nil {
-		return nil, err
-	}
-	data = append(data, signerName...)
-
-	sort.Slice(records, func(i, j int) bool {
-		return bytes.Compare(records[i].rdata, records[j].rdata) < 0
-	})
-
-	for _, record := range records {
-		if record.rrType != sig.typeCovered {
-			return nil, fmt.Errorf("RRSIG type does not match RRset")
-		}
-		if !rrsigSignerCovers(record.name, sig) {
-			return nil, fmt.Errorf("RRSIG signer does not cover RRset owner")
-		}
-		if int(sig.labels) > dnsLabelCount(record.name) {
-			return nil, fmt.Errorf("RRSIG label count exceeds owner name")
-		}
-		owner, err := packDNSName(rrsigOwnerName(record.name, sig.labels))
-		if err != nil {
-			return nil, err
-		}
-
-		data = append(data, owner...)
-		data = appendUint16(data, uint16(record.rrType))
-		data = appendUint16(data, uint16(record.class))
-		data = appendUint32(data, sig.originalTTL)
-		data = appendUint16(data, uint16(len(record.rdata)))
-		data = append(data, record.rdata...)
-	}
-
-	return data, nil
-}
-
-func verifyDNSSECSignature(key dnskeyRecord, signature, data []byte) error {
-	switch key.algorithm {
-	case dnssecAlgorithmRSASHA1, dnssecAlgorithmRSASHA1NSEC3:
-		pub, err := parseRSADNSKEY(key.publicKey)
-		if err != nil {
-			return err
-		}
-		sum := sha1.Sum(data)
-		return rsa.VerifyPKCS1v15(pub, crypto.SHA1, sum[:], signature)
-	case dnssecAlgorithmRSASHA256:
-		pub, err := parseRSADNSKEY(key.publicKey)
-		if err != nil {
-			return err
-		}
-		sum := sha256.Sum256(data)
-		return rsa.VerifyPKCS1v15(pub, crypto.SHA256, sum[:], signature)
-	case dnssecAlgorithmRSASHA512:
-		pub, err := parseRSADNSKEY(key.publicKey)
-		if err != nil {
-			return err
-		}
-		sum := sha512.Sum512(data)
-		return rsa.VerifyPKCS1v15(pub, crypto.SHA512, sum[:], signature)
-	case dnssecAlgorithmECDSAP256SHA256:
-		pub, err := parseECDSADNSKEY(key.publicKey, elliptic.P256(), 32)
-		if err != nil {
-			return err
-		}
-		if len(signature) != 64 {
-			return fmt.Errorf("invalid ECDSA P-256 signature length")
-		}
-		sum := sha256.Sum256(data)
-		if ecdsa.Verify(pub, sum[:], new(big.Int).SetBytes(signature[:32]), new(big.Int).SetBytes(signature[32:])) {
-			return nil
-		}
-	case dnssecAlgorithmECDSAP384SHA384:
-		pub, err := parseECDSADNSKEY(key.publicKey, elliptic.P384(), 48)
-		if err != nil {
-			return err
-		}
-		if len(signature) != 96 {
-			return fmt.Errorf("invalid ECDSA P-384 signature length")
-		}
-		sum := sha512.Sum384(data)
-		if ecdsa.Verify(pub, sum[:], new(big.Int).SetBytes(signature[:48]), new(big.Int).SetBytes(signature[48:])) {
-			return nil
-		}
-	case dnssecAlgorithmED25519:
-		if len(key.publicKey) != ed25519.PublicKeySize {
-			return fmt.Errorf("invalid Ed25519 public key length")
-		}
-		if ed25519.Verify(ed25519.PublicKey(key.publicKey), data, signature) {
-			return nil
-		}
-	default:
-		return fmt.Errorf("unsupported DNSSEC algorithm %d", key.algorithm)
-	}
-	return fmt.Errorf("DNSSEC signature verification failed")
-}
-
-func parseRSADNSKEY(data []byte) (*rsa.PublicKey, error) {
-	if len(data) < 2 {
-		return nil, fmt.Errorf("invalid RSA DNSKEY")
-	}
-	exponentLength := int(data[0])
-	off := 1
-	if exponentLength == 0 {
-		if len(data) < 3 {
-			return nil, fmt.Errorf("invalid RSA DNSKEY exponent length")
-		}
-		exponentLength = int(binary.BigEndian.Uint16(data[1:3]))
-		off = 3
-	}
-	if exponentLength == 0 || off+exponentLength >= len(data) {
-		return nil, fmt.Errorf("invalid RSA DNSKEY length")
-	}
-	exponent := new(big.Int).SetBytes(data[off : off+exponentLength])
-	modulus := new(big.Int).SetBytes(data[off+exponentLength:])
-	if !exponent.IsInt64() {
-		return nil, fmt.Errorf("invalid RSA DNSKEY exponent")
-	}
-	return &rsa.PublicKey{N: modulus, E: int(exponent.Int64())}, nil
-}
-
-func parseECDSADNSKEY(data []byte, curve elliptic.Curve, size int) (*ecdsa.PublicKey, error) {
-	if len(data) != size*2 {
-		return nil, fmt.Errorf("invalid ECDSA DNSKEY length")
-	}
-	x := new(big.Int).SetBytes(data[:size])
-	y := new(big.Int).SetBytes(data[size:])
-	if !curve.IsOnCurve(x, y) {
-		return nil, fmt.Errorf("invalid ECDSA DNSKEY point")
-	}
-	return &ecdsa.PublicKey{Curve: curve, X: x, Y: y}, nil
-}
-
-func dnskeyMatchesAnyDS(owner string, key dnskeyRecord, records []dsRecord) bool {
+func dnskeyMatchesAnyDS(owner string, key *dns.DNSKEY, records []*dns.DS) bool {
 	for _, ds := range records {
-		if key.keyTag != ds.keyTag || key.algorithm != ds.algorithm {
-			continue
-		}
-		digest, ok := dnskeyDigest(owner, key, ds.digestType)
-		if !ok {
-			continue
-		}
-		if bytes.Equal(digest, ds.digest) {
-			return true
+		if key.KeyTag() == ds.KeyTag && key.Algorithm == ds.Algorithm {
+			if candidate := key.ToDS(ds.DigestType); candidate != nil && strings.EqualFold(candidate.Digest, ds.Digest) {
+				return true
+			}
 		}
 	}
 	return false
 }
 
-func dnskeyDigest(owner string, key dnskeyRecord, digestType uint8) ([]byte, bool) {
-	ownerWire, err := packDNSName(owner)
-	if err != nil {
-		return nil, false
-	}
-	data := append(ownerWire, key.rdata...)
-	switch digestType {
-	case dnssecDigestSHA1:
-		sum := sha1.Sum(data)
-		return sum[:], true
-	case dnssecDigestSHA256:
-		sum := sha256.Sum256(data)
-		return sum[:], true
-	case dnssecDigestSHA384:
-		sum := sha512.Sum384(data)
-		return sum[:], true
-	default:
-		return nil, false
-	}
-}
-
-func dnskeyTag(rdata []byte) uint16 {
-	var ac uint32
-	for i, b := range rdata {
-		if i&1 == 0 {
-			ac += uint32(b) << 8
-		} else {
-			ac += uint32(b)
-		}
-	}
-	ac += (ac >> 16) & 0xffff
-	return uint16(ac & 0xffff)
-}
-
-func rrsigOwnerName(owner string, labels uint8) string {
-	parts := dnsLabels(owner)
-	if len(parts) > int(labels) {
-		if labels == 0 {
-			return "."
-		}
-		return "*." + strings.Join(parts[len(parts)-int(labels):], ".") + "."
-	}
-	return canonicalDNSName(owner)
-}
-
-func rrsigSignerCovers(owner string, sig rrsigRecord) bool {
-	owner = canonicalDNSName(owner)
-	signer := canonicalDNSName(sig.signerName)
-	switch sig.typeCovered {
-	case dnsTypeDNSKEY:
-		return owner == signer
-	case dnsTypeDS:
-		return parentDNSName(owner) == signer
-	default:
-		if signer == "." {
-			return owner == "."
-		}
-		return owner == signer || strings.HasSuffix(owner, "."+signer)
-	}
-}
-
 func parentDNSName(name string) string {
-	parts := dnsLabels(name)
+	name = strings.TrimSuffix(canonicalDNSName(name), ".")
+	if name == "" {
+		return "."
+	}
+	parts := strings.Split(name, ".")
 	if len(parts) <= 1 {
 		return "."
 	}
 	return strings.Join(parts[1:], ".") + "."
-}
-
-func dnsLabelCount(name string) int {
-	return len(dnsLabels(name))
-}
-
-func dnsLabels(name string) []string {
-	name = strings.TrimSuffix(canonicalDNSName(name), ".")
-	if name == "" {
-		return nil
-	}
-	return strings.Split(name, ".")
 }
 
 func canonicalDNSName(name string) string {
@@ -927,56 +546,6 @@ func canonicalDNSName(name string) string {
 	name = strings.Trim(name, "[]")
 	name = strings.TrimSuffix(name, ".") + "."
 	return strings.ToLower(name)
-}
-
-func packDNSName(name string) ([]byte, error) {
-	name = canonicalDNSName(name)
-	if name == "." {
-		return []byte{0}, nil
-	}
-	var wire []byte
-	for _, label := range strings.Split(strings.TrimSuffix(name, "."), ".") {
-		if len(label) == 0 || len(label) > 63 {
-			return nil, fmt.Errorf("invalid DNS name %s", name)
-		}
-		wire = append(wire, byte(len(label)))
-		wire = append(wire, label...)
-	}
-	return append(wire, 0), nil
-}
-
-func unpackDNSName(data []byte, off int) (string, int, bool) {
-	var labels []string
-	for {
-		if off >= len(data) {
-			return "", off, false
-		}
-		length := int(data[off])
-		off++
-		if length == 0 {
-			if len(labels) == 0 {
-				return ".", off, true
-			}
-			return strings.ToLower(strings.Join(labels, ".")) + ".", off, true
-		}
-		if length&0xc0 != 0 || off+length > len(data) {
-			return "", off, false
-		}
-		labels = append(labels, string(data[off:off+length]))
-		off += length
-	}
-}
-
-func appendUint16(data []byte, value uint16) []byte {
-	var buf [2]byte
-	binary.BigEndian.PutUint16(buf[:], value)
-	return append(data, buf[:]...)
-}
-
-func appendUint32(data []byte, value uint32) []byte {
-	var buf [4]byte
-	binary.BigEndian.PutUint32(buf[:], value)
-	return append(data, buf[:]...)
 }
 
 func mustDecodeHex(value string) []byte {
