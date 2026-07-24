@@ -339,30 +339,43 @@ func queryDNSSECServer(server dnsServer, request []byte, id uint16, name string,
 		return nil, err
 	}
 	defer func() { _ = conn.Close() }()
+
 	_ = conn.SetDeadline(time.Now().Add(dnsQueryTimeout))
 	if err := writeDNSMessage(conn, server.network, request); err != nil {
 		return nil, err
 	}
-	buf, err := readDNSMessage(conn, server.network)
-	if err != nil {
-		return nil, err
+
+	for {
+		buf, err := readDNSMessage(conn, server.network)
+		if err != nil {
+			return nil, err
+		}
+		var response dns.Msg
+		if err := response.Unpack(buf); err != nil {
+			debug("unpack dns response failed: %v", err)
+			continue
+		}
+
+		// Ignore messages that are not responses or have mismatched transaction IDs.
+		// On UDP sockets, these can be stale, out-of-order, or spoofed packets.
+		if !response.Response || response.Id != id {
+			debug("ignoring mismatched DNS packet: response=%v, id=%d (expected %d)", response.Response, response.Id, id)
+			continue
+		}
+
+		// Reject responses with unexpected opcodes or non-success return codes.
+		if response.Opcode != dns.OpcodeQuery || response.Rcode != dns.RcodeSuccess {
+			return nil, fmt.Errorf("unexpected dns response: opcode=%d, rcode=%d", response.Opcode, response.Rcode)
+		}
+
+		// Ensure the response question echoes the query name, type, and class.
+		if len(response.Question) != 1 ||
+			response.Question[0].Qtype != rrType || response.Question[0].Qclass != dns.ClassINET ||
+			!strings.EqualFold(response.Question[0].Name, name) {
+			return nil, fmt.Errorf("dns response question mismatch")
+		}
+		return &response, nil
 	}
-	var response dns.Msg
-	if err := response.Unpack(buf); err != nil {
-		return nil, err
-	}
-	// Reject responses that don't correspond to our query: wrong transaction
-	// ID, not a response, a non-query opcode, an error rcode, or a question
-	// that doesn't echo the name and type we asked for.
-	if !response.Response || response.Id != id || response.Opcode != dns.OpcodeQuery || response.Rcode != dns.RcodeSuccess {
-		return nil, fmt.Errorf("unexpected dns response")
-	}
-	if len(response.Question) != 1 ||
-		response.Question[0].Qtype != rrType || response.Question[0].Qclass != dns.ClassINET ||
-		!strings.EqualFold(response.Question[0].Name, name) {
-		return nil, fmt.Errorf("dns response question mismatch")
-	}
-	return &response, nil
 }
 
 func validateSSHFPDNSSEC(response *dns.Msg, owner string) bool {
@@ -376,6 +389,12 @@ func validateSSHFPDNSSEC(response *dns.Msg, owner string) bool {
 	}
 	validator := &dnssecValidator{dnskeyCache: make(map[string][]*dns.DNSKEY)}
 	for _, sig := range sigs {
+		// Per RFC 4035 section 5.3.1, the signer name must identify
+		// the zone that contains the signed RRset.
+		if !dns.IsSubDomain(sig.SignerName, owner) {
+			debug("unexpected RRSIG signer '%s' for owner '%s'", sig.SignerName, owner)
+			continue
+		}
 		keys, err := validator.validateDNSKEY(sig.SignerName)
 		if err != nil {
 			debug("DNSSEC DNSKEY validation for '%s' failed: %v", sig.SignerName, err)
