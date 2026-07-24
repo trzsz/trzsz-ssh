@@ -439,7 +439,7 @@ func getPublicKeysAuthMethod(param *sshParam) ssh.AuthMethod {
 
 		expandedIdentity = resolveHomeDir(expandedIdentity)
 
-		if userConfig.useOpenSSHConfig && !isFileExist(expandedIdentity) {
+		if userConfig.shouldUseOpenSSHConfig() && !isFileExist(expandedIdentity) {
 			debug("IdentityFile [%s] does not exist", expandedIdentity)
 			continue
 		}

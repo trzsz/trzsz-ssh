@@ -798,6 +798,10 @@ trzsz-ssh ( tssh ) 与 [tsshd](https://github.com/trzsz/tsshd) 一起，适用�
 
   # 使用 `ssh -G` 解析 OpenSSH 配置，包括 `Match` 规则
   UseOpenSSHConfig = yes
+
+  # 启用目标主机部分匹配时的模糊选择功能。
+  # 默认情况下此选项开启，当输入的目标主机存在模糊匹配项时，tssh 会显示候选主机选择菜单。
+  FuzzyHostSelection = yes
   ```
 
 ### 配置注释

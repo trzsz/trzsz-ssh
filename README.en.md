@@ -799,6 +799,10 @@ trzsz-ssh ( tssh ) with [tsshd](https://github.com/trzsz/tsshd) also supports in
 
   # Use `ssh -G` to evaluate OpenSSH config, including `Match` blocks.
   UseOpenSSHConfig = yes
+
+  # Enable fuzzy host selection for partially matched destinations.
+  # This option is enabled by default. When enabled, tssh displays a selection menu for possible matching hosts.
+  FuzzyHostSelection = yes
   ```
 
 ### Comments of Config

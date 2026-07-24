@@ -81,7 +81,8 @@ type tsshConfig struct {
 	configPath            string
 	sysConfigPath         string
 	exConfigPath          string
-	useOpenSSHConfig      bool
+	useOpenSSHConfig      *bool
+	fuzzyHostSelection    *bool
 	defaultUploadPath     string
 	defaultDownloadPath   string
 	dragFileUploadCommand string
@@ -105,6 +106,14 @@ type tsshConfig struct {
 	defaultThemeColors    map[string]string
 	allHosts              []*sshHost
 	wildcardPatterns      []*ssh_config.Pattern
+}
+
+func (c *tsshConfig) shouldUseOpenSSHConfig() bool {
+	return c.useOpenSSHConfig != nil && *c.useOpenSSHConfig
+}
+
+func (c *tsshConfig) shouldFuzzyHostSelection() bool {
+	return c.fuzzyHostSelection == nil || *c.fuzzyHostSelection
 }
 
 var userConfig *tsshConfig
@@ -153,6 +162,18 @@ func createTsshConfigPath() string {
 	return filepath.Join(userHomeDir, ".tssh.conf")
 }
 
+func parseBoolValue(name, value string, defaultValue bool) *bool {
+	switch strings.ToLower(value) {
+	case "1", "true", "yes", "on":
+		return ptr(true)
+	case "0", "false", "no", "off":
+		return ptr(false)
+	default:
+		warning("invalid boolean config [%s = %s], default to %v", name, value, defaultValue)
+		return ptr(defaultValue)
+	}
+}
+
 func loadTsshConfig(path string) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -185,11 +206,10 @@ func loadTsshConfig(path string) {
 			userConfig.configPath = resolveHomeDir(value)
 		case name == "exconfigpath" && userConfig.exConfigPath == "":
 			userConfig.exConfigPath = resolveHomeDir(value)
-		case name == "useopensshconfig" && !userConfig.useOpenSSHConfig:
-			switch strings.ToLower(value) {
-			case "1", "true", "yes", "on":
-				userConfig.useOpenSSHConfig = true
-			}
+		case name == "useopensshconfig" && userConfig.useOpenSSHConfig == nil:
+			userConfig.useOpenSSHConfig = parseBoolValue(name, value, false)
+		case name == "fuzzyhostselection" && userConfig.fuzzyHostSelection == nil:
+			userConfig.fuzzyHostSelection = parseBoolValue(name, value, true)
 		case name == "defaultuploadpath" && userConfig.defaultUploadPath == "":
 			userConfig.defaultUploadPath = resolveHomeDir(value)
 		case name == "defaultdownloadpath" && userConfig.defaultDownloadPath == "":
@@ -254,8 +274,11 @@ func showTsshConfig() {
 	if userConfig.exConfigPath != "" {
 		debug("ExConfigPath = %s", userConfig.exConfigPath)
 	}
-	if userConfig.useOpenSSHConfig {
-		debug("UseOpenSSHConfig = true")
+	if userConfig.useOpenSSHConfig != nil {
+		debug("UseOpenSSHConfig = %v", *userConfig.useOpenSSHConfig)
+	}
+	if userConfig.fuzzyHostSelection != nil {
+		debug("FuzzyHostSelection = %v", *userConfig.fuzzyHostSelection)
 	}
 	if userConfig.defaultUploadPath != "" {
 		debug("DefaultUploadPath = %s", userConfig.defaultUploadPath)
@@ -410,7 +433,7 @@ func getCfg(alias, key string, cfgs ...*sshConfig) string {
 }
 
 func getConfig(args *sshArgs, key string) string {
-	if userConfig.useOpenSSHConfig {
+	if userConfig.shouldUseOpenSSHConfig() {
 		if cfg := getOpenSSHEffectiveConfig(args, "", ""); cfg != nil {
 			if value := cfg.get(key); value != "" {
 				return value
@@ -454,7 +477,7 @@ func getCfgSplits(alias, key string, cfgs ...*sshConfig) []string {
 }
 
 func getConfigSplits(args *sshArgs, key string) []string {
-	if userConfig.useOpenSSHConfig {
+	if userConfig.shouldUseOpenSSHConfig() {
 		if cfg := getOpenSSHEffectiveConfig(args, "", ""); cfg != nil {
 			if value := cfg.get(key); value != "" {
 				values, err := shlex.Split(value)
@@ -505,7 +528,7 @@ func getAllCfg(alias, key string, cfgs ...*sshConfig) []string {
 }
 
 func getAllConfig(args *sshArgs, key string) []string {
-	if userConfig.useOpenSSHConfig {
+	if userConfig.shouldUseOpenSSHConfig() {
 		if cfg := getOpenSSHEffectiveConfig(args, "", ""); cfg != nil {
 			if values := cfg.getAll(key); len(values) > 0 {
 				return values
@@ -551,7 +574,7 @@ func getAllCfgSplits(alias, key string, cfgs ...*sshConfig) []string {
 }
 
 func getAllConfigSplits(args *sshArgs, key string) []string {
-	if userConfig.useOpenSSHConfig {
+	if userConfig.shouldUseOpenSSHConfig() {
 		if cfg := getOpenSSHEffectiveConfig(args, "", ""); cfg != nil {
 			var values []string
 			for _, value := range cfg.getAll(key) {
@@ -605,7 +628,7 @@ func getExConfig(args *sshArgs, key string) string {
 }
 
 func getAllExConfig(args *sshArgs, key string, extend bool) []string {
-	if userConfig.useOpenSSHConfig && !extend {
+	if userConfig.shouldUseOpenSSHConfig() && !extend {
 		return getAllConfig(args, key)
 	}
 
@@ -696,7 +719,7 @@ func appendPromptHosts(oriArgs *sshArgs, hosts []*sshHost, seen map[string]bool,
 			args := *oriArgs
 			args.Destination = alias
 
-			if !userConfig.useOpenSSHConfig {
+			if !userConfig.shouldUseOpenSSHConfig() {
 				canonMode := strings.ToLower(getOptionConfig(&args, "CanonicalizeHostname"))
 				if canonMode == "always" || canonMode == "yes" {
 					if host, err := canonicalizeHost(&args, alias); err == nil && host != alias {

@@ -313,7 +313,7 @@ func TsshMain(argv []string) int {
 	dest, quit, err = chooseOrPredictDest(&args)
 	if quit {
 		err = nil
-		return 0
+		return kExitCodeCanceled
 	}
 
 	// multiplexing control command

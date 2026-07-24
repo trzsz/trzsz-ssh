@@ -62,6 +62,7 @@ const (
 	kExitCodeOpenSession = 23
 	kExitCodeReconnect   = 24
 	kExitCodeAttachFail  = 25
+	kExitCodeCanceled    = 26
 
 	kExitCodeToolsError  = 101
 	kExitCodeTrzPreError = 102
@@ -679,4 +680,8 @@ func newFileUnlinker(path string, closer io.Closer) func() error {
 
 	// Return the cleanup function to be used with defer.
 	return cleanup
+}
+
+func ptr[T any](v T) *T {
+	return &v
 }

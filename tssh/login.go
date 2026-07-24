@@ -156,7 +156,7 @@ func getSshParam(args *sshArgs, proxy bool) (*sshParam, error) {
 
 	// Preload effective OpenSSH configuration using `ssh -G`, allowing getConfig()
 	// to evaluate Match blocks and other complex OpenSSH rules.
-	if userConfig.useOpenSSHConfig {
+	if userConfig.shouldUseOpenSSHConfig() {
 		_ = getOpenSSHEffectiveConfig(args, destUser, destPort)
 	}
 

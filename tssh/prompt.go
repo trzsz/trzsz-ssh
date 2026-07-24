@@ -632,11 +632,10 @@ func chooseAlias(args *sshArgs, keywords string) (string, bool, error) {
 }
 
 func predictDestination(args *sshArgs, dest string) (string, bool, error) {
-	if !isTerminal || strings.ContainsAny(dest, ".:[]@") {
-		return dest, false, nil
-	}
-
-	if userConfig.useOpenSSHConfig {
+	if !isTerminal ||
+		userConfig.shouldUseOpenSSHConfig() ||
+		!userConfig.shouldFuzzyHostSelection() ||
+		strings.ContainsAny(dest, ".:[]@") {
 		return dest, false, nil
 	}
 

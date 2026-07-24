@@ -65,7 +65,7 @@ func parseOpenSSHConfigDump(out []byte) *effectiveSshConfig {
 }
 
 func getOpenSSHEffectiveConfig(args *sshArgs, user, port string) *effectiveSshConfig {
-	if userConfig == nil || !userConfig.useOpenSSHConfig {
+	if userConfig == nil || !userConfig.shouldUseOpenSSHConfig() {
 		return nil
 	}
 
