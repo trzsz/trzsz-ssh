@@ -41,6 +41,7 @@ import (
 
 	"github.com/skeema/knownhosts"
 	"golang.org/x/crypto/ssh"
+	xkh "golang.org/x/crypto/ssh/knownhosts"
 )
 
 var acceptHostKeys []string
@@ -74,12 +75,13 @@ func ensureNewline(file *os.File) error {
 	return nil
 }
 
-func writeKnownHost(path, host string, key ssh.PublicKey) error {
+func writeKnownHost(args *sshArgs, path, host string, key ssh.PublicKey) error {
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0600)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = file.Close() }()
+
 	if err := ensureNewline(file); err != nil {
 		return err
 	}
@@ -88,11 +90,17 @@ func writeKnownHost(path, host string, key ssh.PublicKey) error {
 	if strings.ContainsAny(hostNormalized, "\t ") {
 		return fmt.Errorf("host '%s' contains spaces", hostNormalized)
 	}
-	line := knownhosts.Line([]string{hostNormalized}, key) + "\n"
+
+	address := hostNormalized
+	if strings.ToLower(getOptionConfig(args, "HashKnownHosts")) == "yes" {
+		address = xkh.HashHostname(hostNormalized)
+	}
+
+	line := knownhosts.Line([]string{address}, key) + "\n"
 	return writeAll(file, []byte(line))
 }
 
-func addHostKey(path, host string, key ssh.PublicKey, ask bool, dnsHint string) error {
+func addHostKey(args *sshArgs, path, host string, key ssh.PublicKey, ask bool, dnsHint string) error {
 	addHostKeyMutex.Lock()
 	defer addHostKeyMutex.Unlock()
 
@@ -137,7 +145,7 @@ func addHostKey(path, host string, key ssh.PublicKey, ask bool, dnsHint string) 
 		}
 	}
 
-	if err := writeKnownHost(path, host, key); err != nil {
+	if err := writeKnownHost(args, path, host, key); err != nil {
 		warning("Failed to add the host to the list of known hosts (%s): %v", path, err)
 		return nil
 	}
@@ -282,7 +290,7 @@ func getHostKeyCallback(param *sshParam) (ssh.HostKeyCallback, []string, error) 
 			case "accept-new", "no", "off", "false":
 				ask = false
 			}
-			return addHostKey(primaryPath, host, key, ask, dnsHint)
+			return addHostKey(param.args, primaryPath, host, key, ask, dnsHint)
 		}
 		switch strictHostKeyChecking {
 		case "no", "off", "false":
