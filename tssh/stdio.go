@@ -181,7 +181,7 @@ func getEscapeConfig(args *sshArgs) (byte, time.Duration) {
 
 	escapeChar := byte('~')
 	if escCh := getOptionConfig(args, "EscapeChar"); escCh != "" {
-		if strings.ToLower(escCh) == "none" {
+		if strings.EqualFold(escCh, "none") {
 			consoleEscapeTime = 0
 		} else if len(escCh) == 2 && escCh[0] == '^' {
 			b := escCh[1]

@@ -248,7 +248,7 @@ func parseForwardArg(str string) (*forwardCfg, error) {
 }
 
 func isGatewayPorts(args *sshArgs) bool {
-	return args.Gateway || strings.ToLower(getOptionConfig(args, "GatewayPorts")) == "yes"
+	return args.Gateway || strings.EqualFold(getOptionConfig(args, "GatewayPorts"), "yes")
 }
 
 func forwardDeniedReason(err error, network string) string {
@@ -325,7 +325,7 @@ func remoteForward(sshConn *sshConnection, f *forwardCfg, gateway bool, timeout 
 func sshPortForward(sshConn *sshConnection) {
 	args := sshConn.param.args
 	// clear all forwardings
-	if strings.ToLower(getOptionConfig(args, "ClearAllForwardings")) == "yes" {
+	if strings.EqualFold(getOptionConfig(args, "ClearAllForwardings"), "yes") {
 		debug("clear all forwardings")
 		return
 	}
@@ -341,7 +341,7 @@ func sshPortForward(sshConn *sshConnection) {
 
 	gateway := isGatewayPorts(sshConn.param.args)
 	timeout := getConnectTimeout(sshConn.param.args)
-	unlinkUnix := strings.ToLower(getOptionConfig(sshConn.param.args, "StreamLocalBindUnlink")) == "yes"
+	unlinkUnix := strings.EqualFold(getOptionConfig(sshConn.param.args, "StreamLocalBindUnlink"), "yes")
 	bindMask := streamLocalBindMask(sshConn.param.args)
 
 	// dynamic forward

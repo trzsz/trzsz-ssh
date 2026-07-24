@@ -46,7 +46,7 @@ type x11Request struct {
 
 func sshX11Forward(sshConn *sshConnection) {
 	args := sshConn.param.args
-	if args.NoX11Forward || !args.X11Forward && !args.X11Trusted && strings.ToLower(getOptionConfig(args, "ForwardX11")) != "yes" {
+	if args.NoX11Forward || !args.X11Forward && !args.X11Trusted && !strings.EqualFold(getOptionConfig(args, "ForwardX11"), "yes") {
 		return
 	}
 
@@ -89,7 +89,7 @@ func sshX11Forward(sshConn *sshConnection) {
 
 	timeout := uint32(1200)
 	forwardX11Timeout := getOptionConfig(args, "ForwardX11Timeout")
-	if forwardX11Timeout != "" && strings.ToLower(forwardX11Timeout) != "none" {
+	if forwardX11Timeout != "" && !strings.EqualFold(forwardX11Timeout, "none") {
 		seconds, err := convertSshTime(forwardX11Timeout)
 		if err != nil {
 			warning("ForwardX11Timeout [%s] invalid: %v", forwardX11Timeout, err)

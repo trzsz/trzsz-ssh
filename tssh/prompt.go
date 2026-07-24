@@ -474,7 +474,7 @@ func (p *sshPrompt) wrapStdin() {
 		_ = p.selector.Stdin.Close()
 	}()
 	buffer := make([]byte, 100)
-	if strings.ToLower(userConfig.promptDefaultMode) == "search" {
+	if strings.EqualFold(userConfig.promptDefaultMode, "search") {
 		p.search = true
 		_, _ = p.pipeOut.Write([]byte{'/'})
 	}

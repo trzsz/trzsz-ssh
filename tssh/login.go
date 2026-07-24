@@ -136,7 +136,7 @@ func canonicalizeHost(args *sshArgs, host string) (string, error) {
 		}
 	}
 
-	if strings.ToLower(getOptionConfig(args, "CanonicalizeFallbackLocal")) == "no" {
+	if strings.EqualFold(getOptionConfig(args, "CanonicalizeFallbackLocal"), "no") {
 		return "", fmt.Errorf("could not resolve canonical hostname for [%s]", host)
 	}
 
@@ -161,8 +161,8 @@ func getSshParam(args *sshArgs, proxy bool) (*sshParam, error) {
 	}
 
 	// canonicalize
-	canonMode := strings.ToLower(getOptionConfig(args, "CanonicalizeHostname"))
-	if canonMode == "true" || canonMode == "always" || (!proxy && canonMode == "yes") {
+	if v := getOptionConfig(args, "CanonicalizeHostname"); strings.EqualFold(v, "true") ||
+		strings.EqualFold(v, "always") || (!proxy && strings.EqualFold(v, "yes")) {
 		host, err := canonicalizeHost(args, destHost)
 		if err != nil {
 			return nil, err
@@ -258,7 +258,7 @@ func getProxyParam(param *sshParam) {
 	if proxyJump == "" {
 		proxyJump = args.Option.get("ProxyJump")
 	}
-	if strings.ToLower(proxyJump) == "none" {
+	if strings.EqualFold(proxyJump, "none") {
 		return
 	}
 	if proxyJump != "" {
@@ -267,7 +267,7 @@ func getProxyParam(param *sshParam) {
 	}
 
 	proxyCommand := args.Option.get("ProxyCommand")
-	if strings.ToLower(proxyCommand) == "none" {
+	if strings.EqualFold(proxyCommand, "none") {
 		return
 	}
 	if proxyCommand != "" {
@@ -276,13 +276,13 @@ func getProxyParam(param *sshParam) {
 	}
 
 	proxyJump = getConfig(args, "ProxyJump")
-	if proxyJump != "" && strings.ToLower(proxyJump) != "none" {
+	if proxyJump != "" && !strings.EqualFold(proxyJump, "none") {
 		param.proxies = strings.Split(proxyJump, ",")
 		return
 	}
 
 	proxyCommand = getConfig(args, "ProxyCommand")
-	if proxyCommand != "" && strings.ToLower(proxyCommand) != "none" {
+	if proxyCommand != "" && !strings.EqualFold(proxyCommand, "none") {
 		param.command = proxyCommand
 		return
 	}
@@ -412,7 +412,7 @@ func execProxyCommand(param *sshParam) (net.Conn, string, error) {
 func parseRemoteCommand(param *sshParam) (string, error) {
 	args := param.args
 	command := args.Option.get("RemoteCommand")
-	if args.Command != "" && command != "" && strings.ToLower(command) != "none" {
+	if args.Command != "" && command != "" && !strings.EqualFold(command, "none") {
 		return "", fmt.Errorf("cannot execute command-line and remote command")
 	}
 
@@ -426,7 +426,7 @@ func parseRemoteCommand(param *sshParam) (string, error) {
 	if command == "" {
 		command = getConfig(args, "RemoteCommand")
 	}
-	if command == "" || strings.ToLower(command) == "none" {
+	if command == "" || strings.EqualFold(command, "none") {
 		return "", nil
 	}
 
@@ -555,7 +555,7 @@ func getConnectTimeout(args *sshArgs) time.Duration {
 	}
 	value, err := strconv.ParseUint(connectTimeout, 10, 32)
 	if err != nil {
-		if strings.ToLower(connectTimeout) != "none" {
+		if !strings.EqualFold(connectTimeout, "none") {
 			warning("ConnectTimeout [%s] invalid: %v", connectTimeout, err)
 		}
 		return kDefaultConnectTimeout
@@ -756,7 +756,7 @@ func keepAlive(sshConn *sshConnection) {
 		}
 	}
 
-	showRTT := strings.ToLower(userConfig.setTerminalTitle) == "rtt"
+	showRTT := strings.EqualFold(userConfig.setTerminalTitle, "rtt")
 
 	sendKeepAlive := func(idx int) {
 		if enableDebugLogging {

@@ -92,7 +92,7 @@ func writeKnownHost(args *sshArgs, path, host string, key ssh.PublicKey) error {
 	}
 
 	address := hostNormalized
-	if strings.ToLower(getOptionConfig(args, "HashKnownHosts")) == "yes" {
+	if strings.EqualFold(getOptionConfig(args, "HashKnownHosts"), "yes") {
 		address = xkh.HashHostname(hostNormalized)
 	}
 
@@ -135,10 +135,9 @@ func addHostKey(args *sshArgs, path, host string, key ssh.PublicKey, ask bool, d
 			if input == fingerprint {
 				break
 			}
-			input = strings.ToLower(input)
-			if input == "yes" {
+			if strings.EqualFold(input, "yes") {
 				break
-			} else if input == "no" {
+			} else if strings.EqualFold(input, "no") {
 				return fmt.Errorf("host key not trusted")
 			}
 			_, _ = os.Stderr.WriteString("Please type 'yes', 'no' or the fingerprint: ")
@@ -164,7 +163,7 @@ func getHostKeyCallback(param *sshParam) (ssh.HostKeyCallback, []string, error) 
 			}
 			knownHostsFiles = defaults
 		}
-		if len(knownHostsFiles) == 1 && strings.ToLower(knownHostsFiles[0]) == "none" {
+		if len(knownHostsFiles) == 1 && strings.EqualFold(knownHostsFiles[0], "none") {
 			debug("%s disabled (set to 'none')", key)
 			return nil
 		}
@@ -243,14 +242,14 @@ func getHostKeyCallback(param *sshParam) (ssh.HostKeyCallback, []string, error) 
 		}
 
 		var dnsHint string
-		verifyDNS := strings.ToLower(getOptionConfig(param.args, "VerifyHostKeyDNS"))
-		if verifyDNS == "yes" || verifyDNS == "true" || verifyDNS == "ask" {
+		if verifyDNS := getOptionConfig(param.args, "VerifyHostKeyDNS"); strings.EqualFold(verifyDNS, "yes") ||
+			strings.EqualFold(verifyDNS, "true") || strings.EqualFold(verifyDNS, "ask") {
 			dnsHint = "\033[0;33mNo matching host key fingerprint found in DNS.\033[0m"
 			found, matched, authenticate, err := verifyHostKeyDNS(host, key)
 			if err != nil {
 				warning("Verify host key DNS failed: %v", err)
 			} else if found {
-				if (verifyDNS == "yes" || verifyDNS == "true") && matched && authenticate() {
+				if (strings.EqualFold(verifyDNS, "yes") || strings.EqualFold(verifyDNS, "true")) && matched && authenticate() {
 					debug("DNSSEC-validated host key fingerprint found in DNS for '%s'", host)
 					return nil
 				}

@@ -217,7 +217,7 @@ func runConsole(escapeChar byte, writer io.WriteCloser, sshConn *sshConnection) 
 		return model, tea.Quit
 	}})
 
-	if sshConn.param.args.Attach || strings.ToLower(getExOptionConfig(sshConn.param.args, "UdpSessionAttach")) == "yes" {
+	if sshConn.param.args.Attach || strings.EqualFold(getExOptionConfig(sshConn.param.args, "UdpSessionAttach"), "yes") {
 		model.items = append(model.items, &menuItem{"d", getText("console/detach"), func() (tea.Model, tea.Cmd) {
 			exiting.Store(true)
 			go func() {

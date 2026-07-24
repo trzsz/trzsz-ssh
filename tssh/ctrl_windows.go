@@ -53,8 +53,7 @@ func connectViaControl(param *sshParam) SshClient {
 		warning("ControlMaster is not supported on Windows")
 	}
 
-	switch strings.ToLower(ctrlPath) {
-	case "", "none":
+	if ctrlPath == "" || strings.EqualFold(ctrlPath, "none") {
 		return nil
 	}
 

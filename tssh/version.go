@@ -66,7 +66,7 @@ func getTsshVersion() string {
 			if revision != "" {
 				version.WriteByte('-')
 				version.WriteString(revision[:min(7, len(revision))])
-				if strings.ToLower(modified) == "true" {
+				if strings.EqualFold(modified, "true") {
 					version.WriteString("-m")
 				}
 			}

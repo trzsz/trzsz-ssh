@@ -423,11 +423,8 @@ func sshStart(args *sshArgs) (int, error) {
 	sshX11Forward(sshConn)
 
 	// set terminal title
-	if userConfig.setTerminalTitle != "" {
-		switch strings.ToLower(userConfig.setTerminalTitle) {
-		case "yes", "true":
-			setTerminalTitle(args.Destination)
-		}
+	if strings.EqualFold(userConfig.setTerminalTitle, "yes") || strings.EqualFold(userConfig.setTerminalTitle, "true") {
+		setTerminalTitle(args.Destination)
 	}
 
 	// execute remote tools if necessary
@@ -499,7 +496,7 @@ func sshStart(args *sshArgs) (int, error) {
 }
 
 func execLocalCommand(param *sshParam) {
-	if strings.ToLower(getOptionConfig(param.args, "PermitLocalCommand")) != "yes" {
+	if !strings.EqualFold(getOptionConfig(param.args, "PermitLocalCommand"), "yes") {
 		return
 	}
 	localCmd := getOptionConfig(param.args, "LocalCommand")

@@ -216,7 +216,7 @@ func udpLogin(param *sshParam, tcpClient SshClient) (SshClient, error) {
 	}
 
 	var tcpMode bool
-	if udpProxyMode := strings.ToLower(getExOptionConfig(args, "UdpProxyMode")); udpProxyMode == "tcp" {
+	if strings.EqualFold(getExOptionConfig(args, "UdpProxyMode"), "tcp") {
 		tcpMode = true
 	}
 
@@ -240,7 +240,7 @@ func udpLogin(param *sshParam, tcpClient SshClient) (SshClient, error) {
 	connectTimeout := getConnectTimeout(args)
 	sessionName := getExOptionConfig(args, "UdpSessionName")
 	var tsshdCmdBuf *strings.Builder
-	if args.Attach || strings.ToLower(getExOptionConfig(args, "UdpSessionAttach")) == "yes" {
+	if args.Attach || strings.EqualFold(getExOptionConfig(args, "UdpSessionAttach"), "yes") {
 		attachMode = true
 		var err error
 		tsshdCmdBuf, err = attachToSession(tcpClient, tsshdPath, sessionName)
@@ -340,7 +340,7 @@ func udpLogin(param *sshParam, tcpClient SshClient) (SshClient, error) {
 		debug("udp login to [%s] tsshd server addr: %s", param.args.Destination, tsshdAddr)
 	}
 
-	if strings.ToLower(userConfig.setTerminalTitle) == "rtt" {
+	if strings.EqualFold(userConfig.setTerminalTitle, "rtt") {
 		clientOpts.RttCallback = func(rtt int64) {
 			if lastJumpUdpClient == nil {
 				return

@@ -100,7 +100,7 @@ func getKrb5CacheFile() string {
 }
 
 func getGSSAPIWithMICAuthMethod(param *sshParam) ssh.AuthMethod {
-	if strings.ToLower(getOptionConfig(param.args, "GSSAPIAuthentication")) != "yes" {
+	if !strings.EqualFold(getOptionConfig(param.args, "GSSAPIAuthentication"), "yes") {
 		debug("disable auth method: gssapi-with-mic authentication")
 		return nil
 	}

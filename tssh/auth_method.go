@@ -258,7 +258,7 @@ func readSecret(prompt string) ([]byte, error) {
 }
 
 func getPasswordAuthMethod(param *sshParam) ssh.AuthMethod {
-	if strings.ToLower(getOptionConfig(param.args, "PasswordAuthentication")) == "no" {
+	if strings.EqualFold(getOptionConfig(param.args, "PasswordAuthentication"), "no") {
 		debug("disable auth method: password authentication")
 		return nil
 	}
@@ -333,7 +333,7 @@ func readQuestionAnswerConfig(param *sshParam, idx int, question string) string 
 }
 
 func getKeyboardInteractiveAuthMethod(param *sshParam) ssh.AuthMethod {
-	if strings.ToLower(getOptionConfig(param.args, "KbdInteractiveAuthentication")) == "no" {
+	if strings.EqualFold(getOptionConfig(param.args, "KbdInteractiveAuthentication"), "no") {
 		debug("disable auth method: keyboard interactive authentication")
 		return nil
 	}
@@ -392,7 +392,7 @@ var getDefaultSigners = func() func() []sshSigner {
 
 func getPublicKeysAuthMethod(param *sshParam) ssh.AuthMethod {
 	args := param.args
-	if v := strings.ToLower(getOptionConfig(args, "PubkeyAuthentication")); v == "no" || v == "false" {
+	if v := getOptionConfig(args, "PubkeyAuthentication"); strings.EqualFold(v, "no") || strings.EqualFold(v, "false") {
 		debug("disable auth method: public key authentication")
 		return nil
 	}
@@ -487,7 +487,7 @@ func getPublicKeysAuthMethod(param *sshParam) ssh.AuthMethod {
 		}
 	}
 
-	if strings.ToLower(getOptionConfig(args, "IdentitiesOnly")) != "yes" {
+	if !strings.EqualFold(getOptionConfig(args, "IdentitiesOnly"), "yes") {
 		for _, signer := range agentSigners {
 			addSignerWithCerts("", newSshSigner("ssh-agent", nil, signer.PublicKey(), signer))
 		}

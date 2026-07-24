@@ -502,8 +502,8 @@ func setupUdpNotification(sshConn *sshConnection) {
 	}
 
 	ni := notifInterceptor{client: lastJumpUdpClient, interceptChan: make(chan byte, 1)}
-	ni.noticeOnTop = strings.ToLower(getExOptionConfig(sshConn.param.args, "ShowNotificationOnTop")) != "no"
-	ni.showFullNotif.Store(strings.ToLower(getExOptionConfig(sshConn.param.args, "ShowFullNotifications")) != "no")
+	ni.noticeOnTop = !strings.EqualFold(getExOptionConfig(sshConn.param.args, "ShowNotificationOnTop"), "no")
+	ni.showFullNotif.Store(!strings.EqualFold(getExOptionConfig(sshConn.param.args, "ShowFullNotifications"), "no"))
 	ni.exitKey = parseUdpReconnectExitKey(getExOptionConfig(sshConn.param.args, "UdpReconnectExitKey"))
 
 	inReader, inWriter := io.Pipe()

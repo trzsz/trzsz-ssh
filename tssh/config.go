@@ -345,7 +345,7 @@ func initUserConfig(configFile string) (err error) {
 		if runtime.GOOS != "windows" {
 			userConfig.sysConfigPath = "/etc/ssh/ssh_config"
 		}
-	} else if strings.ToLower(userConfig.configPath) == "none" {
+	} else if strings.EqualFold(userConfig.configPath, "none") {
 		userConfig.configPath = ""
 	}
 
@@ -720,15 +720,14 @@ func appendPromptHosts(oriArgs *sshArgs, hosts []*sshHost, seen map[string]bool,
 			args.Destination = alias
 
 			if !userConfig.shouldUseOpenSSHConfig() {
-				canonMode := strings.ToLower(getOptionConfig(&args, "CanonicalizeHostname"))
-				if canonMode == "always" || canonMode == "yes" {
+				if v := getOptionConfig(&args, "CanonicalizeHostname"); strings.EqualFold(v, "always") || strings.EqualFold(v, "yes") {
 					if host, err := canonicalizeHost(&args, alias); err == nil && host != alias {
 						args.canonicalDest = host
 					}
 				}
 			}
 
-			if strings.ToLower(getExOptionConfig(&args, "HideHost")) == "yes" {
+			if strings.EqualFold(getExOptionConfig(&args, "HideHost"), "yes") {
 				continue
 			}
 

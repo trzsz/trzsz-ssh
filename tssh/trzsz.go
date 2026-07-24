@@ -41,10 +41,10 @@ func setupTrzszFilter(sshConn *sshConnection) error {
 	}
 
 	args := sshConn.param.args
-	disableTrzsz := strings.ToLower(getExOptionConfig(args, "EnableTrzsz")) == "no"
-	enableZmodem := args.Zmodem || strings.ToLower(getExOptionConfig(args, "EnableZmodem")) == "yes"
-	enableDragFile := args.DragFile || strings.ToLower(getExOptionConfig(args, "EnableDragFile")) == "yes"
-	enableOSC52 := strings.ToLower(getExOptionConfig(args, "EnableOSC52")) == "yes"
+	disableTrzsz := strings.EqualFold(getExOptionConfig(args, "EnableTrzsz"), "no")
+	enableZmodem := args.Zmodem || strings.EqualFold(getExOptionConfig(args, "EnableZmodem"), "yes")
+	enableDragFile := args.DragFile || strings.EqualFold(getExOptionConfig(args, "EnableDragFile"), "yes")
+	enableOSC52 := strings.EqualFold(getExOptionConfig(args, "EnableOSC52"), "yes")
 
 	// disable trzsz ( trz / tsz )
 	if disableTrzsz && !enableZmodem && !enableDragFile && !enableOSC52 {

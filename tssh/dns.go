@@ -108,12 +108,9 @@ func resolveDnsAddress(dns string) (string, string, error) {
 
 	}
 
-	var network string
-	switch strings.ToLower(svrParse.Scheme) {
-	case "tcp":
+	network := "udp"
+	if strings.EqualFold(svrParse.Scheme, "tcp") {
 		network = "tcp"
-	default:
-		network = "udp"
 	}
 
 	host, port, err := net.SplitHostPort(svrParse.Host)

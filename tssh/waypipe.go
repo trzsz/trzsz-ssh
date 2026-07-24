@@ -38,7 +38,7 @@ import (
 )
 
 func enableWaypipe(sshConn *sshConnection) error {
-	if !sshConn.tty || strings.ToLower(getExOptionConfig(sshConn.param.args, "EnableWaypipe")) != "yes" {
+	if !sshConn.tty || !strings.EqualFold(getExOptionConfig(sshConn.param.args, "EnableWaypipe"), "yes") {
 		return nil
 	}
 	if os.Getenv("WAYLAND_DISPLAY") == "" {
