@@ -87,6 +87,7 @@ type sshArgs struct {
 	Client         bool        `arg:"--client" help:"force trzsz run as a client on the jump server"`
 	Debug          bool        `arg:"--debug" help:"verbose mode for debugging, same as ssh's -vvv"`
 	Zmodem         bool        `arg:"--zmodem" help:"enable zmodem lrzsz ( rz / sz ) feature"`
+	RemoveHostKey  bool        `arg:"--remove-host-key" help:"remove the known_hosts entry before connecting"`
 	DNS            string      `arg:"--dns" placeholder:"[udp://|tcp://]host[:port]" help:"custom DNS server"`
 	TCP            bool        `arg:"--tcp" help:"force standard TCP SSH (overrides UdpMode)"`
 	UDP            bool        `arg:"--udp" help:"ssh over UDP like mosh (default: QUIC)"`

@@ -96,6 +96,9 @@ func TestSshArgs(t *testing.T) {
 	assertArgsEqual("--debug", sshArgs{Debug: true})
 	assertArgsEqual("--zmodem", sshArgs{Zmodem: true})
 
+	assertArgsEqual("--remove-host-key", sshArgs{RemoveHostKey: true})
+	assertArgsEqual("--dns tcp://127.0.0.1:1053", sshArgs{DNS: "tcp://127.0.0.1:1053"})
+
 	assertArgsEqual("--tcp", sshArgs{TCP: true})
 	assertArgsEqual("--udp", sshArgs{UDP: true})
 	assertArgsEqual("--kcp", sshArgs{KCP: true})

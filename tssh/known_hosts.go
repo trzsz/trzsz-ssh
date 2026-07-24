@@ -26,6 +26,10 @@ package tssh
 
 import (
 	"bufio"
+	"bytes"
+	"crypto/hmac"
+	"crypto/sha1"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net"
@@ -143,7 +147,6 @@ func addHostKey(path, host string, key ssh.PublicKey, ask bool, dnsHint string) 
 }
 
 func getHostKeyCallback(param *sshParam) (ssh.HostKeyCallback, []string, error) {
-	primaryPath := ""
 	var files []string
 	addKnownHostsFiles := func(key string, user bool, defaults []string) error {
 		knownHostsFiles := getOptionConfigSplits(param.args, key)
@@ -165,9 +168,6 @@ func getHostKeyCallback(param *sshParam) (ssh.HostKeyCallback, []string, error) 
 					return fmt.Errorf("expand UserKnownHostsFile [%s] failed: %v", path, err)
 				}
 				resolvedPath = resolveHomeDir(expandedPath)
-				if primaryPath == "" {
-					primaryPath = resolvedPath
-				}
 			} else {
 				resolvedPath = path
 			}
@@ -188,9 +188,23 @@ func getHostKeyCallback(param *sshParam) (ssh.HostKeyCallback, []string, error) 
 		}
 		return nil
 	}
+
 	if err := addKnownHostsFiles("UserKnownHostsFile", true, []string{"~/.ssh/known_hosts", "~/.ssh/known_hosts2"}); err != nil {
 		return nil, nil, err
 	}
+
+	primaryPath := ""
+	if len(files) > 0 {
+		primaryPath = files[0]
+		if param.args.RemoveHostKey {
+			for _, path := range files {
+				if err := removeHostKey(path, param); err != nil {
+					warning("remove host key failed: %v", err)
+				}
+			}
+		}
+	}
+
 	if err := addKnownHostsFiles("GlobalKnownHostsFile", false, []string{"/etc/ssh/ssh_known_hosts", "/etc/ssh/ssh_known_hosts2"}); err != nil {
 		return nil, nil, err
 	}
@@ -249,6 +263,17 @@ func getHostKeyCallback(param *sshParam) (ssh.HostKeyCallback, []string, error) 
 			}
 			warnChangedKey(key)
 			fmt.Fprintf(os.Stderr, "Add correct host key in %s to get rid of this message.\r\n", path)
+			if primaryPath != "" {
+				dest := param.args.originalDest
+				if dest == "" {
+					dest = param.args.Destination
+				}
+				port := ""
+				if param.args.Port != 0 {
+					port = fmt.Sprintf("-p %d ", param.args.Port)
+				}
+				fmt.Fprintf(os.Stderr, "Or reconnect with:\r\n  tssh --remove-host-key %s%s\r\n", port, dest)
+			}
 		} else if knownhosts.IsHostUnknown(err) && primaryPath != "" {
 			ask := true
 			switch strictHostKeyChecking {
@@ -281,4 +306,107 @@ func warnChangedKey(key ssh.PublicKey) {
 		"%s\r\n"+
 		"Please contact your system administrator.\r\n",
 		shortKeyType(key.Type()), ssh.FingerprintSHA256(key))
+}
+
+func removeHostKey(path string, param *sshParam) error {
+	input, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read known_hosts %q failed: %v", path, err)
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("stat known_hosts %q failed: %v", path, err)
+	}
+	filePerm := info.Mode().Perm()
+
+	normalizedTarget := knownhosts.Normalize(param.addr)
+
+	inputLines := bytes.Split(input, []byte{'\n'})
+	outputLines := make([][]byte, 0, len(inputLines))
+	removedCount := 0
+
+	for _, line := range inputLines {
+		trimedLine := bytes.TrimSpace(line)
+		if len(trimedLine) == 0 || trimedLine[0] == '#' {
+			outputLines = append(outputLines, line)
+			continue
+		}
+
+		fields := bytes.Fields(trimedLine)
+		if len(fields) == 0 {
+			outputLines = append(outputLines, line)
+			continue
+		}
+
+		hostField := string(fields[0])
+		if strings.HasPrefix(hostField, "@") && len(fields) > 1 {
+			hostField = string(fields[1])
+		}
+
+		if matchKnownHosts(hostField, normalizedTarget) {
+			removedCount++
+			continue
+		}
+
+		outputLines = append(outputLines, line)
+	}
+
+	if removedCount == 0 {
+		fmt.Fprintf(os.Stderr, "\033[0;36mNo host keys found for %s in %s\033[0m\r\n", normalizedTarget, path)
+		return nil
+	}
+
+	backupPath := path + ".old"
+	if err := os.WriteFile(backupPath, input, filePerm); err != nil {
+		return fmt.Errorf("create backup %q failed: %v", backupPath, err)
+	}
+
+	if err := os.WriteFile(path, bytes.Join(outputLines, []byte{'\n'}), filePerm); err != nil {
+		return fmt.Errorf("update known_hosts %q failed: %v", path, err)
+	}
+
+	fmt.Fprintf(os.Stderr, "\033[0;36mRemoved %d outdated key(s) for %s from %s (backup saved to %s)\033[0m\r\n",
+		removedCount, normalizedTarget, path, backupPath)
+	return nil
+}
+
+func matchKnownHosts(hosts string, target string) bool {
+	parts := strings.Split(hosts, ",")
+	for _, part := range parts {
+		if strings.HasPrefix(part, "|1|") {
+			if matchHashed(part, target) {
+				return true
+			}
+			continue
+		}
+		if strings.EqualFold(part, target) {
+			return true
+		}
+	}
+	return false
+}
+
+func matchHashed(hashedPart string, target string) bool {
+	subParts := strings.Split(hashedPart, "|")
+	if len(subParts) < 4 {
+		return false
+	}
+	saltB64 := subParts[2]
+	hashB64 := subParts[3]
+
+	salt, err := base64.StdEncoding.DecodeString(saltB64)
+	if err != nil {
+		return false
+	}
+	expectedHash, err := base64.StdEncoding.DecodeString(hashB64)
+	if err != nil {
+		return false
+	}
+
+	mac := hmac.New(sha1.New, salt)
+	mac.Write([]byte(target))
+	computedHash := mac.Sum(nil)
+
+	return hmac.Equal(computedHash, expectedHash)
 }
