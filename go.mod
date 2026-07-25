@@ -3,9 +3,9 @@ module github.com/trzsz/trzsz-ssh
 go 1.25.0
 
 require (
-	charm.land/bubbles/v2 v2.1.0
-	charm.land/bubbletea/v2 v2.0.7
-	charm.land/lipgloss/v2 v2.0.4
+	charm.land/bubbles/v2 v2.1.1
+	charm.land/bubbletea/v2 v2.0.8
+	charm.land/lipgloss/v2 v2.0.5
 	github.com/Microsoft/go-winio v0.6.2
 	github.com/charmbracelet/colorprofile v0.4.3
 	github.com/charmbracelet/x/ansi v0.11.7
@@ -14,10 +14,10 @@ require (
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
 	github.com/google/uuid v1.6.0
 	github.com/jcmturner/gokrb5/v8 v8.4.4
-	github.com/mattn/go-isatty v0.0.22
-	github.com/mattn/go-runewidth v0.0.24
-	github.com/mitchellh/go-homedir v1.1.0
+	github.com/mattn/go-isatty v0.0.24
+	github.com/mattn/go-runewidth v0.0.27
 	github.com/miekg/dns v1.1.72
+	github.com/mitchellh/go-homedir v1.1.0
 	github.com/pquerna/otp v1.5.0
 	github.com/skeema/knownhosts v1.3.2
 	github.com/stretchr/testify v1.11.1
@@ -29,11 +29,10 @@ require (
 	github.com/trzsz/shellescape v1.6.0
 	github.com/trzsz/ssh_config v1.3.8
 	github.com/trzsz/trzsz-go v1.2.1-0.20260410165008-9be4a4a9e14b
-	github.com/trzsz/tsshd v0.1.9-0.20260704223320-5e1359d97be8
-	golang.org/x/crypto v0.53.0
-	golang.org/x/net v0.56.0
-	golang.org/x/sys v0.46.0
-	golang.org/x/term v0.44.0
+	github.com/trzsz/tsshd v0.1.9
+	golang.org/x/crypto v0.54.0
+	golang.org/x/sys v0.47.0
+	golang.org/x/term v0.45.0
 )
 
 require (
@@ -43,7 +42,7 @@ require (
 	github.com/andybrewer/mack v0.0.0-20251024001139-afd410b36447 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/boombuler/barcode v1.1.0 // indirect
-	github.com/charmbracelet/ultraviolet v0.0.0-20260622092850-f39628c8a989 // indirect
+	github.com/charmbracelet/ultraviolet v0.0.0-20260720091822-7cc6674724ac // indirect
 	github.com/charmbracelet/x/term v0.2.2 // indirect
 	github.com/charmbracelet/x/termios v0.1.1 // indirect
 	github.com/charmbracelet/x/windows v0.2.2 // indirect
@@ -59,8 +58,8 @@ require (
 	github.com/jcmturner/goidentity/v6 v6.0.1 // indirect
 	github.com/jcmturner/rpc/v2 v2.0.3 // indirect
 	github.com/josephspurrier/goversioninfo v1.7.0 // indirect
-	github.com/klauspost/compress v1.18.6 // indirect
-	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
+	github.com/klauspost/compress v1.19.1 // indirect
+	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
 	github.com/klauspost/reedsolomon v1.14.1 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.0 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
@@ -75,10 +74,13 @@ require (
 	github.com/trzsz/quic-go v0.60.1 // indirect
 	github.com/trzsz/smux v1.6.0 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
-	golang.org/x/image v0.43.0 // indirect
-	golang.org/x/sync v0.21.0 // indirect
-	golang.org/x/text v0.38.0 // indirect
+	golang.org/x/image v0.44.0 // indirect
+	golang.org/x/mod v0.38.0 // indirect
+	golang.org/x/net v0.57.0 // indirect
+	golang.org/x/sync v0.22.0 // indirect
+	golang.org/x/text v0.40.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
+	golang.org/x/tools v0.48.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

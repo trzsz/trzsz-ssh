@@ -14,7 +14,7 @@ trzsz-ssh ( tssh ) with [tsshd](https://github.com/trzsz/tsshd) also supports in
 
 trzsz-ssh ( tssh ) works exactly like the openssh client. The following common features have been implemented:
 
-|    Features    |                                                                            Support Options                                                                            |
+|    Features    |                                  <br /> Support Options <br /><img src="https://github.com/fake-image.png" width="800" height="0" />                                  |
 | :------------: | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------: |
 |   Pseudo TTY   |                                                                        `-t` `-T` `RequestTTY`                                                                         |
 |   Algorithms   |                                                                    `-c` `Ciphers` `KexAlgorithms`                                                                     |
@@ -24,8 +24,8 @@ trzsz-ssh ( tssh ) works exactly like the openssh client. The following common f
 |  Multiplexing  |                                                     `-M` `-S` `-O` `ControlMaster` `ControlPath` `ControlPersist`                                                     |
 |   SSH Agent    |                                               `-a` `-A` `ForwardAgent` `IdentityAgent` `IdentitiesOnly` `SSH_AUTH_SOCK`                                               |
 |  X11 Forward   |                                          `-x` `-X` `-Y` `ForwardX11` `ForwardX11Trusted` `ForwardX11Timeout` `XAuthLocation`                                          |
-|  Canonicalize  |                                      `CanonicalizeHostname` `CanonicalDomains` `CanonicalizeMaxDots` `CanonicalizeFallbackLocal`                                      |
 |  Basic Login   |                                   `-l` `-p` `-i` `-F` `HostName` `Port` `User` `IdentityFile` `CertificateFile` `SendEnv` `SetEnv`                                    |
+|  Canonicalize  |                                      `CanonicalizeHostname` `CanonicalDomains` `CanonicalizeMaxDots` `CanonicalizeFallbackLocal`                                      |
 | Authentication |                                 `PubkeyAuthentication` `PasswordAuthentication` `KbdInteractiveAuthentication` `GSSAPIAuthentication`                                 |
 |  Known Hosts   |                                `UserKnownHostsFile` `GlobalKnownHostsFile` `StrictHostKeyChecking` `VerifyHostKeyDNS` `HashKnownHosts`                                |
 |  Port Forward  | `-g` `-f` `-N` `-n` `-L` `-R` `-D` `LocalForward` `RemoteForward` `DynamicForward` `GatewayPorts` `ClearAllForwardings` `StreamLocalBindUnlink` `StreamLocalBindMask` |
