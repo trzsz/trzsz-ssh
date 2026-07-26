@@ -1,0 +1,46 @@
+name: Auto Deploy Dev Build
+
+on:
+  push:
+    branches: ["main"]
+
+permissions:
+  contents: write
+
+jobs:
+  build-pre-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout trzsz-ssh
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+      - name: Clean up local dev tag for GoReleaser
+        run: |
+          git tag -d dev || true
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v1"
+          args: release --clean --snapshot --skip=publish
+      - name: Show Checksum
+        run: |
+          sha256sum dist/*.tar.gz dist/*.zip dist/*.rpm dist/*.deb dist/*_checksums.txt
+      - name: Update Dev Release
+        uses: marvinpinto/action-automatic-releases@latest
+        with:
+          repo_token: "${{ secrets.GITHUB_TOKEN }}"
+          automatic_release_tag: "dev"
+          prerelease: true
+          title: "Development Build (main branch)"
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.rpm
+            dist/*.deb
+            dist/*_checksums.txt

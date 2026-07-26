@@ -1,7 +1,7 @@
 /*
 MIT License
 
-Copyright (c) 2023-2025 The Trzsz SSH Authors.
+Copyright (c) 2023-2026 The Trzsz SSH Authors.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -25,15 +25,20 @@ SOFTWARE.
 package tssh
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/mattn/go-isatty"
 	"github.com/trzsz/go-arg"
+	"github.com/trzsz/tsshd/tsshd"
+	"golang.org/x/crypto/ssh"
 )
 
 func background(args *sshArgs, dest string) (bool, error) {
@@ -52,27 +57,16 @@ func background(args *sshArgs, dest string) (bool, error) {
 		env = append(env, "TRZSZ-SSH-BACKGROUND=TRUE")
 	}
 
-	newArgs := os.Args
-	if args.Destination == "" {
-		newArgs = append(newArgs, dest)
-	} else if args.Destination != dest {
-		idx := -1
-		count := 0
-		for i, arg := range newArgs {
-			if arg == args.Destination {
-				idx = i
-				count++
-			}
-		}
-		if count != 1 {
-			return true, fmt.Errorf("don't know how to replace the destination: %s => %s", args.Destination, dest)
-		}
-		newArgs[idx] = dest
+	newArgs, err := replaceOrAppendDest(os.Args, args.Destination, dest)
+	if err != nil {
+		return true, err
 	}
+	exePath := getExePath(newArgs[0])
 
 	sleepTime := time.Duration(0)
 	for {
-		cmd := exec.Command(newArgs[0], newArgs[1:]...)
+		cmd := exec.Command(exePath, newArgs[1:]...)
+		cmd.Args = newArgs
 		cmd.Env = env
 		cmd.Stderr = os.Stderr
 
@@ -96,31 +90,162 @@ func background(args *sshArgs, dest string) (bool, error) {
 	}
 }
 
+func getExePath(defaultPath string) string {
+	if path, err := os.Executable(); err == nil {
+		return path
+	}
+	return defaultPath
+}
+
+// replaceOrAppendDest returns a new args slice where the destination is replaced or appended.
+// Returns an error if it cannot safely replace the existing destination.
+func replaceOrAppendDest(args []string, oldDest, newDest string) ([]string, error) {
+	newArgs := make([]string, len(args))
+	copy(newArgs, args)
+
+	if oldDest == "" {
+		// No existing destination, append the new one
+		if newDest != "" {
+			newArgs = append(newArgs, newDest)
+		}
+	} else if oldDest != newDest {
+		// Replace old destination
+		idx := -1
+		count := 0
+		for i, arg := range newArgs {
+			if arg == oldDest {
+				idx = i
+				count++
+			}
+		}
+		if count != 1 {
+			return nil, fmt.Errorf("don't know how to replace the destination: %s => %s", oldDest, newDest)
+		}
+		newArgs[idx] = newDest
+	}
+
+	return newArgs, nil
+}
+
+func runWithReconnect(args *sshArgs, dest string) (err error) {
+	var newArgs []string
+	for _, arg := range os.Args {
+		if arg == "--reconnect" {
+			continue // skip --reconnect in child process
+		}
+		newArgs = append(newArgs, arg)
+	}
+
+	newArgs, err = replaceOrAppendDest(newArgs, args.Destination, dest)
+	if err != nil {
+		return err
+	}
+	exePath := getExePath(newArgs[0])
+
+	for {
+		cmd := exec.Command(exePath, newArgs[1:]...)
+		cmd.Args = newArgs
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+
+		if err := cmd.Start(); err != nil {
+			return fmt.Errorf("start child process failed: %v", err)
+		}
+
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGHUP, os.Interrupt)
+		go func() {
+			for sig := range sigChan {
+				if cmd.Process != nil {
+					_ = cmd.Process.Signal(sig)
+				}
+			}
+		}()
+
+		_ = cmd.Wait()
+		signal.Stop(sigChan)
+		close(sigChan)
+
+		if !waitForEnter(cmd.ProcessState.ExitCode()) {
+			return nil
+		}
+	}
+}
+
+func waitForEnter(code int) bool {
+	color := "\033[32m"
+	if code != 0 {
+		color = "\033[31m"
+	}
+
+	fmt.Printf("%s[tssh child process exited with code %d]\033[0m\r\n"+
+		"Press Enter to restart and log in again, or Ctrl+C to exit.\r\n",
+		color, code)
+
+	state, err := makeStdinRaw()
+	if err != nil {
+		_, _ = fmt.Scanln()
+		return true
+	}
+	defer resetStdin(state)
+
+	var buf [1]byte
+	for {
+		n, err := os.Stdin.Read(buf[:])
+		if err != nil || n == 0 {
+			return false
+		}
+		switch buf[0] {
+		case '\r', '\n':
+			return true
+		case '\x03':
+			return false
+		}
+	}
+}
+
 var onExitFuncs []func()
+var onExitMutex sync.Mutex
 
 func cleanupOnExit() {
-	for i := len(onExitFuncs) - 1; i >= 0; i-- {
+	onExitMutex.Lock()
+	defer onExitMutex.Unlock()
+	for i := len(onExitFuncs) - 1; i >= 0; i-- { // close proxy clients in order
 		onExitFuncs[i]()
 	}
+	onExitFuncs = nil
+}
+
+func addOnExitFunc(f func()) {
+	onExitMutex.Lock()
+	defer onExitMutex.Unlock()
+	onExitFuncs = append(onExitFuncs, f)
 }
 
 var onCloseFuncs []func()
+var onCloseMutex sync.Mutex
 
 func cleanupOnClose() {
+	onCloseMutex.Lock()
+	defer onCloseMutex.Unlock()
 	for i := len(onCloseFuncs) - 1; i >= 0; i-- {
 		onCloseFuncs[i]()
 	}
+	onCloseFuncs = nil
 }
 
-var afterLoginFuncs []func()
-
-func cleanupAfterLogin() {
-	for i := len(afterLoginFuncs) - 1; i >= 0; i-- {
-		afterLoginFuncs[i]()
-	}
+func addOnCloseFunc(f func()) {
+	onCloseMutex.Lock()
+	defer onCloseMutex.Unlock()
+	onCloseFuncs = append(onCloseFuncs, f)
 }
 
-var isTerminal bool = isatty.IsTerminal(os.Stdin.Fd()) || isatty.IsCygwinTerminal(os.Stdin.Fd())
+func isTerminalFd(fd uintptr) bool {
+	return isatty.IsTerminal(fd) || isatty.IsCygwinTerminal(fd)
+}
+
+var isTerminal bool = isTerminalFd(os.Stdin.Fd())
 
 // TrzMain is the main function of tssh program.
 func TsshMain(argv []string) int {
@@ -128,14 +253,31 @@ func TsshMain(argv []string) int {
 	var args sshArgs
 	parser, err := arg.NewParser(arg.Config{HideLongOptions: true, Out: os.Stderr, Exit: os.Exit}, &args)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return -1
+		fmt.Fprintf(os.Stderr, "new arg parser failed: %v\r\n", err)
+		return kExitCodeArgsInvalid
 	}
-	parser.MustParse(argv)
+
+	if err := parser.Parse(argv); err != nil {
+		if err == arg.ErrHelp {
+			parser.WriteHelp(os.Stdout)
+			return 0
+		}
+		if err == arg.ErrVersion {
+			return printVersionShort()
+		}
+		parser.WriteUsage(os.Stderr)
+		fmt.Fprintf(os.Stderr, "error: %v\r\n", err)
+		return kExitCodeArgsInvalid
+	}
+
+	if args.VerDetailed {
+		return printVersionDetailed()
+	}
 
 	// debug log
 	if args.Debug {
 		enableDebugLogging = true
+		debug("tssh version: %s", getTsshVersion())
 	}
 
 	// cleanup on exit
@@ -150,13 +292,13 @@ func TsshMain(argv []string) int {
 
 	// init user config
 	if err = initUserConfig(args.ConfigFile); err != nil {
-		return 1
+		return kExitCodeUserConfig
 	}
 
 	// setup virtual terminal on Windows
 	if isTerminal {
 		if err = setupVirtualTerminal(); err != nil {
-			return 2
+			return kExitCodeSetupWinVT
 		}
 	}
 
@@ -168,21 +310,23 @@ func TsshMain(argv []string) int {
 	// choose ssh alias
 	dest := ""
 	quit := false
-	if args.Destination == "" || args.Destination == "FAKE_DEST_IN_WARP" {
-		if !isTerminal {
-			parser.WriteHelp(os.Stderr)
-			return 3
-		}
-		dest, quit, err = chooseAlias("")
-	} else {
-		dest, quit, err = predictDestination(args.Destination)
-	}
+	dest, quit, err = chooseOrPredictDest(&args)
 	if quit {
 		err = nil
-		return 0
+		return kExitCodeCanceled
 	}
-	if err != nil {
-		return 4
+
+	// multiplexing control command
+	if args.ControlCmd != "" {
+		return execControlCmd(&args, dest)
+	}
+
+	// check dest before startup
+	if err != nil || dest == "" {
+		if err == nil {
+			err = fmt.Errorf("missing destination host")
+		}
+		return kExitCodeNoDestHost
 	}
 
 	// run as background
@@ -190,20 +334,32 @@ func TsshMain(argv []string) int {
 		var parent bool
 		parent, err = background(&args, dest)
 		if err != nil {
-			return 5
+			return kExitCodeBackground
 		}
 		if parent {
 			return 0
 		}
 	}
-	args.Destination = dest
-	args.originalDest = dest
 
-	if args.Dns != "" {
-		setDNS(args.Dns)
+	// prompt user to restart the program after exit
+	if args.Reconnect && isTerminal {
+		err = runWithReconnect(&args, dest)
+		if err != nil {
+			return kExitCodeReconnect
+		}
+		return 0
+	}
+
+	// custom DNS server
+	if args.DNS != "" {
+		setDNS(args.DNS)
+	} else if userConfig.customDnsServer != "" {
+		setDNS(userConfig.customDnsServer)
 	}
 
 	// start ssh program
+	args.Destination = dest
+	args.originalDest = dest
 	var code int
 	code, err = sshStart(&args)
 	return code
@@ -211,90 +367,231 @@ func TsshMain(argv []string) int {
 
 func sshStart(args *sshArgs) (int, error) {
 	// ssh login
-	ss, err := sshLogin(args)
+	sshConn, err := sshConnect(args)
 	if err != nil {
-		return 10, err
+		return kExitCodeLoginFailed, err
 	}
-	defer ss.Close()
+	defer func() {
+		cleanupOnClose()
+		sshConn.Close()
+	}()
 
-	// cleanup on close
-	defer cleanupOnClose()
+	// execute local command if necessary
+	execLocalCommand(sshConn.param)
+
+	// handle signals
+	handleExitSignals(sshConn)
 
 	// stdio forward
 	if args.StdioForward != "" {
-		var wg *sync.WaitGroup
-		wg, err = stdioForward(args, ss.client, args.StdioForward)
-		if err != nil {
-			return 11, err
+		if err = stdioForward(args, sshConn.client, args.StdioForward); err != nil {
+			return kExitCodeIoFwFailed, err
 		}
-		cleanupAfterLogin()
-		wg.Wait()
 		return 0, nil
+	}
+
+	// request subsystem
+	if args.Subsystem {
+		if err = subsystemForward(sshConn.client, sshConn.cmd); err != nil {
+			return kExitCodeSubFwFailed, err
+		}
+		return 0, nil
+	}
+
+	// ssh port forwarding
+	if !sshConn.param.control {
+		sshPortForward(sshConn)
 	}
 
 	// not executing remote command
 	if args.NoCommand {
-		cleanupAfterLogin()
-		_ = ss.client.Wait()
+		_ = sshConn.client.Wait()
 		return 0, nil
 	}
 
+	// open ssh session
+	if err = openSession(sshConn); err != nil {
+		return kExitCodeOpenSession, err
+	}
+
+	// ssh agent forward
+	if !sshConn.param.control {
+		sshAgentForward(sshConn)
+	}
+
+	// x11 forward
+	sshX11Forward(sshConn)
+
 	// set terminal title
-	if userConfig.setTerminalTitle != "" {
-		switch strings.ToLower(userConfig.setTerminalTitle) {
-		case "yes", "true":
-			setTerminalTitle(args.Destination)
-		}
+	if strings.EqualFold(userConfig.setTerminalTitle, "yes") || strings.EqualFold(userConfig.setTerminalTitle, "true") {
+		setTerminalTitle(args.Destination)
 	}
 
 	// execute remote tools if necessary
-	if code, quit := execRemoteTools(args, ss); quit {
+	if code, quit := execRemoteTools(sshConn); quit {
 		return code, nil
 	}
 
 	// enable waypipe
-	if err := enableWaypipe(args, ss); err != nil {
+	if err := enableWaypipe(sshConn); err != nil {
 		warning("waypipe may not be working properly: %v", err)
 	}
 
 	// run command or start shell
-	if ss.cmd != "" {
-		if err := ss.session.Start(ss.cmd); err != nil {
-			return 12, fmt.Errorf("start command [%s] failed: %v", ss.cmd, err)
+	if sess, ok := sshConn.session.(*tsshd.SshUdpSession); ok && udpAttachSessionID > 0 {
+		if err := sess.Attach(udpAttachSessionID); err != nil {
+			wantExit.Store(true)
+			if sshConn.tty {
+				var te *tsshd.Error
+				if errors.As(err, &te) && te.Code == tsshd.ErrNotPty {
+					wantExit.Store(false)
+				}
+			}
+			return kExitCodeAttachFail, fmt.Errorf("attach session [%d] failed: %v", udpAttachSessionID, err)
+		}
+	} else if sshConn.cmd != "" {
+		if err := sshConn.session.Start(sshConn.cmd); err != nil {
+			return kExitCodeStartFailed, fmt.Errorf("start command [%s] failed: %v", sshConn.cmd, err)
 		}
 	} else {
-		if err := ss.session.Shell(); err != nil {
-			return 13, fmt.Errorf("start shell failed: %v", err)
+		if err := sshConn.session.Shell(); err != nil {
+			return kExitCodeShellFailed, fmt.Errorf("start shell failed: %v", err)
 		}
 	}
 
 	// execute expect interactions if necessary
-	execExpectInteractions(args, ss)
+	execExpectInteractions(sshConn)
 
 	// make stdin raw
-	if isTerminal && ss.tty {
+	if isTerminal && sshConn.tty {
 		state, err := makeStdinRaw()
 		if err != nil {
-			return 14, err
+			return kExitCodeStdinFailed, err
 		}
+		addOnExitFunc(func() { resetStdin(state) })
 		defer resetStdin(state)
 	}
 
-	// enable trzsz
-	if err := enableTrzsz(args, ss); err != nil {
-		return 15, err
+	// setup trzsz filter if necessary
+	if err := setupTrzszFilter(sshConn); err != nil {
+		return kExitCodeTrzszFailed, err
 	}
+
+	// setup udp notification if necessary
+	setupUdpNotification(sshConn)
+
+	// forward standard input output
+	forwardStdio(sshConn)
 
 	// cleanup and wait for exit
-	cleanupAfterLogin()
-	_ = ss.session.Wait()
+	code := sshConn.waitUntilExit()
 	if args.Background {
-		_ = ss.client.Wait()
+		_ = sshConn.client.Wait()
 	}
 
-	// wait for the output to be read by the parent process
-	if !isTerminal {
-		outputWaitGroup.Wait()
+	// wait for the output
+	outputWaitGroup.Wait()
+	debug("ssh session output wait completed")
+	return code, nil
+}
+
+func execLocalCommand(param *sshParam) {
+	if !strings.EqualFold(getOptionConfig(param.args, "PermitLocalCommand"), "yes") {
+		return
 	}
-	return 0, nil
+	localCmd := getOptionConfig(param.args, "LocalCommand")
+	if localCmd == "" {
+		return
+	}
+	expandedCmd, err := expandTokens(localCmd, param, "%CdfHhIijKkLlnprTtu")
+	if err != nil {
+		warning("expand LocalCommand [%s] failed: %v", localCmd, err)
+		return
+	}
+	resolvedCmd := resolveHomeDir(expandedCmd)
+	debug("exec local command: %s", resolvedCmd)
+
+	argv, err := splitCommandLine(resolvedCmd)
+	if err != nil || len(argv) == 0 {
+		warning("split local command [%s] failed: %v", resolvedCmd, err)
+		return
+	}
+	if enableDebugLogging {
+		for i, arg := range argv {
+			debug("local command argv[%d] = %s", i, arg)
+		}
+	}
+	cmd := exec.Command(argv[0], argv[1:]...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		warning("exec local command [%s] failed: %v", resolvedCmd, err)
+	}
+}
+
+func openSession(sshConn *sshConnection) (err error) {
+	// new session
+	sshConn.session, err = sshConn.client.NewSession()
+	if err != nil {
+		return fmt.Errorf("new session for [%s] failed: %v", sshConn.param.args.Destination, err)
+	}
+
+	// session input and output
+	sshConn.serverIn, err = sshConn.session.StdinPipe()
+	if err != nil {
+		return fmt.Errorf("stdin pipe for [%s] failed: %v", sshConn.param.args.Destination, err)
+	}
+	sshConn.serverOut, err = sshConn.session.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("stdout pipe for [%s] failed: %v", sshConn.param.args.Destination, err)
+	}
+	sshConn.serverErr, err = sshConn.session.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("stderr pipe for [%s] failed: %v", sshConn.param.args.Destination, err)
+	}
+
+	// send and set env
+	term, err := sendAndSetEnv(sshConn.param.args, sshConn.session)
+	if err != nil {
+		return err
+	}
+
+	// pty is not needed if not tty in terminal
+	if !isTerminal || !sshConn.tty {
+		return nil
+	}
+
+	// request pty
+	width, height, err := getTerminalSize()
+	if err != nil {
+		return fmt.Errorf("get terminal size for [%s] failed: %v", sshConn.param.args.Destination, err)
+	}
+	if err := sshConn.session.RequestPty(term, height, width, ssh.TerminalModes{}); err != nil {
+		return fmt.Errorf("request pty for [%s] failed: %v", sshConn.param.args.Destination, err)
+	}
+
+	return nil
+}
+
+func handleExitSignals(sshConn *sshConnection) {
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan,
+		syscall.SIGTERM, // Default signal for the kill command
+		syscall.SIGHUP,  // Terminal closed (System reboot/shutdown)
+		os.Interrupt,    // Ctrl+C signal
+	)
+	go func() {
+		for sig := range sigChan {
+			if enableDebugLogging && debugCleanuped.Load() {
+				_, _ = os.Stderr.WriteString("\r\n")
+				os.Exit(kExitCodeSignalKill)
+			}
+			if isRunningOnOldWindows.Load() && sig.String() == "interrupt" {
+				continue
+			}
+			sshConn.forceExit(kExitCodeSignalKill, fmt.Sprintf("signal [%v] from the operating system", sig))
+			break
+		}
+	}()
 }

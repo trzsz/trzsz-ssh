@@ -1,7 +1,7 @@
 /*
 MIT License
 
-Copyright (c) 2023-2025 The Trzsz SSH Authors.
+Copyright (c) 2023-2026 The Trzsz SSH Authors.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -28,7 +28,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"reflect"
 	"strings"
@@ -475,7 +474,7 @@ func (p *sshPrompt) wrapStdin() {
 		_ = p.selector.Stdin.Close()
 	}()
 	buffer := make([]byte, 100)
-	if strings.ToLower(userConfig.promptDefaultMode) == "search" {
+	if strings.EqualFold(userConfig.promptDefaultMode, "search") {
 		p.search = true
 		_, _ = p.pipeOut.Write([]byte{'/'})
 	}
@@ -555,12 +554,12 @@ func matchHost(h *sshHost, keywords []string) bool {
 	return true
 }
 
-func chooseAlias(keywords string) (string, bool, error) {
+func chooseAlias(args *sshArgs, keywords string) (string, bool, error) {
 	if state, _ := makeStdinRaw(); state != nil {
 		defer resetStdin(state)
 	}
 
-	hosts := getAllHosts()
+	hosts := getAllHosts(args)
 
 	searcher := func(input string, index int) bool {
 		return matchHost(hosts[index], strings.Fields(strings.ToLower(input)))
@@ -607,6 +606,11 @@ func chooseAlias(keywords string) (string, bool, error) {
 		termMgr: termMgr,
 	}
 
+	if enableDebugLogging && tmuxDebugPaneWriter == nil {
+		enableDebugLogging = false
+		defer func() { enableDebugLogging = true }()
+	}
+
 	go prompt.wrapStdin()
 
 	idx, _, err := prompt.selector.Run()
@@ -627,19 +631,15 @@ func chooseAlias(keywords string) (string, bool, error) {
 	return selectedHosts[0].Alias, false, nil
 }
 
-func fastLookupHost(host string) bool {
-	_, err := doWithTimeout(func() ([]string, error) {
-		return net.LookupHost(host)
-	}, 200*time.Millisecond)
-	return err == nil
-}
-
-func predictDestination(dest string) (string, bool, error) {
-	if strings.ContainsAny(dest, ".:[]@") {
+func predictDestination(args *sshArgs, dest string) (string, bool, error) {
+	if !isTerminal ||
+		userConfig.shouldUseOpenSSHConfig() ||
+		!userConfig.shouldFuzzyHostSelection() ||
+		strings.ContainsAny(dest, ".:[]@") {
 		return dest, false, nil
 	}
 
-	hosts := getAllHosts()
+	hosts := getAllHosts(args)
 	for _, host := range hosts {
 		if host.Alias == dest {
 			return dest, false, nil
@@ -664,9 +664,24 @@ func predictDestination(dest string) (string, bool, error) {
 		return dest, false, nil
 	}
 
-	if fastLookupHost(dest) {
+	if _, err := lookupHostWithTimeout(dest, 200*time.Millisecond); err == nil {
 		return dest, false, nil
 	}
 
-	return chooseAlias(dest)
+	return chooseAlias(args, dest)
+}
+
+func chooseOrPredictDest(args *sshArgs) (string, bool, error) {
+	if args.ControlCmd != "" && args.ControlPath != "" {
+		return args.Destination, false, nil
+	}
+
+	if args.Destination == "" || args.Destination == "FAKE_DEST_IN_WARP" {
+		if !isTerminal {
+			return "", false, fmt.Errorf("destination is required when running tssh in non-interactive mode")
+		}
+		return chooseAlias(args, "")
+	}
+
+	return predictDestination(args, args.Destination)
 }

@@ -1,7 +1,7 @@
 /*
 MIT License
 
-Copyright (c) 2023-2025 The Trzsz SSH Authors.
+Copyright (c) 2023-2026 The Trzsz SSH Authors.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -109,7 +109,7 @@ func (n *newHostTool) promptHostName() {
 			if name == "" {
 				return fmt.Errorf("empty host name")
 			}
-			if _, err := net.LookupHost(name); err != nil {
+			if _, err := lookupHostWithTimeout(name, 5*time.Second); err != nil {
 				return fmt.Errorf("lookup host failed: %v", err)
 			}
 			return nil
@@ -185,6 +185,13 @@ func (n *newHostTool) loginImmediately() bool {
 }
 
 func execNewHost(args *sshArgs) (int, bool) {
+	state, err := makeStdinRaw()
+	if err != nil {
+		toolsErrorExit("make stdin raw failed: %v", err)
+	}
+	defer resetStdin(state)
+	addOnExitFunc(func() { resetStdin(state) })
+
 	n := &newHostTool{}
 
 	chooseLanguage()
@@ -205,12 +212,12 @@ func execNewHost(args *sshArgs) (int, bool) {
 
 	n.writeHost()
 
-	if n.loginImmediately() {
+	if !isRunningOnOldWindows.Load() && n.loginImmediately() {
 		if n.configPath != userConfig.configPath {
 			args.ConfigFile = n.configPath
 			if err := initUserConfig(args.ConfigFile); err != nil {
 				warning("init user config [%s] failed: %v", args.ConfigFile, err)
-				return 1, true
+				return kExitCodeUserConfig, true
 			}
 		}
 		args.Destination = n.hostAlias

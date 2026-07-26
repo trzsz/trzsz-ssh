@@ -1,7 +1,7 @@
 /*
 MIT License
 
-Copyright (c) 2023-2025 The Trzsz SSH Authors.
+Copyright (c) 2023-2026 The Trzsz SSH Authors.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -39,12 +39,12 @@ var (
 	agentClient agent.ExtendedAgent
 )
 
-func getAgentAddr(args *sshArgs, param *sshParam) (string, error) {
-	if addr := getOptionConfig(args, "IdentityAgent"); addr != "" {
-		if strings.ToLower(addr) == "none" {
+func getAgentAddr(param *sshParam) (string, error) {
+	if addr := getOptionConfig(param.args, "IdentityAgent"); addr != "" {
+		if strings.EqualFold(addr, "none") {
 			return "", nil
 		}
-		expandedAddr, err := expandTokens(addr, args, param, "%CdhijkLlnpru")
+		expandedAddr, err := expandTokens(addr, param, "%CdhijkLlnpru")
 		if err != nil {
 			return "", fmt.Errorf("expand IdentityAgent [%s] failed: %v", addr, err)
 		}
@@ -56,9 +56,9 @@ func getAgentAddr(args *sshArgs, param *sshParam) (string, error) {
 	return getDefaultAgentAddr()
 }
 
-func getAgentClient(args *sshArgs, param *sshParam) agent.ExtendedAgent {
+func getAgentClient(param *sshParam) agent.ExtendedAgent {
 	agentOnce.Do(func() {
-		addr, err := getAgentAddr(args, param)
+		addr, err := getAgentAddr(param)
 		if err != nil {
 			warning("get agent addr failed: %v", err)
 			return
@@ -77,10 +77,7 @@ func getAgentClient(args *sshArgs, param *sshParam) agent.ExtendedAgent {
 		agentClient = agent.NewClient(conn)
 		debug("new ssh agent client [%s] success", addr)
 
-		afterLoginFuncs = append(afterLoginFuncs, func() {
-			_ = conn.Close()
-			agentClient = nil
-		})
+		addAfterLoginFunc(func() { _ = conn.Close(); agentClient = nil })
 	})
 	return agentClient
 }
@@ -100,6 +97,7 @@ func forwardToRemote(client SshClient, addr string) error {
 		for ch := range channels {
 			channel, reqs, err := ch.Accept()
 			if err != nil {
+				warning("agent forwarding accept failed: %v", err)
 				continue
 			}
 			go ssh.DiscardRequests(reqs)
@@ -119,22 +117,12 @@ func forwardAgentRequest(channel ssh.Channel, addr string) {
 	forwardChannel(channel, conn)
 }
 
-func requestAgentForwarding(session SshSession) error {
-	ok, err := session.SendRequest(kAgentRequestName, true, nil)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return fmt.Errorf("forwarding request denied")
-	}
-	return nil
-}
-
-func sshAgentForward(args *sshArgs, param *sshParam, client SshClient, session SshSession) {
-	if args.NoForwardAgent || !args.ForwardAgent && strings.ToLower(getOptionConfig(args, "ForwardAgent")) != "yes" {
+func sshAgentForward(sshConn *sshConnection) {
+	args := sshConn.param.args
+	if args.NoForwardAgent || !args.ForwardAgent && !strings.EqualFold(getOptionConfig(args, "ForwardAgent"), "yes") {
 		return
 	}
-	addr, err := getAgentAddr(args, param)
+	addr, err := getAgentAddr(sshConn.param)
 	if err != nil {
 		warning("get agent addr failed: %v", err)
 		return
@@ -143,13 +131,20 @@ func sshAgentForward(args *sshArgs, param *sshParam, client SshClient, session S
 		warning("forward agent but the socket address is not set")
 		return
 	}
-	if err := forwardToRemote(client, addr); err != nil {
+	if err := forwardToRemote(sshConn.client, addr); err != nil {
 		warning("forward to agent [%s] failed: %v", addr, err)
 		return
 	}
-	if err := requestAgentForwarding(session); err != nil {
+	ok, err := sshConn.session.SendRequest(kAgentRequestName, true, nil)
+	if err != nil {
 		warning("request agent forwarding failed: %v", err)
 		return
 	}
-	debug("request ssh agent forwarding success")
+	if !ok {
+		warning("The agent forwarding request was denied. Check [AllowAgentForwarding, DisableForwarding] in [/etc/ssh/sshd_config] on the server.")
+		return
+	}
+	if sshConn.param.udpMode == kUdpModeNo {
+		debug("request ssh agent forwarding success")
+	}
 }

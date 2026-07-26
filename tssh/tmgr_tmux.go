@@ -3,7 +3,7 @@
 /*
 MIT License
 
-Copyright (c) 2023-2025 The Trzsz SSH Authors.
+Copyright (c) 2023-2026 The Trzsz SSH Authors.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -33,7 +33,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/alessio/shellescape"
+	"github.com/trzsz/shellescape"
 )
 
 type tmuxMgr struct {
@@ -87,9 +87,7 @@ func (m *tmuxMgr) openWindows(hosts []*sshHost) {
 	if err := exec.Command("tmux", "renamew", hosts[0].Alias).Run(); err != nil {
 		warning("Failed to rename tmux window: %v", err)
 	} else {
-		onExitFuncs = append(onExitFuncs, func() {
-			_ = exec.Command("tmux", "setw", "automatic-rename").Run()
-		})
+		addOnExitFunc(func() { _ = exec.Command("tmux", "setw", "automatic-rename").Run() })
 	}
 	for _, host := range hosts[1:] {
 		args, err := m.appendArgs(host.Alias, "neww", "-n", host.Alias)
@@ -135,9 +133,7 @@ func (m *tmuxMgr) openPanes(hosts []*sshHost) {
 	}
 	if len(tokens) > 1 && tokens[1] != "" {
 		// reset pane title after exit
-		onExitFuncs = append(onExitFuncs, func() {
-			_ = exec.Command("tmux", "selectp", "-t", tokens[0], "-T", tokens[1]).Run()
-		})
+		addOnExitFunc(func() { _ = exec.Command("tmux", "selectp", "-t", tokens[0], "-T", tokens[1]).Run() })
 	}
 	// reset panes order
 	for i := range matrix {
@@ -199,8 +195,8 @@ func (m *tmuxMgr) parseTmuxVersion(version string) {
 	if pos < 1 {
 		return
 	}
-	if ver, err := strconv.Atoi(version[:pos]); err == nil {
-		m.majorVersion = ver
+	if ver, err := strconv.ParseUint(version[:pos], 10, 32); err == nil {
+		m.majorVersion = int(ver)
 	}
 	subver := version[pos+1:]
 	pos = len(subver)
@@ -211,7 +207,7 @@ func (m *tmuxMgr) parseTmuxVersion(version string) {
 		pos = i
 		break
 	}
-	if ver, err := strconv.Atoi(subver[:pos]); err == nil {
-		m.minorVersion = ver
+	if ver, err := strconv.ParseUint(subver[:pos], 10, 32); err == nil {
+		m.minorVersion = int(ver)
 	}
 }

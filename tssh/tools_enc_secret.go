@@ -1,7 +1,7 @@
 /*
 MIT License
 
-Copyright (c) 2023-2025 The Trzsz SSH Authors.
+Copyright (c) 2023-2026 The Trzsz SSH Authors.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -27,10 +27,16 @@ package tssh
 import (
 	"fmt"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 func execEncodeSecret() (int, bool) {
+	state, err := makeStdinRaw()
+	if err != nil {
+		toolsErrorExit("make stdin raw failed: %v", err)
+	}
+	addOnExitFunc(func() { resetStdin(state) })
+
 	secret := promptPassword("Password or secret to be encoded", "",
 		&inputValidator{func(secret string) error {
 			if secret == "" {

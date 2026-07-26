@@ -1,7 +1,7 @@
 /*
 MIT License
 
-Copyright (c) 2023-2025 The Trzsz SSH Authors.
+Copyright (c) 2023-2026 The Trzsz SSH Authors.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -37,8 +37,8 @@ import (
 	"time"
 )
 
-func enableWaypipe(args *sshArgs, ss *sshClientSession) error {
-	if !ss.tty || strings.ToLower(getExOptionConfig(args, "EnableWaypipe")) != "yes" {
+func enableWaypipe(sshConn *sshConnection) error {
+	if !sshConn.tty || !strings.EqualFold(getExOptionConfig(sshConn.param.args, "EnableWaypipe"), "yes") {
 		return nil
 	}
 	if os.Getenv("WAYLAND_DISPLAY") == "" {
@@ -51,15 +51,15 @@ func enableWaypipe(args *sshArgs, ss *sshClientSession) error {
 		return fmt.Errorf("generate random token for waypipe failed: %v", err)
 	}
 
-	clientSocket, err := runWaypipeClient(args, token)
+	clientSocket, err := runWaypipeClient(sshConn.param.args, token)
 	if err != nil {
 		return fmt.Errorf("run waypipe client failed: %v", err)
 	}
 
-	cmd, serverSocket := getWaypipeServerCmd(args, ss.cmd, token)
-	ss.cmd = cmd
+	cmd, serverSocket := getWaypipeServerCmd(sshConn.param.args, sshConn.cmd, token)
+	sshConn.cmd = cmd
 
-	if err := remoteForwardSocket(ss.client, clientSocket, serverSocket); err != nil {
+	if err := remoteForwardSocket(sshConn.client, clientSocket, serverSocket); err != nil {
 		return fmt.Errorf("remote forward socket for waypipe failed: %v", err)
 	}
 
@@ -133,9 +133,7 @@ func runWaypipeClient(args *sshArgs, token string) (string, error) {
 			warning("waypipe client output error: %s", output)
 		}
 	}()
-	onExitFuncs = append(onExitFuncs, func() {
-		_ = cmd.Process.Signal(syscall.SIGINT)
-	})
+	addOnExitFunc(func() { _ = cmd.Process.Signal(syscall.SIGINT) })
 
 	return clientSocket, nil
 }
@@ -179,7 +177,7 @@ func getWaypipeServerCmd(args *sshArgs, cmd, token string) (string, string) {
 	if hasOptionSpecified(serverOption, "--display") {
 		warning("option --display should not be specified in WaypipeServerOption: %s", serverOption)
 	}
-	buf.WriteString(fmt.Sprintf(" --display wayland-%s", token))
+	fmt.Fprintf(&buf, " --display wayland-%s", token)
 
 	if hasOptionSpecified(serverOption, "server") {
 		warning("option server should not be specified in WaypipeServerOption: %s", serverOption)
@@ -222,7 +220,7 @@ func remoteForwardSocket(client SshClient, clientSocket, serverSocket string) er
 			}
 			if err != nil {
 				debug("waypipe remote accept failed: %v", err)
-				continue
+				break
 			}
 			local, err := net.DialTimeout("unix", clientSocket, time.Second)
 			if err != nil {
@@ -230,7 +228,7 @@ func remoteForwardSocket(client SshClient, clientSocket, serverSocket string) er
 				_ = remote.Close()
 				continue
 			}
-			go netForward(local, remote)
+			go tcpForward(client, local, remote)
 		}
 	}()
 	return nil

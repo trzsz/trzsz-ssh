@@ -1,7 +1,7 @@
 /*
 MIT License
 
-Copyright (c) 2023-2025 The Trzsz SSH Authors.
+Copyright (c) 2023-2026 The Trzsz SSH Authors.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -28,9 +28,13 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/trzsz/tsshd/tsshd"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -40,6 +44,12 @@ const (
 	kAgentChannelType = "auth-agent@openssh.com"
 	kAgentRequestName = "auth-agent-req@openssh.com"
 )
+
+// PacketConn is an alias of tsshd.PacketConn.
+type PacketConn = tsshd.PacketConn
+
+// PacketListener is an alias of tsshd.PacketListener.
+type PacketListener = tsshd.PacketListener
 
 // SshClient implements a traditional SSH client that supports shells,
 // subprocesses, TCP port/streamlocal forwarding and tunneled dialing.
@@ -57,8 +67,11 @@ type SshClient interface {
 	// DialTimeout initiates a connection to the addr from the remote host.
 	DialTimeout(network, addr string, timeout time.Duration) (net.Conn, error)
 
-	// Listen requests the remote peer open a listening socket on addr.
+	// Listen requests the remote peer to open a listening socket on addr.
 	Listen(network, addr string) (net.Listener, error)
+
+	// ListenUDP requests the remote peer to open a UDP listening endpoint on addr.
+	ListenUDP(network, addr string) (PacketListener, error)
 
 	// HandleChannelOpen returns a channel on which NewChannel requests
 	// for the given type are sent. If the type already is being handled,
@@ -67,6 +80,9 @@ type SshClient interface {
 
 	// SendRequest sends a global request, and returns the reply.
 	SendRequest(name string, wantReply bool, payload []byte) (bool, []byte, error)
+
+	// DialUDP initiates a logical UDP connection to the addr from the remote host
+	DialUDP(network, addr string, timeout time.Duration) (PacketConn, error)
 }
 
 // SshSession represents a connection to a remote command or shell.
@@ -121,11 +137,21 @@ type SshSession interface {
 	// underlying the session.
 	SendRequest(name string, wantReply bool, payload []byte) (bool, error)
 
-	// RedrawScreen clear and redraw the screen right now.
-	RedrawScreen()
+	// RequestSubsystem requests the association of a subsystem with the session on the remote host.
+	// A subsystem is a predefined command that runs in the background when the ssh session is initiated
+	RequestSubsystem(subsystem string) error
+
+	// RedrawScreen forces the terminal application to repaint the screen.
+	// If discardPreviousOutput is true, any buffered output generated before
+	// the redraw will be discarded so that only the refreshed screen state
+	// is sent to the client.
+	RedrawScreen(discardPreviousOutput bool) error
 
 	// GetTerminalWidth returns the width of the terminal
 	GetTerminalWidth() int
+
+	// GetExitCode returns exit code if exists
+	GetExitCode() int
 }
 
 // SshArgs specifies the arguments to log in to the remote server.
@@ -165,11 +191,17 @@ type SshArgs struct {
 	// Debug causes ssh to print debugging messages about its progress
 	Debug bool
 
-	// Udp means using UDP protocol ( QUIC / KCP ) connection like mosh
-	Udp bool
+	// UDP indicates using a UDP-based transport for a mosh-like connection
+	UDP bool
 
-	// TsshdPath specifies the tsshd absolute path on the server
+	// KCP indicates using the KCP protocol for a mosh-like connection
+	KCP bool
+
+	// TsshdPath specifies the absolute path to the tsshd binary on the server
 	TsshdPath string
+
+	// TsshdPort specifies the port or port range that tsshd listens on
+	TsshdPort string
 }
 
 // SshLogin logs in to the remote server and creates a Client.
@@ -185,7 +217,7 @@ func SshLogin(args *SshArgs) (SshClient, error) {
 	if err := initUserConfig(args.ConfigFile); err != nil {
 		return nil, err
 	}
-	ss, err := sshLogin(&sshArgs{
+	sshConn, err := sshConnect(&sshArgs{
 		NoCommand:   true,
 		Destination: args.Destination,
 		IPv4Only:    args.IPv4Only,
@@ -198,36 +230,157 @@ func SshLogin(args *SshArgs) (SshClient, error) {
 		ProxyJump:   args.ProxyJump,
 		Option:      sshOption{options},
 		Debug:       args.Debug,
-		Udp:         args.Udp,
+		UDP:         args.UDP,
+		KCP:         args.KCP,
 		TsshdPath:   args.TsshdPath,
+		TsshdPort:   args.TsshdPort,
 	})
 	if err != nil {
 		return nil, err
 	}
-	return ss.client, nil
+	return sshConn.client, nil
 }
 
-type sshClientSession struct {
+type sshConnection struct {
 	client    SshClient
 	session   SshSession
+	exitChan  chan int
 	serverIn  io.WriteCloser
 	serverOut io.Reader
 	serverErr io.Reader
 	param     *sshParam
 	cmd       string
 	tty       bool
+	closed    atomic.Bool
+	closeMu   sync.Mutex
+	exited    atomic.Bool
+	waitWarn  sync.WaitGroup
 }
 
-func (s *sshClientSession) Close() {
-	if s.serverIn != nil {
-		_ = s.serverIn.Close()
+func (c *sshConnection) Close() {
+	c.closeMu.Lock()
+	defer c.closeMu.Unlock()
+	if !c.closed.CompareAndSwap(false, true) {
+		return
 	}
-	if s.session != nil {
-		_ = s.session.Close()
+	if c.serverIn != nil {
+		_ = c.serverIn.Close()
 	}
-	if s.client != nil {
-		_ = s.client.Close()
+	if c.session != nil {
+		_ = c.session.Close()
 	}
+	if c.client != nil {
+		_ = c.client.Close()
+	}
+}
+
+func (c *sshConnection) waitUntilExit() int {
+	done := make(chan int, 1)
+	go func() {
+		defer close(done)
+
+		if err := c.session.Wait(); err != nil && enableWarningLogging && !c.exited.Load() {
+			var msg string
+			switch e := err.(type) {
+			case *ssh.ExitError:
+				msg = e.String()
+			case *ssh.ExitMissingError:
+				msg = "Connection lost: possible network interruption"
+			default:
+				msg = fmt.Sprintf("Connection error: %v", err)
+			}
+
+			if isTerminal && c.tty {
+				_, _ = os.Stderr.Write([]byte("\n\r")) // make the top message still visible after exiting
+			}
+			warning("%s", msg)
+		}
+
+		done <- c.session.GetExitCode()
+	}()
+
+	select {
+	case code := <-c.exitChan:
+		debug("force exit with code: %d", code)
+		return code
+	case code := <-done:
+		wantExit.Store(true)
+		c.waitWarn.Wait()
+		debug("session wait completed with code: %d", code)
+		return code
+	}
+}
+
+func (c *sshConnection) forceExit(code int, cause string) {
+	if !c.exited.CompareAndSwap(false, true) {
+		return
+	}
+
+	if lastJumpUdpClient != nil {
+		if notif := lastJumpUdpClient.notifModel.Load(); notif != nil {
+			notif.clientExiting.Store(true)
+			notif.renderView(true, false)
+		}
+	}
+
+	verb, detach := "Exited", false
+	if client, ok := c.client.(*sshUdpClient); ok && client.attachMode && !wantExit.Load() {
+		verb, detach = "Detached", true
+		client.Detach()
+	}
+
+	if enableWarningLogging {
+		c.waitWarn.Add(1)
+		if isTerminal && c.tty {
+			if isRunningTmuxIntegration() {
+				detachTmuxIntegration()
+			}
+			_, _ = os.Stderr.Write([]byte("\n\r")) // make the top message still visible after exiting
+		}
+		warning("%s due to %s", verb, cause)
+		c.waitWarn.Done()
+	}
+
+	go func() {
+		if !detach {
+			// Add extra wait time to allow all incoming data to be received for UDP mode.
+			// See tsshd.SshUdpClient.Close and tsshd.SshUdpSession.Close for more details.
+			udpClientCount := 0
+			client := lastJumpUdpClient
+			for client != nil {
+				udpClientCount++
+				client = client.proxyClient
+			}
+			time.Sleep(time.Duration(200+1000*udpClientCount) * time.Millisecond)
+		}
+		if enableDebugLogging && debugCleanuped.Load() {
+			debugCleanupWG.Wait()
+			// the process is expected to exit before sleep returns
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		debug("closing did not trigger a normal exit")
+		c.exitChan <- code
+
+		go func() {
+			time.Sleep(300 * time.Millisecond)
+			if enableDebugLogging && debugCleanuped.Load() {
+				debugCleanupWG.Wait()
+				// the process is expected to exit before sleep returns
+				time.Sleep(100 * time.Millisecond)
+			}
+
+			debug("force exit due to normal exit timeout")
+			_, _ = doWithTimeout(func() (int, error) { cleanupOnClose(); return 0, nil }, 50*time.Millisecond)
+			_, _ = doWithTimeout(func() (int, error) { cleanupOnExit(); return 0, nil }, 300*time.Millisecond)
+			if enableDebugLogging {
+				cleanupDebugResources()
+			}
+			os.Exit(kExitCodeForceExit)
+		}()
+	}()
+
+	c.Close()
 }
 
 type sshSessionWrapper struct {
@@ -246,17 +399,22 @@ func (s *sshSessionWrapper) WindowChange(height, width int) error {
 	return s.Session.WindowChange(height, width)
 }
 
-func (s *sshSessionWrapper) RedrawScreen() {
+func (s *sshSessionWrapper) RedrawScreen(discardPreviousOutput bool) error {
 	if s.height <= 0 || s.width <= 0 {
-		return
+		return fmt.Errorf("invalid terminal size: width=%d height=%d", s.width, s.height)
 	}
 	height, width := s.height, s.width
 	_ = s.WindowChange(height, width+1)
-	_ = s.WindowChange(height, width)
+	time.Sleep(10 * time.Millisecond) // fix redraw issue in `screen`
+	return s.WindowChange(height, width)
 }
 
 func (s *sshSessionWrapper) GetTerminalWidth() int {
 	return s.width
+}
+
+func (s *sshSessionWrapper) GetExitCode() int {
+	return 0
 }
 
 type sshClientWrapper struct {
@@ -295,12 +453,20 @@ func (c *sshClientWrapper) Listen(network, addr string) (net.Listener, error) {
 	return c.client.Listen(network, addr)
 }
 
+func (c *sshClientWrapper) ListenUDP(network, addr string) (PacketListener, error) {
+	return nil, fmt.Errorf("ListenUDP requires UDP mode")
+}
+
 func (c *sshClientWrapper) HandleChannelOpen(channelType string) <-chan ssh.NewChannel {
 	return c.client.HandleChannelOpen(channelType)
 }
 
 func (c *sshClientWrapper) SendRequest(name string, wantReply bool, payload []byte) (bool, []byte, error) {
 	return c.client.SendRequest(name, wantReply, payload)
+}
+
+func (c *sshClientWrapper) DialUDP(network, addr string, timeout time.Duration) (PacketConn, error) {
+	return nil, fmt.Errorf("DialUDP requires UDP mode")
 }
 
 func sshNewClient(c ssh.Conn, chans <-chan ssh.NewChannel, reqs <-chan *ssh.Request) SshClient {

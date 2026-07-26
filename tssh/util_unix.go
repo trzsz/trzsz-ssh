@@ -3,7 +3,7 @@
 /*
 MIT License
 
-Copyright (c) 2023-2025 The Trzsz SSH Authors.
+Copyright (c) 2023-2026 The Trzsz SSH Authors.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -31,7 +31,11 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+
+	"github.com/trzsz/iterm2"
 )
+
+const kDefaultSshSkHelperPath = "/usr/lib/openssh/ssh-sk-helper"
 
 func isRemoteSshEnv(pid int) bool {
 	for range 1000 {
@@ -50,7 +54,7 @@ func isRemoteSshEnv(pid int) bool {
 			return false
 		}
 
-		if bytes.Equal(stat[:idx], []byte("sshd")) {
+		if bytes.Equal(stat[:idx], []byte("sshd")) || bytes.Equal(stat[:idx], []byte("tsshd")) {
 			return true
 		}
 
@@ -90,5 +94,9 @@ func isNoGUI() bool {
 }
 
 func getIterm2Manager() terminalManager {
+	return nil
+}
+
+func getIterm2Session() *iterm2.Session {
 	return nil
 }

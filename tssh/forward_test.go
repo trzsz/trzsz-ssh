@@ -1,7 +1,7 @@
 /*
 MIT License
 
-Copyright (c) 2023-2025 The Trzsz SSH Authors.
+Copyright (c) 2023-2026 The Trzsz SSH Authors.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -83,13 +83,14 @@ func TestParseBindCfg(t *testing.T) {
 	assertCfgError(":127.0.0.1:8000", "invalid bind specification: :127.0.0.1:8000")
 }
 
-func TestParseForwardCfg(t *testing.T) {
+func TestParseForwardCfg_NormalTCP(t *testing.T) {
 	assert := assert.New(t)
 	assertForwardCfgNil := func(arg string, bindAddr *string, bindPort int, destHost string, destPort int) {
 		t.Helper()
-		cfg, err := parseForwardCfg(arg)
+		cfg, err := parseForwardCfg(nil, false, arg)
 		assert.Nil(err)
-		assert.Equal(&forwardCfg{arg, bindAddr, bindPort, destHost, destPort}, cfg)
+		assert.Equal(&forwardCfg{false, arg, bindAddr, bindPort, destHost, destPort}, cfg)
+		assert.False(cfg.udp, "should be detected as TCP")
 	}
 	assertForwardCfg := func(arg string, bindAddr string, bindPort int, destHost string, destPort int) {
 		t.Helper()
@@ -134,36 +135,40 @@ func TestParseForwardCfg(t *testing.T) {
 	assertForwardCfg("/bind/socket \t localhost:9002", "/bind/socket", -1, "localhost", 9002)
 	assertForwardCfg("/bind_socket /forward_socket", "/bind_socket", -1, "/forward_socket", -1)
 	assertForwardCfg("/bind/socket \t /forward/socket", "/bind/socket", -1, "/forward/socket", -1)
+}
 
+func TestParseForwardCfg_InvalidTCP(t *testing.T) {
+	assert := assert.New(t)
 	assertArgError := func(arg, errMsg string) {
 		t.Helper()
-		_, err := parseForwardCfg(arg)
+		_, err := parseForwardCfg(nil, false, arg)
 		assert.NotNil(err)
 		assert.Contains(err.Error(), errMsg)
 	}
 
-	assertArgError("::1:8000 localhost:9000", "invalid forward config: ::1:8000 localhost:9000")
-	assertArgError("A[::1]:8000 localhost:9000", "invalid forward config: A[::1]:8000 localhost:9000")
-	assertArgError("[::1]:8000 localhost:9000B", "invalid forward config: [::1]:8000 localhost:9000B")
-	assertArgError("[[::1]:8000 localhost:9000", "invalid forward config: [[::1]:8000 localhost:9000")
-	assertArgError("[::1]]:8000 localhost:9000", "invalid forward config: [::1]]:8000 localhost:9000")
-	assertArgError("[:\t:1]:8000 localhost:9000", "invalid forward config: [:\t:1]:8000 localhost:9000")
+	assertArgError("::1:8000 localhost:9000", "invalid forwarding config: ::1:8000 localhost:9000")
+	assertArgError("A[::1]:8000 localhost:9000", "invalid forwarding config: A[::1]:8000 localhost:9000")
+	assertArgError("[::1]:8000 localhost:9000B", "invalid forwarding config: [::1]:8000 localhost:9000B")
+	assertArgError("[[::1]:8000 localhost:9000", "invalid forwarding config: [[::1]:8000 localhost:9000")
+	assertArgError("[::1]]:8000 localhost:9000", "invalid forwarding config: [::1]]:8000 localhost:9000")
+	assertArgError("[:\t:1]:8000 localhost:9000", "invalid forwarding config: [:\t:1]:8000 localhost:9000")
 
-	assertArgError("127.0.0.1:8000 ::1:9000", "invalid forward config: 127.0.0.1:8000 ::1:9000")
-	assertArgError("127.0.0.1:A8000 [::1]:9000", "invalid forward config: 127.0.0.1:A8000 [::1]:9000")
-	assertArgError("127.0.0.1:8000 [::1]:9000B", "invalid forward config: 127.0.0.1:8000 [::1]:9000B")
-	assertArgError("127.0.0.1:8000 [[::1]:9000", "invalid forward config: 127.0.0.1:8000 [[::1]:9000")
-	assertArgError("127.0.0.1:8000 [::1]]:9000", "invalid forward config: 127.0.0.1:8000 [::1]]:9000")
-	assertArgError("127.0.0.1:8000 [:\t:1]:9000", "invalid forward config: 127.0.0.1:8000 [:\t:1]:9000")
+	assertArgError("127.0.0.1:8000 ::1:9000", "invalid forwarding config: 127.0.0.1:8000 ::1:9000")
+	assertArgError("127.0.0.1:A8000 [::1]:9000", "invalid forwarding config: 127.0.0.1:A8000 [::1]:9000")
+	assertArgError("127.0.0.1:8000 [::1]:9000B", "invalid forwarding config: 127.0.0.1:8000 [::1]:9000B")
+	assertArgError("127.0.0.1:8000 [[::1]:9000", "invalid forwarding config: 127.0.0.1:8000 [[::1]:9000")
+	assertArgError("127.0.0.1:8000 [::1]]:9000", "invalid forwarding config: 127.0.0.1:8000 [::1]]:9000")
+	assertArgError("127.0.0.1:8000 [:\t:1]:9000", "invalid forwarding config: 127.0.0.1:8000 [:\t:1]:9000")
 }
 
-func TestParseForwardArg(t *testing.T) {
+func TestParseForwardArg_NormalTCP(t *testing.T) {
 	assert := assert.New(t)
 	assertForwardCfgNil := func(arg string, bindAddr *string, bindPort int, destHost string, destPort int) {
 		t.Helper()
 		cfg, err := parseForwardArg(arg)
 		assert.Nil(err)
-		assert.Equal(&forwardCfg{arg, bindAddr, bindPort, destHost, destPort}, cfg)
+		assert.Equal(&forwardCfg{false, arg, bindAddr, bindPort, destHost, destPort}, cfg)
+		assert.False(cfg.udp, "should be detected as TCP")
 	}
 	assertForwardCfg := func(arg string, bindAddr string, bindPort int, destHost string, destPort int) {
 		t.Helper()
@@ -208,7 +213,10 @@ func TestParseForwardArg(t *testing.T) {
 	assertForwardCfg("/bind/socket:localhost:9002", "/bind/socket", -1, "localhost", 9002)
 	assertForwardCfg("/bind_socket:/forward_socket", "/bind_socket", -1, "/forward_socket", -1)
 	assertForwardCfg("/bind/socket:/forward/socket", "/bind/socket", -1, "/forward/socket", -1)
+}
 
+func TestParseForwardArg_InvalidTCP(t *testing.T) {
+	assert := assert.New(t)
 	assertArgError := func(arg, errMsg string) {
 		t.Helper()
 		_, err := parseForwardArg(arg)
@@ -216,37 +224,99 @@ func TestParseForwardArg(t *testing.T) {
 		assert.Contains(err.Error(), errMsg)
 	}
 
-	assertArgError("::1:8000:localhost:9000", "invalid forward specification: ::1:8000:localhost:9000")
-	assertArgError("A[::1]:8000:localhost:9000", "invalid forward specification: A[::1]:8000:localhost:9000")
-	assertArgError("[::1]:8000:localhost:9000B", "invalid forward specification: [::1]:8000:localhost:9000B")
-	assertArgError("[[::1]:8000:localhost:9000", "invalid forward specification: [[::1]:8000:localhost:9000")
-	assertArgError("[::1]]:8000:localhost:9000", "invalid forward specification: [::1]]:8000:localhost:9000")
-	assertArgError("[:\t:1]:8000:localhost:9000", "invalid forward specification: [:\t:1]:8000:localhost:9000")
+	assertArgError("::1:8000:localhost:9000", "invalid forwarding specification: ::1:8000:localhost:9000")
+	assertArgError("A[::1]:8000:localhost:9000", "invalid forwarding specification: A[::1]:8000:localhost:9000")
+	assertArgError("[::1]:8000:localhost:9000B", "invalid forwarding specification: [::1]:8000:localhost:9000B")
+	assertArgError("[[::1]:8000:localhost:9000", "invalid forwarding specification: [[::1]:8000:localhost:9000")
+	assertArgError("[::1]]:8000:localhost:9000", "invalid forwarding specification: [::1]]:8000:localhost:9000")
+	assertArgError("[:\t:1]:8000:localhost:9000", "invalid forwarding specification: [:\t:1]:8000:localhost:9000")
 
-	assertArgError("127.0.0.1:8000:::1:9000", "invalid forward specification: 127.0.0.1:8000:::1:9000")
-	assertArgError("127.0.0.1:A8000:[::1]:9000", "invalid forward specification: 127.0.0.1:A8000:[::1]:9000")
-	assertArgError("127.0.0.1:8000:[::1]:9000B", "invalid forward specification: 127.0.0.1:8000:[::1]:9000B")
-	assertArgError("127.0.0.1:8000:[[::1]:9000", "invalid forward specification: 127.0.0.1:8000:[[::1]:9000")
-	assertArgError("127.0.0.1:8000:[::1]]:9000", "invalid forward specification: 127.0.0.1:8000:[::1]]:9000")
-	assertArgError("127.0.0.1:8000:[:\t:1]:9000", "invalid forward specification: 127.0.0.1:8000:[:\t:1]:9000")
+	assertArgError("127.0.0.1:8000:::1:9000", "invalid forwarding specification: 127.0.0.1:8000:::1:9000")
+	assertArgError("127.0.0.1:A8000:[::1]:9000", "invalid forwarding specification: 127.0.0.1:A8000:[::1]:9000")
+	assertArgError("127.0.0.1:8000:[::1]:9000B", "invalid forwarding specification: 127.0.0.1:8000:[::1]:9000B")
+	assertArgError("127.0.0.1:8000:[[::1]:9000", "invalid forwarding specification: 127.0.0.1:8000:[[::1]:9000")
+	assertArgError("127.0.0.1:8000:[::1]]:9000", "invalid forwarding specification: 127.0.0.1:8000:[::1]]:9000")
+	assertArgError("127.0.0.1:8000:[:\t:1]:9000", "invalid forwarding specification: 127.0.0.1:8000:[:\t:1]:9000")
 }
 
-func TestConvertSshTime(t *testing.T) {
+func TestParseForwardCfg_NormalUDP(t *testing.T) {
 	assert := assert.New(t)
-	assertTimeEqual := func(time string, expected int) {
+
+	assertForwardCfgNil := func(arg string, bindAddr *string, bindPort int, destHost string, destPort int) {
 		t.Helper()
-		seconds, err := convertSshTime(time)
+		cfg, err := parseForwardCfg(nil, true, arg)
 		assert.Nil(err)
-		assert.Equal(expected, seconds)
+		assert.Equal(&forwardCfg{true, arg, bindAddr, bindPort, destHost, destPort}, cfg)
+		assert.True(cfg.udp, "should be detected as UDP")
 	}
-	assertTimeEqual("0", 0)
-	assertTimeEqual("0s", 0)
-	assertTimeEqual("0W", 0)
-	assertTimeEqual("1", 1)
-	assertTimeEqual("1S", 1)
-	assertTimeEqual("90m", 5400)
-	assertTimeEqual("1h30m", 5400)
-	assertTimeEqual("2d", 172800)
-	assertTimeEqual("1w", 604800)
-	assertTimeEqual("1W2d3h4m5", 788645)
+	assertForwardCfg := func(arg string, bindAddr string, bindPort int, destHost string, destPort int) {
+		t.Helper()
+		assertForwardCfgNil(arg, &bindAddr, bindPort, destHost, destPort)
+	}
+
+	assertForwardCfgNil("8000 localhost:9000", nil, 8000, "localhost", 9000)
+	assertForwardCfgNil("8001 127.0.0.1:9001", nil, 8001, "127.0.0.1", 9001)
+	assertForwardCfgNil("8000 ::1/9000", nil, 8000, "::1", 9000)
+	assertForwardCfgNil("8000 [::1]:9000", nil, 8000, "::1", 9000)
+	assertForwardCfgNil("8000 fe80::6358:bbae:26f8:7859/9000", nil, 8000, "fe80::6358:bbae:26f8:7859", 9000)
+	assertForwardCfgNil("8000 [fe80::6358:bbae:26f8:7859]:9000", nil, 8000, "fe80::6358:bbae:26f8:7859", 9000)
+
+	assertForwardCfg(":8001 localhost:9001", "", 8001, "localhost", 9001)
+	assertForwardCfg(":8002 [::1]:9002", "", 8002, "::1", 9002)
+	assertForwardCfg("*:8003 127.0.0.1:9003", "*", 8003, "127.0.0.1", 9003)
+	assertForwardCfg("*:8004 [fe80::6358:bbae:26f8:7859]:9004", "*", 8004, "fe80::6358:bbae:26f8:7859", 9004)
+}
+
+func TestParseForwardArg_NormalUDP(t *testing.T) {
+	assert := assert.New(t)
+	assertForwardCfgNil := func(arg string, bindAddr *string, bindPort int, destHost string, destPort int) {
+		t.Helper()
+		cfg, err := parseForwardArg(arg)
+		assert.Nil(err)
+		assert.Equal(&forwardCfg{true, arg, bindAddr, bindPort, destHost, destPort}, cfg)
+		assert.True(cfg.udp, "should be detected as UDP")
+	}
+	assertForwardCfg := func(arg string, bindAddr string, bindPort int, destHost string, destPort int) {
+		t.Helper()
+		assertForwardCfgNil(arg, &bindAddr, bindPort, destHost, destPort)
+	}
+
+	assertForwardCfgNil("udp/8000:localhost:9000", nil, 8000, "localhost", 9000)
+	assertForwardCfgNil("Udp/8001:127.0.0.1:9001", nil, 8001, "127.0.0.1", 9001)
+	assertForwardCfgNil("UDP/8000/::1/9000", nil, 8000, "::1", 9000)
+	assertForwardCfgNil("udp/8000:[::1]:9000", nil, 8000, "::1", 9000)
+	assertForwardCfgNil("Udp/8000/fe80::6358:bbae:26f8:7859/9000", nil, 8000, "fe80::6358:bbae:26f8:7859", 9000)
+	assertForwardCfgNil("UDP/8000:[fe80::6358:bbae:26f8:7859]:9000", nil, 8000, "fe80::6358:bbae:26f8:7859", 9000)
+
+	assertForwardCfg("udp/:8001:localhost:9001", "", 8001, "localhost", 9001)
+	assertForwardCfg("udp/:8002:[::1]:9002", "", 8002, "::1", 9002)
+	assertForwardCfg("udp/*:8003:127.0.0.1:9003", "*", 8003, "127.0.0.1", 9003)
+	assertForwardCfg("udp/*:8004:[fe80::6358:bbae:26f8:7859]:9004", "*", 8004, "fe80::6358:bbae:26f8:7859", 9004)
+
+	assertForwardCfg("UDP/127.0.0.1:8001:localhost:9001", "127.0.0.1", 8001, "localhost", 9001)
+	assertForwardCfg("UDP/localhost:8002:127.0.0.1:9002", "localhost", 8002, "127.0.0.1", 9002)
+	assertForwardCfg("UDP/127.0.0.1:8003:[::1]:9003", "127.0.0.1", 8003, "::1", 9003)
+	assertForwardCfg("UDP/localhost:8004:[fe80::6358:bbae:26f8:7859]:9004", "localhost", 8004, "fe80::6358:bbae:26f8:7859", 9004)
+	assertForwardCfg("UDP/[::1]:8005:localhost:9005", "::1", 8005, "localhost", 9005)
+	assertForwardCfg("UDP/[fe80::6358:bbae:26f8:7859]:8006:127.0.0.1:9006", "fe80::6358:bbae:26f8:7859", 8006, "127.0.0.1", 9006)
+	assertForwardCfg("UDP/[12a5:00c8:dae6:bd0a:8312:07f8:bc94:a1d9]:8007:[::1]:9007", "12a5:00c8:dae6:bd0a:8312:07f8:bc94:a1d9", 8007, "::1", 9007)
+
+	assertForwardCfg("udp_127.0.0.1/8001/localhost/9001", "127.0.0.1", 8001, "localhost", 9001)
+	assertForwardCfg("udp_localhost/8002/127.0.0.1/9002", "localhost", 8002, "127.0.0.1", 9002)
+	assertForwardCfg("Udp_127.0.0.1/8003/::1/9003", "127.0.0.1", 8003, "::1", 9003)
+	assertForwardCfg("Udp_localhost/8004/fe80::6358:bbae:26f8:7859/9004", "localhost", 8004, "fe80::6358:bbae:26f8:7859", 9004)
+	assertForwardCfg("UDP_::1/8005/localhost/9005", "::1", 8005, "localhost", 9005)
+	assertForwardCfg("UDP_fe80::6358:bbae:26f8:7859/8006/127.0.0.1/9006", "fe80::6358:bbae:26f8:7859", 8006, "127.0.0.1", 9006)
+	assertForwardCfg("udp-12a5:00c8:dae6:bd0a:8312:07f8:bc94:a1d9/8007/::1/9007", "12a5:00c8:dae6:bd0a:8312:07f8:bc94:a1d9", 8007, "::1", 9007)
+	assertForwardCfg("Udp-/8008/localhost/9008", "", 8008, "localhost", 9008)
+	assertForwardCfg("UDP-*/8009/fe80::6358:bbae:26f8:7859/9009", "*", 8009, "fe80::6358:bbae:26f8:7859", 9009)
+
+	assertForwardCfgNil("udp/8000:/forward_socket", nil, 8000, "/forward_socket", -1)
+	assertForwardCfgNil("Udp/8000:/forward/socket", nil, 8000, "/forward/socket", -1)
+	assertForwardCfg("udp:localhost:8001:/forward_socket", "localhost", 8001, "/forward_socket", -1)
+	assertForwardCfg("Udp:localhost:8001:/forward/socket", "localhost", 8001, "/forward/socket", -1)
+	assertForwardCfg("Udp:/bind_socket:localhost:9001", "/bind_socket", -1, "localhost", 9001)
+	assertForwardCfg("UDP:/bind/socket:localhost:9002", "/bind/socket", -1, "localhost", 9002)
+	assertForwardCfg("UDP:/bind_socket:/forward_socket", "/bind_socket", -1, "/forward_socket", -1)
+	assertForwardCfg("UDP:/bind/socket:/forward/socket", "/bind/socket", -1, "/forward/socket", -1)
 }

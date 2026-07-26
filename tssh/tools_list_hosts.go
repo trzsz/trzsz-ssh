@@ -1,7 +1,7 @@
 /*
 MIT License
 
-Copyright (c) 2023-2025 The Trzsz SSH Authors.
+Copyright (c) 2023-2026 The Trzsz SSH Authors.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -31,8 +31,8 @@ import (
 	"strings"
 )
 
-func execListHosts() (int, bool) {
-	hosts := getAllHosts()
+func execListHosts(args *sshArgs) (int, bool) {
+	hosts := getAllHosts(args)
 
 	if hosts == nil {
 		hosts = []*sshHost{}
@@ -40,7 +40,7 @@ func execListHosts() (int, bool) {
 	result, err := json.MarshalIndent(hosts, "", "  ")
 	if err != nil {
 		warning("json marshal indent failed: %v", err)
-		return 1, true
+		return kExitCodeJsonMarshal, true
 	}
 
 	hostsJson := string(result)

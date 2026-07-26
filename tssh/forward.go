@@ -1,7 +1,7 @@
 /*
 MIT License
 
-Copyright (c) 2023-2025 The Trzsz SSH Authors.
+Copyright (c) 2023-2026 The Trzsz SSH Authors.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -25,10 +25,8 @@ SOFTWARE.
 package tssh
 
 import (
-	"context"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"os"
 	"regexp"
@@ -37,7 +35,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/trzsz/go-socks5"
+	"github.com/trzsz/tsshd/tsshd"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -47,7 +45,12 @@ type bindCfg struct {
 	port     int
 }
 
+func (b *bindCfg) String() string {
+	return b.argument
+}
+
 type forwardCfg struct {
+	udp      bool
 	argument string
 	bindAddr *string
 	bindPort int
@@ -55,11 +58,10 @@ type forwardCfg struct {
 	destPort int
 }
 
-type closeWriter interface {
-	CloseWrite() error
+func (f *forwardCfg) String() string {
+	return f.argument
 }
 
-var spaceRegexp = regexp.MustCompile(`\s+`)
 var portOnlyRegexp = regexp.MustCompile(`^\d+$`)
 var ipv6AndPortRegexp = regexp.MustCompile(`^\[([:\da-fA-F]+)\]:(\d+)$`)
 var doubleIPv6Regexp = regexp.MustCompile(`^\[([:\da-fA-F]+)\]:(\d+):\[([:\da-fA-F]+)\]:(\d+)$`)
@@ -68,66 +70,65 @@ var secondIPv6Regexp = regexp.MustCompile(`^([^:]+)?:(\d+):\[([:\da-fA-F]+)\]:(\
 var middleIPv6Regexp = regexp.MustCompile(`^(\d+):\[([:\da-fA-F]+)\]:(\d+)$`)
 var unixSocketRegexp = regexp.MustCompile(`^\/.+$`)
 
-func parseBindCfg(s string) (*bindCfg, error) {
-	s = strings.TrimSpace(s)
-
-	if spaceRegexp.MatchString(s) {
-		return nil, fmt.Errorf("invalid bind specification: %s", s)
-	}
+func parseBindCfg(str string) (*bindCfg, error) {
+	str = strings.TrimSpace(str)
 
 	newBindArg := func(addr *string, port string) (*bindCfg, error) {
-		p, err := strconv.Atoi(port)
+		p, err := strconv.ParseUint(port, 10, 16)
 		if err != nil {
-			return nil, fmt.Errorf("invalid bind specification [%s]: %v", s, err)
+			return nil, fmt.Errorf("invalid bind specification [%s]: %v", str, err)
 		}
-		return &bindCfg{s, addr, p}, nil
+		return &bindCfg{str, addr, int(p)}, nil
 	}
 
-	if portOnlyRegexp.MatchString(s) {
-		return newBindArg(nil, s)
+	if portOnlyRegexp.MatchString(str) {
+		return newBindArg(nil, str)
 	}
 
-	tokens := strings.Split(s, "/")
+	tokens := strings.Split(str, "/")
 	if len(tokens) == 2 && portOnlyRegexp.MatchString(tokens[1]) {
 		return newBindArg(&tokens[0], tokens[1])
 	}
 
-	match := ipv6AndPortRegexp.FindStringSubmatch(s)
+	match := ipv6AndPortRegexp.FindStringSubmatch(str)
 	if len(match) == 3 {
 		return newBindArg(&match[1], match[2])
 	}
 
-	tokens = strings.Split(s, ":")
+	tokens = strings.Split(str, ":")
 	if len(tokens) == 2 && portOnlyRegexp.MatchString(tokens[1]) {
 		return newBindArg(&tokens[0], tokens[1])
 	}
 
-	if unixSocketRegexp.MatchString(s) {
-		return newBindArg(&s, "-1")
+	if unixSocketRegexp.MatchString(str) {
+		return &bindCfg{str, &str, -1}, nil
 	}
 
-	return nil, fmt.Errorf("invalid bind specification: %s", s)
+	return nil, fmt.Errorf("invalid bind specification: %s", str)
 }
 
-func parseForwardCfg(s string) (*forwardCfg, error) {
-	s = strings.TrimSpace(s)
+func parseForwardCfg(param *sshParam, udp bool, str string) (*forwardCfg, error) {
+	expandedStr, err := expandTokens(str, param, "%CdhijkLlnpru")
+	if err != nil {
+		return nil, fmt.Errorf("expand forwarding config [%s] failed: %v", str, err)
+	}
 
-	tokens := strings.Fields(s)
+	tokens := strings.Fields(expandedStr)
 	if len(tokens) != 2 {
-		return nil, fmt.Errorf("invalid forward config: %s", s)
+		return nil, fmt.Errorf("invalid forwarding config: %s", str)
 	}
 
 	bindCfg, err := parseBindCfg(tokens[0])
 	if err != nil {
-		return nil, fmt.Errorf("invalid forward config: %s", s)
+		return nil, fmt.Errorf("invalid forwarding config: %s", str)
 	}
 
 	newForwardCfg := func(host string, port string) (*forwardCfg, error) {
-		dPort, err := strconv.Atoi(port)
+		dPort, err := strconv.ParseUint(port, 10, 16)
 		if err != nil {
-			return nil, fmt.Errorf("invalid forward config [%s]: %v", s, err)
+			return nil, fmt.Errorf("invalid forwarding config [%s]: %v", str, err)
 		}
-		return &forwardCfg{s, bindCfg.addr, bindCfg.port, host, dPort}, nil
+		return &forwardCfg{udp, str, bindCfg.addr, bindCfg.port, host, int(dPort)}, nil
 	}
 
 	dest := tokens[1]
@@ -147,522 +148,340 @@ func parseForwardCfg(s string) (*forwardCfg, error) {
 	}
 
 	if unixSocketRegexp.MatchString(dest) {
-		return newForwardCfg(dest, "-1")
+		return &forwardCfg{udp, str, bindCfg.addr, bindCfg.port, dest, -1}, nil
 	}
 
-	return nil, fmt.Errorf("invalid forward config: %s", s)
+	return nil, fmt.Errorf("invalid forwarding config: %s", str)
 }
 
-func parseForwardArg(s string) (*forwardCfg, error) {
-	s = strings.TrimSpace(s)
+func isUdpPrefix(str string) bool {
+	if len(str) < 4 {
+		return false
+	}
+	if str[0] != 'u' && str[0] != 'U' {
+		return false
+	}
+	if str[1] != 'd' && str[1] != 'D' {
+		return false
+	}
+	if str[2] != 'p' && str[2] != 'P' {
+		return false
+	}
+	return str[3] == '/' || str[3] == ':' || str[3] == '-' || str[3] == '_'
+}
 
-	if spaceRegexp.MatchString(s) {
-		return nil, fmt.Errorf("invalid forward specification: %s", s)
+func parseForwardArg(str string) (*forwardCfg, error) {
+	str = strings.TrimSpace(str)
+
+	udp := isUdpPrefix(str)
+	val := str
+	if udp {
+		val = str[4:]
 	}
 
-	newForwardCfg := func(bindAddr *string, bindPort string, destHost string, destPort string) (*forwardCfg, error) {
-		bPort, err := strconv.Atoi(bindPort)
-		if err != nil {
-			return nil, fmt.Errorf("invalid forward specification [%s]: %v", s, err)
+	newForwardCfg := func(bindAddr *string, bindPort *string, destHost string, destPort *string) (*forwardCfg, error) {
+		bPort, dPort := -1, -1
+		if bindPort != nil {
+			v, err := strconv.ParseUint(*bindPort, 10, 16)
+			if err != nil {
+				return nil, fmt.Errorf("invalid forwarding specification [%s]: %v", str, err)
+			}
+			bPort = int(v)
 		}
-		dPort, err := strconv.Atoi(destPort)
-		if err != nil {
-			return nil, fmt.Errorf("invalid forward specification [%s]: %v", s, err)
+		if destPort != nil {
+			v, err := strconv.ParseUint(*destPort, 10, 16)
+			if err != nil {
+				return nil, fmt.Errorf("invalid forwarding specification [%s]: %v", str, err)
+			}
+			dPort = int(v)
 		}
-		return &forwardCfg{s, bindAddr, bPort, destHost, dPort}, nil
+		return &forwardCfg{udp, str, bindAddr, int(bPort), destHost, int(dPort)}, nil
 	}
 
-	tokens := strings.Split(s, "/")
+	tokens := strings.Split(val, "/")
 	if len(tokens) == 3 && portOnlyRegexp.MatchString(tokens[0]) && portOnlyRegexp.MatchString(tokens[2]) {
-		return newForwardCfg(nil, tokens[0], tokens[1], tokens[2])
+		return newForwardCfg(nil, &tokens[0], tokens[1], &tokens[2])
 	}
 	if len(tokens) == 4 && portOnlyRegexp.MatchString(tokens[1]) && portOnlyRegexp.MatchString(tokens[3]) {
-		return newForwardCfg(&tokens[0], tokens[1], tokens[2], tokens[3])
+		return newForwardCfg(&tokens[0], &tokens[1], tokens[2], &tokens[3])
 	}
 
-	match := doubleIPv6Regexp.FindStringSubmatch(s)
+	match := doubleIPv6Regexp.FindStringSubmatch(val)
 	if len(match) == 5 {
-		return newForwardCfg(&match[1], match[2], match[3], match[4])
+		return newForwardCfg(&match[1], &match[2], match[3], &match[4])
 	}
-	match = firstIPv6Regexp.FindStringSubmatch(s)
+	match = firstIPv6Regexp.FindStringSubmatch(val)
 	if len(match) == 5 {
-		return newForwardCfg(&match[1], match[2], match[3], match[4])
+		return newForwardCfg(&match[1], &match[2], match[3], &match[4])
 	}
-	match = secondIPv6Regexp.FindStringSubmatch(s)
+	match = secondIPv6Regexp.FindStringSubmatch(val)
 	if len(match) == 5 {
-		return newForwardCfg(&match[1], match[2], match[3], match[4])
+		return newForwardCfg(&match[1], &match[2], match[3], &match[4])
 	}
-	match = middleIPv6Regexp.FindStringSubmatch(s)
+	match = middleIPv6Regexp.FindStringSubmatch(val)
 	if len(match) == 4 {
-		return newForwardCfg(nil, match[1], match[2], match[3])
+		return newForwardCfg(nil, &match[1], match[2], &match[3])
 	}
 
-	tokens = strings.Split(s, ":")
+	tokens = strings.Split(val, ":")
 	if len(tokens) == 3 && portOnlyRegexp.MatchString(tokens[0]) && portOnlyRegexp.MatchString(tokens[2]) {
-		return newForwardCfg(nil, tokens[0], tokens[1], tokens[2])
+		return newForwardCfg(nil, &tokens[0], tokens[1], &tokens[2])
 	}
 	if len(tokens) == 4 && portOnlyRegexp.MatchString(tokens[1]) && portOnlyRegexp.MatchString(tokens[3]) {
-		return newForwardCfg(&tokens[0], tokens[1], tokens[2], tokens[3])
+		return newForwardCfg(&tokens[0], &tokens[1], tokens[2], &tokens[3])
 	}
 
 	if len(tokens) == 2 && portOnlyRegexp.MatchString(tokens[0]) && unixSocketRegexp.MatchString(tokens[1]) {
-		return newForwardCfg(nil, tokens[0], tokens[1], "-1")
+		return newForwardCfg(nil, &tokens[0], tokens[1], nil)
 	}
 	if len(tokens) == 3 && portOnlyRegexp.MatchString(tokens[1]) && unixSocketRegexp.MatchString(tokens[2]) {
-		return newForwardCfg(&tokens[0], tokens[1], tokens[2], "-1")
+		return newForwardCfg(&tokens[0], &tokens[1], tokens[2], nil)
 	}
 	if len(tokens) == 3 && portOnlyRegexp.MatchString(tokens[2]) && unixSocketRegexp.MatchString(tokens[0]) {
-		return newForwardCfg(&tokens[0], "-1", tokens[1], tokens[2])
+		return newForwardCfg(&tokens[0], nil, tokens[1], &tokens[2])
 	}
 	if len(tokens) == 2 && unixSocketRegexp.MatchString(tokens[0]) && unixSocketRegexp.MatchString(tokens[1]) {
-		return newForwardCfg(&tokens[0], "-1", tokens[1], "-1")
+		return newForwardCfg(&tokens[0], nil, tokens[1], nil)
 	}
 
-	return nil, fmt.Errorf("invalid forward specification: %s", s)
+	return nil, fmt.Errorf("invalid forwarding specification: %s", str)
 }
 
 func isGatewayPorts(args *sshArgs) bool {
-	return args.Gateway || strings.ToLower(getConfig(args.Destination, "GatewayPorts")) == "yes"
+	return args.Gateway || strings.EqualFold(getOptionConfig(args, "GatewayPorts"), "yes")
 }
 
-func listenOnLocal(args *sshArgs, addr *string, port string) (listeners []net.Listener) {
-	listen := func(network, address string) {
-		listener, err := net.Listen(network, address)
-		if err != nil {
-			debug("forward listen on local %s '%s' failed: %v", network, address, err)
-		} else {
-			debug("forward listen on local %s '%s' success", network, address)
-			listeners = append(listeners, listener)
-			onCloseFuncs = append(onCloseFuncs, func() {
-				_ = listener.Close()
-			})
+func forwardDeniedReason(err error, network string) string {
+	if e, ok := err.(*tsshd.Error); ok && e.Code == tsshd.ErrProhibited {
+		return e.Msg
+	}
+
+	buildDeniedMsg := func() string {
+		option := "AllowTcpForwarding"
+		if network == "unix" {
+			option += ", AllowStreamLocalForwarding"
 		}
+		return fmt.Sprintf("Check [%s, DisableForwarding] in [/etc/ssh/sshd_config] on the server.", option)
 	}
-	if addr == nil && isGatewayPorts(args) || addr != nil && (*addr == "" || *addr == "*") {
-		listen("tcp4", joinHostPort("0.0.0.0", port))
-		listen("tcp6", joinHostPort("::", port))
-		return
+
+	if e, ok := err.(*ssh.OpenChannelError); ok && e.Reason == ssh.Prohibited {
+		return buildDeniedMsg()
 	}
-	if addr == nil {
-		listen("tcp4", joinHostPort("127.0.0.1", port))
-		listen("tcp6", joinHostPort("::1", port))
-		return
+
+	const kDeniedError = "request denied by peer"
+	if err != nil && strings.Contains(err.Error(), kDeniedError) {
+		return buildDeniedMsg() + " And check if the bind address is already in use."
 	}
-	if strings.HasPrefix(*addr, "/") && port == "-1" {
-		listen("unix", *addr)
-		return
-	}
-	listen("tcp", joinHostPort(*addr, port))
-	return
+
+	return ""
 }
 
-func listenOnRemote(args *sshArgs, client SshClient, addr *string, port string) (listeners []net.Listener) {
-	listen := func(network, address string) {
-		listener, err := client.Listen(network, address)
-		if err != nil {
-			debug("forward listen on remote %s '%s' failed: %v", network, address, err)
-		} else {
-			debug("forward listen on remote %s '%s' success", network, address)
-			listeners = append(listeners, listener)
-			onCloseFuncs = append(onCloseFuncs, func() {
-				_ = listener.Close()
-			})
-		}
-	}
-	if addr == nil && isGatewayPorts(args) || addr != nil && (*addr == "" || *addr == "*") {
-		listen("tcp4", joinHostPort("0.0.0.0", port))
-		listen("tcp6", joinHostPort("::", port))
-		return
-	}
-	if addr == nil {
-		listen("tcp4", joinHostPort("127.0.0.1", port))
-		listen("tcp6", joinHostPort("::1", port))
-		return
-	}
-	if strings.HasPrefix(*addr, "/") && port == "-1" {
-		listen("unix", *addr)
-		return
-	}
-	listen("tcp", joinHostPort(*addr, port))
-	return
-}
-
-func stdioForward(args *sshArgs, client SshClient, addr string) (*sync.WaitGroup, error) {
+func stdioForward(args *sshArgs, client SshClient, addr string) error {
 	conn, err := client.DialTimeout("tcp", addr, getConnectTimeout(args))
 	if err != nil {
-		return nil, fmt.Errorf("stdio forward failed: %v", err)
+		return fmt.Errorf("stdio forwarding [%s] failed: %v", addr, err)
 	}
-	defer func() { _ = conn.Close() }()
 
 	var wg sync.WaitGroup
-	wg.Add(2)
 
-	done := make(chan struct{}, 2)
-	go func() {
+	wg.Go(func() {
 		_, _ = io.Copy(conn, os.Stdin)
-		done <- struct{}{}
-		wg.Done()
-	}()
-	go func() {
-		_, _ = io.Copy(os.Stdout, conn)
-		done <- struct{}{}
-		wg.Done()
-	}()
-	<-done
 
-	return &wg, nil
-}
-
-type sshResolver struct{}
-
-func (d sshResolver) Resolve(ctx context.Context, name string) (context.Context, net.IP, error) {
-	return ctx, []byte{}, nil
-}
-
-func dynamicForward(client SshClient, b *bindCfg, args *sshArgs) {
-	server, err := socks5.New(&socks5.Config{
-		Resolver: &sshResolver{},
-		Dial: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			return client.DialTimeout(network, addr, getConnectTimeout(args))
-		},
-		Logger: log.New(io.Discard, "", log.LstdFlags),
+		if cw, ok := conn.(interface{ CloseWrite() error }); ok {
+			_ = cw.CloseWrite()
+		}
 	})
-	if err != nil {
-		warning("dynamic forward failed: %v", err)
+
+	wg.Go(func() {
+		_, _ = io.Copy(os.Stdout, conn)
+
+		if cr, ok := conn.(interface{ CloseRead() error }); ok {
+			_ = cr.CloseRead()
+		}
+	})
+
+	wg.Wait()
+	_ = conn.Close()
+	_ = os.Stdout.Close()
+	return nil
+}
+
+func localForward(sshConn *sshConnection, f *forwardCfg, gateway bool, timeout time.Duration, unlinkUnix bool, bindMask int) {
+	if f.udp {
+		localForwardUDP(sshConn, f, gateway, timeout, unlinkUnix, bindMask)
+	} else {
+		localForwardTCP(sshConn, f, gateway, timeout, unlinkUnix, bindMask)
+	}
+}
+
+func remoteForward(sshConn *sshConnection, f *forwardCfg, gateway bool, timeout time.Duration) {
+	if f.udp {
+		remoteForwardUDP(sshConn, f, gateway, timeout)
+	} else {
+		remoteForwardTCP(sshConn, f, gateway, timeout)
+	}
+}
+
+func sshPortForward(sshConn *sshConnection) {
+	args := sshConn.param.args
+	// clear all forwardings
+	if strings.EqualFold(getOptionConfig(args, "ClearAllForwardings"), "yes") {
+		debug("clear all forwardings")
 		return
 	}
 
-	for _, listener := range listenOnLocal(args, b.addr, strconv.Itoa(b.port)) {
-		go func(listener net.Listener) {
-			defer func() { _ = listener.Close() }()
-			for {
-				conn, err := listener.Accept()
-				if err == io.EOF {
-					break
-				}
-				if err != nil {
-					debug("dynamic forward accept failed: %v", err)
-					continue
-				}
-				go func() {
-					if err := server.ServeConn(conn); err != nil {
-						debug("dynamic forward serve failed: %v", err)
-					}
-				}()
-			}
-		}(listener)
+	warnedUDP := false
+	warnRequiredUDP := func() {
+		if warnedUDP {
+			return
+		}
+		warnedUDP = true
+		warning("UDP forwarding does not work because tssh is not running in UDP mode")
 	}
-}
 
-func netForward(local, remote net.Conn) {
-	defer func() {
-		_ = local.Close()
-		_ = remote.Close()
-	}()
-
-	done := make(chan struct{}, 2)
-	go func() {
-		_, _ = io.Copy(local, remote)
-		done <- struct{}{}
-	}()
-	go func() {
-		_, _ = io.Copy(remote, local)
-		done <- struct{}{}
-	}()
-	<-done
-}
-
-func localForward(client SshClient, f *forwardCfg, args *sshArgs) {
-	var network, remoteAddr string
-	if f.destPort == -1 && strings.HasPrefix(f.destHost, "/") {
-		network = "unix"
-		remoteAddr = f.destHost
-	} else {
-		network = "tcp"
-		remoteAddr = joinHostPort(f.destHost, strconv.Itoa(f.destPort))
-	}
-	timeout := getConnectTimeout(args)
-	for _, listener := range listenOnLocal(args, f.bindAddr, strconv.Itoa(f.bindPort)) {
-		go func(listener net.Listener) {
-			defer func() { _ = listener.Close() }()
-			for {
-				local, err := listener.Accept()
-				if err == io.EOF {
-					break
-				}
-				if err != nil {
-					debug("local forward accept failed: %v", err)
-					continue
-				}
-				remote, err := client.DialTimeout(network, remoteAddr, timeout)
-				if err != nil {
-					debug("local forward dial [%s][%s] failed: %v", network, remoteAddr, err)
-					_ = local.Close()
-					continue
-				}
-				go netForward(local, remote)
-			}
-		}(listener)
-	}
-}
-
-func remoteForward(client SshClient, f *forwardCfg, args *sshArgs) {
-	var network, localAddr string
-	if f.destPort == -1 && strings.HasPrefix(f.destHost, "/") {
-		network = "unix"
-		localAddr = f.destHost
-	} else {
-		network = "tcp"
-		localAddr = joinHostPort(f.destHost, strconv.Itoa(f.destPort))
-	}
-	timeout := getConnectTimeout(args)
-	for _, listener := range listenOnRemote(args, client, f.bindAddr, strconv.Itoa(f.bindPort)) {
-		go func(listener net.Listener) {
-			defer func() { _ = listener.Close() }()
-			for {
-				remote, err := listener.Accept()
-				if err == io.EOF {
-					break
-				}
-				if err != nil {
-					debug("remote forward accept failed: %v", err)
-					continue
-				}
-				local, err := net.DialTimeout(network, localAddr, timeout)
-				if err != nil {
-					debug("remote forward dial [%s][%s] failed: %v", network, localAddr, err)
-					_ = remote.Close()
-					continue
-				}
-				go netForward(local, remote)
-			}
-		}(listener)
-	}
-}
-
-func sshForward(client SshClient, args *sshArgs, param *sshParam) error {
-	// clear all forwardings
-	if strings.ToLower(getOptionConfig(args, "ClearAllForwardings")) == "yes" {
-		return nil
-	}
+	gateway := isGatewayPorts(sshConn.param.args)
+	timeout := getConnectTimeout(sshConn.param.args)
+	unlinkUnix := strings.EqualFold(getOptionConfig(sshConn.param.args, "StreamLocalBindUnlink"), "yes")
+	bindMask := streamLocalBindMask(sshConn.param.args)
 
 	// dynamic forward
 	for _, b := range args.DynamicForward.binds {
-		dynamicForward(client, b, args)
+		dynamicForward(sshConn, b, gateway, timeout, unlinkUnix, bindMask)
 	}
-	for _, s := range getAllOptionConfig(args, "DynamicForward") {
+	for _, s := range getAllExOptionConfig(args, "DynamicForward", false) {
 		b, err := parseBindCfg(s)
 		if err != nil {
-			warning("dynamic forward failed: %v", err)
+			warning("parse dynamic forwarding failed: %v", err)
 			continue
 		}
-		dynamicForward(client, b, args)
+		dynamicForward(sshConn, b, gateway, timeout, unlinkUnix, bindMask)
 	}
 
 	// local forward
 	for _, f := range args.LocalForward.cfgs {
-		localForward(client, f, args)
+		if f.udp && sshConn.param.udpMode == kUdpModeNo {
+			warnRequiredUDP()
+			continue
+		}
+		localForward(sshConn, f, gateway, timeout, unlinkUnix, bindMask)
 	}
-	for _, s := range getAllOptionConfig(args, "LocalForward") {
-		es, err := expandTokens(s, args, param, "%CdhijkLlnpru")
+	for _, s := range getAllExOptionConfig(args, "LocalForward", false) {
+		f, err := parseForwardCfg(sshConn.param, false, s)
 		if err != nil {
-			warning("expand LocalForward [%s] failed: %v", s, err)
+			warning("parse local forwarding failed: %v", err)
 			continue
 		}
-		f, err := parseForwardCfg(es)
+		localForward(sshConn, f, gateway, timeout, unlinkUnix, bindMask)
+	}
+	for _, s := range getAllExOptionConfig(args, "UdpLocalForward", true) {
+		if sshConn.param.udpMode == kUdpModeNo {
+			warnRequiredUDP()
+			break
+		}
+		f, err := parseForwardCfg(sshConn.param, true, s)
 		if err != nil {
-			warning("local forward failed: %v", err)
+			warning("parse udp local forwarding failed: %v", err)
 			continue
 		}
-		localForward(client, f, args)
+		localForward(sshConn, f, gateway, timeout, unlinkUnix, bindMask)
 	}
 
 	// remote forward
 	for _, f := range args.RemoteForward.cfgs {
-		remoteForward(client, f, args)
-	}
-	for _, s := range getAllOptionConfig(args, "RemoteForward") {
-		es, err := expandTokens(s, args, param, "%CdhijkLlnpru")
-		if err != nil {
-			warning("expand RemoteForward [%s] failed: %v", s, err)
+		if f.udp && sshConn.param.udpMode == kUdpModeNo {
+			warnRequiredUDP()
 			continue
 		}
-		f, err := parseForwardCfg(es)
+		remoteForward(sshConn, f, gateway, timeout)
+	}
+	for _, s := range getAllExOptionConfig(args, "RemoteForward", false) {
+		f, err := parseForwardCfg(sshConn.param, false, s)
 		if err != nil {
-			warning("remote forward failed: %v", err)
+			warning("parse remote forwarding failed: %v", err)
 			continue
 		}
-		remoteForward(client, f, args)
+		remoteForward(sshConn, f, gateway, timeout)
 	}
-
-	return nil
-}
-
-type x11Request struct {
-	SingleConnection bool
-	AuthProtocol     string
-	AuthCookie       string
-	ScreenNumber     uint32
-}
-
-func sshX11Forward(args *sshArgs, client SshClient, session SshSession) {
-	if args.NoX11Forward || !args.X11Untrusted && !args.X11Trusted && strings.ToLower(getOptionConfig(args, "ForwardX11")) != "yes" {
-		return
-	}
-
-	display := os.Getenv("DISPLAY")
-	if display == "" {
-		warning("X11 forwarding is not working since environment variable DISPLAY is not set")
-		return
-	}
-	hostname, displayNumber := resolveDisplayEnv(display)
-
-	var trusted bool
-	if !args.X11Untrusted && (args.X11Trusted || strings.ToLower(getOptionConfig(args, "ForwardX11Trusted")) == "yes") {
-		trusted = true
-	}
-
-	timeout := 1200
-	if !trusted {
-		forwardX11Timeout := getOptionConfig(args, "ForwardX11Timeout")
-		if forwardX11Timeout != "" && strings.ToLower(forwardX11Timeout) != "none" {
-			seconds, err := convertSshTime(forwardX11Timeout)
-			if err != nil {
-				warning("invalid ForwardX11Timeout '%s': %v", forwardX11Timeout, err)
-			} else {
-				timeout = seconds
-			}
+	for _, s := range getAllExOptionConfig(args, "UdpRemoteForward", true) {
+		if sshConn.param.udpMode == kUdpModeNo {
+			warnRequiredUDP()
+			break
 		}
-	}
-
-	cookie, proto, err := getXauthAndProto(display, trusted, timeout)
-	if err != nil {
-		warning("X11 forwarding get xauth failed: %v", err)
-		return
-	}
-
-	payload := x11Request{
-		SingleConnection: false,
-		AuthProtocol:     proto,
-		AuthCookie:       cookie,
-		ScreenNumber:     0,
-	}
-	ok, err := session.SendRequest(kX11RequestName, true, ssh.Marshal(payload))
-	if err != nil {
-		warning("X11 forwarding request failed: %v", err)
-		return
-	}
-	if !ok {
-		warning("X11 forwarding request denied")
-		return
-	}
-
-	channels := client.HandleChannelOpen(kX11ChannelType)
-	if channels == nil {
-		warning("already have handler for %s", kX11ChannelType)
-		return
-	}
-	go func() {
-		for ch := range channels {
-			channel, reqs, err := ch.Accept()
-			if err != nil {
-				continue
-			}
-			go ssh.DiscardRequests(reqs)
-			go func() {
-				serveX11(display, hostname, displayNumber, channel)
-				_ = channel.Close()
-			}()
+		f, err := parseForwardCfg(sshConn.param, true, s)
+		if err != nil {
+			warning("parse udp local forwarding failed: %v", err)
+			continue
 		}
-	}()
-}
-
-func resolveDisplayEnv(display string) (string, int) {
-	colon := strings.LastIndex(display, ":")
-	if colon < 0 {
-		return "", 0
+		remoteForward(sshConn, f, gateway, timeout)
 	}
-	hostname := display[:colon]
-	display = display[colon+1:]
-	dot := strings.Index(display, ".")
-	if dot < 0 {
-		dot = len(display)
-	}
-	displayNumber, err := strconv.Atoi(display[:dot])
-	if err != nil {
-		return "", 0
-	}
-	return hostname, displayNumber
-}
-
-func convertSshTime(time string) (int, error) {
-	total := 0
-	seconds := 0
-	for _, ch := range time {
-		switch {
-		case ch >= '0' && ch <= '9':
-			seconds = seconds*10 + int(ch-'0')
-		case ch == 's' || ch == 'S':
-			total += seconds
-			seconds = 0
-		case ch == 'm' || ch == 'M':
-			total += seconds * 60
-			seconds = 0
-		case ch == 'h' || ch == 'H':
-			total += seconds * 60 * 60
-			seconds = 0
-		case ch == 'd' || ch == 'D':
-			total += seconds * 60 * 60 * 24
-			seconds = 0
-		case ch == 'w' || ch == 'W':
-			total += seconds * 60 * 60 * 24 * 7
-			seconds = 0
-		default:
-			return 0, fmt.Errorf("invalid char '%c'", ch)
-		}
-	}
-	return total + seconds, nil
-}
-
-func serveX11(display, hostname string, displayNumber int, channel ssh.Channel) {
-	var err error
-	var conn net.Conn
-	if hostname != "" && !strings.HasPrefix(hostname, "/") {
-		conn, err = net.DialTimeout("tcp", joinHostPort(hostname, strconv.Itoa(6000+displayNumber)), time.Second)
-	} else if strings.HasPrefix(display, "/") {
-		conn, err = net.DialTimeout("unix", display, time.Second)
-	} else {
-		conn, err = net.DialTimeout("unix", fmt.Sprintf("/tmp/.X11-unix/X%d", displayNumber), time.Second)
-	}
-	if err != nil {
-		debug("X11 forwarding dial [%s] failed: %v", display, err)
-		return
-	}
-
-	forwardChannel(channel, conn)
 }
 
 func forwardChannel(channel ssh.Channel, conn net.Conn) {
 	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
+
+	wg.Go(func() {
 		_, _ = io.Copy(conn, channel)
-		if cw, ok := conn.(closeWriter); ok {
+
+		if cw, ok := conn.(interface{ CloseWrite() error }); ok {
 			_ = cw.CloseWrite()
-		} else {
-			// close the entire stream since there is no half-close
-			time.Sleep(200 * time.Millisecond)
-			_ = conn.Close()
 		}
-		wg.Done()
-	}()
-	go func() {
+
+		if cr, ok := channel.(interface{ CloseRead() error }); ok {
+			_ = cr.CloseRead()
+		}
+	})
+
+	wg.Go(func() {
 		_, _ = io.Copy(channel, conn)
+
 		_ = channel.CloseWrite()
-		wg.Done()
-	}()
+
+		if cr, ok := conn.(interface{ CloseRead() error }); ok {
+			_ = cr.CloseRead()
+		}
+	})
 
 	wg.Wait()
 	_ = conn.Close()
 	_ = channel.Close()
+}
+
+func subsystemForward(client SshClient, name string) error {
+	session, err := client.NewSession()
+	if err != nil {
+		return fmt.Errorf("new session for subsystem [%s] failed: %v", name, err)
+	}
+	defer func() { _ = session.Close() }()
+	serverIn, err := session.StdinPipe()
+	if err != nil {
+		return fmt.Errorf("stdin pipe for subsystem [%s] failed: %v", name, err)
+	}
+	serverOut, err := session.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("stdout pipe for subsystem [%s] failed: %v", name, err)
+	}
+	serverErr, err := session.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("stderr pipe for subsystem [%s] failed: %v", name, err)
+	}
+
+	if err := session.RequestSubsystem(name); err != nil {
+		return fmt.Errorf("request subsystem [%s] failed: %v", name, err)
+	}
+
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		_, _ = io.Copy(serverIn, os.Stdin)
+		_ = serverIn.Close()
+	})
+	wg.Go(func() {
+		_, _ = io.Copy(os.Stdout, serverOut)
+		_ = os.Stdout.Close()
+	})
+	wg.Go(func() {
+		_, _ = io.Copy(os.Stderr, serverErr)
+		_ = os.Stderr.Close()
+	})
+	wg.Wait()
+	return nil
 }

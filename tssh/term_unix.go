@@ -3,7 +3,7 @@
 /*
 MIT License
 
-Copyright (c) 2023-2025 The Trzsz SSH Authors.
+Copyright (c) 2023-2026 The Trzsz SSH Authors.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -33,11 +33,15 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 
 	"github.com/google/shlex"
+	"github.com/mattn/go-isatty"
 	"golang.org/x/term"
 )
+
+var isRunningOnOldWindows atomic.Bool
 
 type stdinState struct {
 	state *term.State
@@ -96,6 +100,19 @@ func getKeyboardInput() (*os.File, func(), error) {
 	return file, func() { _ = file.Close() }, nil
 }
 
+func getStderrOutput() (*os.File, func(), error) {
+	if isTerminal {
+		return os.Stderr, func() {}, nil
+	}
+
+	file, err := os.OpenFile("/dev/tty", os.O_WRONLY, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return file, func() { _ = file.Close() }, nil
+}
+
 func isSshTmuxEnv() bool {
 	if _, tmux := os.LookupEnv("TMUX"); !tmux {
 		return false
@@ -118,4 +135,33 @@ func isSshTmuxEnv() bool {
 
 func splitCommandLine(command string) ([]string, error) {
 	return shlex.Split(command)
+}
+
+func suspendProcess() {
+	conCh := make(chan os.Signal, 1)
+	signal.Notify(conCh, syscall.SIGCONT)
+	defer func() { signal.Stop(conCh); close(conCh) }()
+
+	if err := syscall.Kill(syscall.Getpid(), syscall.SIGSTOP); err != nil {
+		warning("suspend current process failed: %v", err)
+		return
+	}
+
+	debug("current process is suspended")
+	for range conCh {
+		if isatty.IsTerminal(os.Stdin.Fd()) {
+			debug("current process is running in foreground")
+			_, _ = makeStdinRaw()
+			return
+		}
+		debug("current process is running in background")
+	}
+}
+
+func injectConsoleSpace() error {
+	return nil
+}
+
+func windowsDnsServers() []dnsServer {
+	return nil
 }

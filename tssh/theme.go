@@ -1,7 +1,7 @@
 /*
 MIT License
 
-Copyright (c) 2023-2025 The Trzsz SSH Authors.
+Copyright (c) 2023-2026 The Trzsz SSH Authors.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -26,10 +26,9 @@ package tssh
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	"github.com/trzsz/trzsz-ssh/internal/table"
 )
 
@@ -55,15 +54,15 @@ func getDefaultShortcutsTemplate() string {
 
 func getDefaultDetailsTemplate() string {
 	var builder strings.Builder
-	builder.WriteString(fmt.Sprintf(`{{ "--------- SSH Details ----------\n" | %s }}`, getThemeColor("details_title")))
+	fmt.Fprintf(&builder, `{{ "--------- SSH Details ----------\n" | %s }}`, getThemeColor("details_title"))
 	addItem := func(name string) {
-		builder.WriteString(fmt.Sprintf(`{{ if hasField . "%s" }}`+
+		fmt.Fprintf(&builder, `{{ if hasField . "%s" }}`+
 			`{{- if .%s }}{{ "%s:" | %s }}{{ "\t" }}{{ .%s | %s }}{{ "\n" }}{{ end }}`+
-			`{{ else }}{{ $value := getExConfig .Alias "%s" }}`+
+			`{{ else }}{{ $value := getExConfig .Args "%s" }}`+
 			`{{- if $value }}{{ "%s:" | %s }}{{ "\t" }}{{ $value | %s }}{{ "\n" }}{{ end }}`+
 			`{{ end }}`,
 			name, name, name, getThemeColor("details_name"), name, getThemeColor("details_value"),
-			name, name, getThemeColor("details_name"), getThemeColor("details_value")))
+			name, name, getThemeColor("details_name"), getThemeColor("details_value"))
 	}
 	for _, item := range getPromptDetailItems() {
 		switch strings.ToLower(item) {
@@ -72,9 +71,7 @@ func getDefaultDetailsTemplate() string {
 		case "host":
 			addItem("Host")
 		case "port":
-			builder.WriteString(fmt.Sprintf(
-				`{{- if ne .Port "22" }}{{ "Port:" | %s }}{{ "\t" }}{{ .Port | %s }}{{ "\n" }}{{ end }}`,
-				getThemeColor("details_name"), getThemeColor("details_value")))
+			addItem("Port")
 		case "user":
 			addItem("User")
 		case "grouplabels":
@@ -99,11 +96,11 @@ func getTinyTheme() *promptTheme {
 		Label: fmt.Sprintf(`{{ "? " | %s }}{{ . | %s }}{{ ":" | %s }}`,
 			getThemeColor("label_icon"), getThemeColor("label_text"), getThemeColor("label_text")),
 		Active: fmt.Sprintf(`{{ "%s" | %s }} {{ if .Selected }}{{ "✔ " | %s }}{{ else }}{{ "  " }}{{ end }}`+
-			`{{ .Alias | %s }} ({{ .Host | %s }}){{ "\t" }}{{ .GroupLabels | %s }}`,
+			`{{ .Alias | %s }}{{ if and .Host (ne .Host .Alias) }} ({{ .Host | %s }}){{ end }}{{ "\t" }}{{ .GroupLabels | %s }}`,
 			promptCursorIcon, getThemeColor("cursor_icon"), getThemeColor("active_selected"),
 			getThemeColor("active_alias"), getThemeColor("active_host"), getThemeColor("active_group")),
 		Inactive: fmt.Sprintf(`   {{ if .Selected }}{{ "✔ " | %s }}{{ else }}{{ "  " }}{{ end }}`+
-			`{{ .Alias | %s }} ({{ .Host | %s }}){{ "\t" }}{{ .GroupLabels | %s }}`,
+			`{{ .Alias | %s }}{{ if and .Host (ne .Host .Alias) }} ({{ .Host | %s }}){{ end }}{{ "\t" }}{{ .GroupLabels | %s }}`,
 			getThemeColor("inactive_selected"),
 			getThemeColor("inactive_alias"), getThemeColor("inactive_host"), getThemeColor("inactive_group")),
 		Details:   getDefaultDetailsTemplate(),
@@ -238,9 +235,7 @@ func (t *tableTheme) renderDetails(item any) string {
 		case "host":
 			addItem("Host", host.Host)
 		case "port":
-			if host.Port != "22" {
-				data = append(data, []string{"Port", host.Port})
-			}
+			addItem("Port", host.Port)
 		case "user":
 			addItem("User", host.User)
 		case "grouplabels":
@@ -254,7 +249,7 @@ func (t *tableTheme) renderDetails(item any) string {
 		case "remotecommand":
 			addItem("RemoteCommand", host.RemoteCommand)
 		default:
-			addItem(item, getExConfig(host.Alias, item))
+			addItem(item, getExConfig(host.Args, item))
 		}
 	}
 	tbl := table.New().BorderRow(true).Rows(data...).
@@ -272,8 +267,7 @@ func (t *tableTheme) renderDetails(item any) string {
 }
 
 func getTableTheme() *promptTheme {
-	renderer := lipgloss.NewRenderer(os.Stderr)
-	baseStyle := renderer.NewStyle()
+	baseStyle := lipgloss.NewStyle()
 	cellStyle := baseStyle.Padding(0, 1)
 	table := tableTheme{
 		tableHeaderStyle:    cellStyle.Foreground(lipgloss.Color(getThemeColor("table_header"))),

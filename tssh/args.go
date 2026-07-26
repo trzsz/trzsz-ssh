@@ -1,7 +1,7 @@
 /*
 MIT License
 
-Copyright (c) 2023-2025 The Trzsz SSH Authors.
+Copyright (c) 2023-2026 The Trzsz SSH Authors.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -47,7 +47,8 @@ type forwardArgs struct {
 }
 
 type sshArgs struct {
-	Ver            bool        `arg:"-V,--" help:"show program's version number and exit"`
+	VerShort       bool        `arg:"-v,--" help:"show short version number and exit"`
+	VerDetailed    bool        `arg:"-V,--" help:"show detailed version info and exit"`
 	Destination    string      `arg:"positional" help:"alias in ~/.ssh/config, or [user@]hostname[:port]"`
 	Command        string      `arg:"positional" help:"command to execute instead of a login shell"`
 	Argument       []string    `arg:"positional" help:"command arguments separated by spaces"`
@@ -59,7 +60,9 @@ type sshArgs struct {
 	IPv6Only       bool        `arg:"-6,--" help:"forces ssh to use IPv6 addresses only"`
 	Gateway        bool        `arg:"-g,--" help:"forwarding allows remote hosts to connect"`
 	Background     bool        `arg:"-f,--" help:"run as a background process, implies -n"`
+	Subsystem      bool        `arg:"-s,--" help:"request invocation of a subsystem"`
 	NoCommand      bool        `arg:"-N,--" help:"do not execute a remote command"`
+	NoStdin        bool        `arg:"-n,--" help:"prevents reading from stdin"`
 	Port           int         `arg:"-p,--" placeholder:"port" help:"port to connect to on the remote host"`
 	LoginName      string      `arg:"-l,--" placeholder:"login_name" help:"the user to log in as on the remote machine"`
 	Identity       multiStr    `arg:"-i,--" placeholder:"identity_file" help:"identity (private key) for public key auth"`
@@ -71,19 +74,28 @@ type sshArgs struct {
 	DynamicForward bindArgs    `arg:"-D,--" placeholder:"[bind_addr:]port" help:"dynamic port forwarding ( socks5 proxy )"`
 	LocalForward   forwardArgs `arg:"-L,--" placeholder:"[bind_addr:]port:host:hostport" help:"local port forwarding"`
 	RemoteForward  forwardArgs `arg:"-R,--" placeholder:"[bind_addr:]port:host:hostport" help:"remote port forwarding"`
-	X11Untrusted   bool        `arg:"-X,--" help:"enables X11 forwarding"`
+	X11Forward     bool        `arg:"-X,--" help:"enables X11 forwarding"`
 	NoX11Forward   bool        `arg:"-x,--" help:"disables X11 forwarding"`
 	X11Trusted     bool        `arg:"-Y,--" help:"enables trusted X11 forwarding"`
-	Reconnect      bool        `arg:"--reconnect" help:"reconnect when background(-f) process exits"`
+	ControlMaster  bool        `arg:"-M,--" help:"enables master mode for multiplexing"`
+	ControlPath    string      `arg:"-S,--" placeholder:"ctl_path" help:"specify the control socket path"`
+	ControlCmd     string      `arg:"-O,--" placeholder:"ctl_cmd" help:"send command to a multiplex master"`
+	Reconnect      bool        `arg:"--reconnect" help:"reconnect or restart after process exits"`
 	DragFile       bool        `arg:"--dragfile" help:"enable drag files and directories to upload"`
 	TraceLog       bool        `arg:"--tracelog" help:"enable trzsz detect trace logs for debugging"`
 	Relay          bool        `arg:"--relay" help:"force trzsz run as a relay on the jump server"`
 	Client         bool        `arg:"--client" help:"force trzsz run as a client on the jump server"`
 	Debug          bool        `arg:"--debug" help:"verbose mode for debugging, same as ssh's -vvv"`
 	Zmodem         bool        `arg:"--zmodem" help:"enable zmodem lrzsz ( rz / sz ) feature"`
-	Dns            string      `arg:"--dns" placeholder:"[udp://|tcp://]host[:port]" help:"custom DNS server"`
-	Udp            bool        `arg:"--udp" help:"ssh over UDP like mosh (default mode: QUIC)"`
+	RemoveHostKey  bool        `arg:"--remove-host-key" help:"remove the known_hosts entry before connecting"`
+	DNS            string      `arg:"--dns" placeholder:"[udp://|tcp://]host[:port]" help:"custom DNS server"`
+	TCP            bool        `arg:"--tcp" help:"force standard TCP SSH (overrides UdpMode)"`
+	UDP            bool        `arg:"--udp" help:"ssh over UDP like mosh (default: QUIC)"`
+	KCP            bool        `arg:"--kcp" help:"[udp] use KCP protocol for ssh over UDP"`
+	QUIC           bool        `arg:"--quic" help:"[udp] use QUIC protocol for ssh over UDP"`
+	Attach         bool        `arg:"--attach" help:"[udp] attach to session (implies --udp)"`
 	TsshdPath      string      `arg:"--tsshd-path" placeholder:"path" help:"[udp] tsshd absolute path on the server"`
+	TsshdPort      string      `arg:"--tsshd-port" placeholder:"low-high" help:"[udp] port range that tsshd listens on"`
 	NewHost        bool        `arg:"--new-host" help:"[tools] add new host to configuration"`
 	EncSecret      bool        `arg:"--enc-secret" help:"[tools] encode secret for configuration"`
 	ListHosts      bool        `arg:"--list-hosts" help:"[tools] list all hosts in configuration"`
@@ -97,14 +109,11 @@ type sshArgs struct {
 	UploadFile     multiStr    `arg:"--upload-file" placeholder:"path" help:"[tools] upload the local file to remote server"`
 	DownloadPath   string      `arg:"--download-path" placeholder:"path" help:"[tools] the local saving path for downloading"`
 	originalDest   string
+	canonicalDest  string
 }
 
 func (sshArgs) Description() string {
-	return "trzsz-ssh(tssh): alternative ssh client with additional features to meet your needs.\n"
-}
-
-func (sshArgs) Version() string {
-	return fmt.Sprintf("trzsz ssh %s", kTsshVersion)
+	return "trzsz-ssh(tssh): Highly OpenSSH-compatible client with extended features.\n"
 }
 
 func (o *sshOption) UnmarshalText(b []byte) error {

@@ -1,7 +1,7 @@
 /*
 MIT License
 
-Copyright (c) 2023-2025 The Trzsz SSH Authors.
+Copyright (c) 2023-2026 The Trzsz SSH Authors.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -24,4 +24,76 @@ SOFTWARE.
 
 package tssh
 
-const kTsshVersion = "0.1.23"
+import (
+	"fmt"
+	"path/filepath"
+	"regexp"
+	"runtime"
+	dbg "runtime/debug"
+	"strings"
+)
+
+const kTsshVersion = "0.1.26"
+
+// buildTag stores the version tag injected at build time via -ldflags.
+var buildTag = ""
+
+func getTsshVersion() string {
+	var version strings.Builder
+	version.WriteString("trzsz ssh ")
+	version.WriteString(kTsshVersion)
+
+	if buildTag != "" {
+		version.WriteByte('(')
+		version.WriteString(buildTag)
+		version.WriteByte(')')
+	}
+
+	if info, ok := dbg.ReadBuildInfo(); ok {
+		var vcs, revision, modified string
+		for _, setting := range info.Settings {
+			switch setting.Key {
+			case "vcs":
+				vcs = setting.Value
+			case "vcs.revision":
+				revision = setting.Value
+			case "vcs.modified":
+				modified = setting.Value
+			}
+		}
+
+		if vcs == "git" {
+			if revision != "" {
+				version.WriteByte('-')
+				version.WriteString(revision[:min(7, len(revision))])
+				if strings.EqualFold(modified, "true") {
+					version.WriteString("-m")
+				}
+			}
+		} else {
+			_, file, _, _ := runtime.Caller(0)
+			if strings.Contains(filepath.ToSlash(file), "/pkg/mod/github.com/trzsz/trzsz-ssh@") {
+				name := filepath.Base(filepath.Dir(filepath.Dir(file)))
+				re := regexp.MustCompile(`^trzsz-ssh@[^-]+-[^-]+-([0-9a-f]{12,})$`)
+				if match := re.FindStringSubmatch(name); len(match) == 2 {
+					hash := match[1]
+					version.WriteByte('.')
+					version.WriteString(hash[:min(7, len(hash))])
+				}
+			}
+
+		}
+	}
+
+	return version.String()
+}
+
+func printVersionShort() int {
+	fmt.Println("trzsz ssh " + kTsshVersion)
+	return 0
+}
+
+func printVersionDetailed() int {
+	fmt.Println(getTsshVersion())
+	return 0
+}

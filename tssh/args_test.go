@@ -1,7 +1,7 @@
 /*
 MIT License
 
-Copyright (c) 2023-2025 The Trzsz SSH Authors.
+Copyright (c) 2023-2026 The Trzsz SSH Authors.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -49,7 +49,7 @@ func TestSshArgs(t *testing.T) {
 	}
 
 	assertArgsEqual("", sshArgs{})
-	assertArgsEqual("-V", sshArgs{Ver: true})
+	assertArgsEqual("-V", sshArgs{VerDetailed: true})
 	assertArgsEqual("-A", sshArgs{ForwardAgent: true})
 	assertArgsEqual("-a", sshArgs{NoForwardAgent: true})
 	assertArgsEqual("-T", sshArgs{DisableTTY: true})
@@ -58,12 +58,19 @@ func TestSshArgs(t *testing.T) {
 	assertArgsEqual("-6", sshArgs{IPv6Only: true})
 	assertArgsEqual("-g", sshArgs{Gateway: true})
 	assertArgsEqual("-f", sshArgs{Background: true})
+	assertArgsEqual("-s", sshArgs{Subsystem: true})
 	assertArgsEqual("-N", sshArgs{NoCommand: true})
+	assertArgsEqual("-n", sshArgs{NoStdin: true})
 	assertArgsEqual("-gfN -T", sshArgs{Gateway: true, Background: true, NoCommand: true, DisableTTY: true})
 
-	assertArgsEqual("-X", sshArgs{X11Untrusted: true})
+	assertArgsEqual("-X", sshArgs{X11Forward: true})
 	assertArgsEqual("-x", sshArgs{NoX11Forward: true})
 	assertArgsEqual("-Y", sshArgs{X11Trusted: true})
+	assertArgsEqual("-M", sshArgs{ControlMaster: true})
+	assertArgsEqual("-S none", sshArgs{ControlPath: "none"})
+	assertArgsEqual("-O exit host", sshArgs{ControlCmd: "exit", Destination: "host"})
+	assertArgsEqual("-O check host", sshArgs{ControlCmd: "check", Destination: "host"})
+	assertArgsEqual("-Ostop host", sshArgs{ControlCmd: "stop", Destination: "host"})
 
 	assertArgsEqual("-p1022", sshArgs{Port: 1022})
 	assertArgsEqual("-p 2049", sshArgs{Port: 2049})
@@ -89,8 +96,16 @@ func TestSshArgs(t *testing.T) {
 	assertArgsEqual("--debug", sshArgs{Debug: true})
 	assertArgsEqual("--zmodem", sshArgs{Zmodem: true})
 
-	assertArgsEqual("--udp", sshArgs{Udp: true})
+	assertArgsEqual("--remove-host-key", sshArgs{RemoveHostKey: true})
+	assertArgsEqual("--dns tcp://127.0.0.1:1053", sshArgs{DNS: "tcp://127.0.0.1:1053"})
+
+	assertArgsEqual("--tcp", sshArgs{TCP: true})
+	assertArgsEqual("--udp", sshArgs{UDP: true})
+	assertArgsEqual("--kcp", sshArgs{KCP: true})
+	assertArgsEqual("--quic", sshArgs{QUIC: true})
+	assertArgsEqual("--attach", sshArgs{Attach: true})
 	assertArgsEqual("--tsshd-path /usr/bin/tsshd", sshArgs{TsshdPath: "/usr/bin/tsshd"})
+	assertArgsEqual("--tsshd-port 10000-11000", sshArgs{TsshdPort: "10000-11000"})
 
 	assertArgsEqual("--new-host", sshArgs{NewHost: true})
 	assertArgsEqual("--enc-secret", sshArgs{EncSecret: true})
@@ -117,7 +132,7 @@ func TestSshArgs(t *testing.T) {
 			Option:      sshOption{map[string][]string{"remotecommand": {"none"}, "serveralivecountmax": {"2"}}},
 			Destination: "dest", Command: "cmd", Argument: []string{"arg1", "arg2"}})
 
-	assertArgsError := func(cmdline, errMsg string) {
+	assertArgsError := func(cmdline, errMsg string) error {
 		t.Helper()
 		var args sshArgs
 		p, err := arg.NewParser(arg.Config{}, &args)
@@ -125,11 +140,16 @@ func TestSshArgs(t *testing.T) {
 		err = p.Parse(strings.Split(cmdline, " "))
 		assert.NotNil(err)
 		assert.Contains(err.Error(), errMsg)
+		return err
 	}
 
-	assertArgsError("-D", "missing value for -D")
-	assertArgsError("-L", "missing value for -L")
-	assertArgsError("-R", "missing value for -R")
+	_ = assertArgsError("-D", "missing value for -D")
+	_ = assertArgsError("-L", "missing value for -L")
+	_ = assertArgsError("-R", "missing value for -R")
+
+	if got := assertArgsError("-v", arg.ErrVersion.Error()); got != arg.ErrVersion {
+		t.Errorf("-v expected error %v, got %v", arg.ErrVersion, got)
+	}
 }
 
 func TestForwardArgs(t *testing.T) {
@@ -167,9 +187,9 @@ func TestForwardArgs(t *testing.T) {
 	assertLRForwardNil := func(argument string, bindAddr *string, bindPort int, destHost string, destPort int) {
 		t.Helper()
 		assertLRFwd("-L", argument, sshArgs{LocalForward: forwardArgs{[]*forwardCfg{
-			{argument, bindAddr, bindPort, destHost, destPort}}}})
+			{false, argument, bindAddr, bindPort, destHost, destPort}}}})
 		assertLRFwd("-R", argument, sshArgs{RemoteForward: forwardArgs{[]*forwardCfg{
-			{argument, bindAddr, bindPort, destHost, destPort}}}})
+			{false, argument, bindAddr, bindPort, destHost, destPort}}}})
 	}
 	assertLRForward := func(argument string, bindAddr string, bindPort int, destHost string, destPort int) {
 		t.Helper()

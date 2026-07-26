@@ -3,7 +3,7 @@
 /*
 MIT License
 
-Copyright (c) 2023-2025 The Trzsz SSH Authors.
+Copyright (c) 2023-2026 The Trzsz SSH Authors.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -29,15 +29,14 @@ package tssh
 import (
 	"fmt"
 	"os"
-	"strings"
 
-	"github.com/alessio/shellescape"
 	"github.com/trzsz/iterm2"
+	"github.com/trzsz/shellescape"
 )
 
 type iterm2Mgr struct {
-	app      iterm2.App
-	keywords string
+	iterm2Session *iterm2.Session
+	keywords      string
 }
 
 func (m *iterm2Mgr) openTerminals(keywords string, openType int, hosts []*sshHost) {
@@ -61,11 +60,11 @@ func (m *iterm2Mgr) openTerminals(keywords string, openType int, hosts []*sshHos
 	}
 }
 
-func (m *iterm2Mgr) setTitle(session iterm2.Session, alias string) {
+func (m *iterm2Mgr) setTitle(session *iterm2.Session, alias string) {
 	_ = session.Inject(fmt.Appendf(nil, "\033]0;%s\007", alias))
 }
 
-func (m *iterm2Mgr) execCmd(session iterm2.Session, alias string) error {
+func (m *iterm2Mgr) execCmd(session *iterm2.Session, alias string) error {
 	var cmdArgs []string
 	keywordsMatched := false
 	for _, arg := range os.Args {
@@ -86,115 +85,59 @@ func (m *iterm2Mgr) execCmd(session iterm2.Session, alias string) error {
 	}
 	cmd := shellescape.QuoteCommand(cmdArgs)
 	if err := session.SendText(fmt.Sprintf("%s\n", cmd)); err != nil {
-		return fmt.Errorf("failed to send text: %v", err)
+		return fmt.Errorf("iTerm2 send text failed: %v", err)
 	}
 	return nil
 }
 
-func (m *iterm2Mgr) getCurrentWindowSession() (iterm2.Window, iterm2.Session) {
-	sessionID := os.Getenv("ITERM_SESSION_ID")
-	windows, err := m.app.ListWindows()
-	if err != nil {
-		warning("Failed to create window: %v", err)
-		return nil, nil
-	}
-	for _, window := range windows {
-		tabs, err := window.ListTabs()
-		if err != nil {
-			warning("Failed to list tabs: %v", err)
-			return nil, nil
-		}
-		for _, tab := range tabs {
-			sessions, err := tab.ListSessions()
-			if err != nil {
-				warning("Failed to list sessions: %v", err)
-				return nil, nil
-			}
-			for _, session := range sessions {
-				if strings.Contains(sessionID, session.GetSessionID()) {
-					return window, session
-				}
-			}
-		}
-	}
-	warning("No current session: %s", sessionID)
-	return nil, nil
-}
-
 func (m *iterm2Mgr) openWindows(hosts []*sshHost) {
-	if _, session := m.getCurrentWindowSession(); session != nil {
-		m.setTitle(session, hosts[0].Alias)
-	}
+	m.setTitle(m.iterm2Session, hosts[0].Alias)
 	for _, host := range hosts[1:] {
-		window, err := m.app.CreateWindow()
+		_, session, err := m.iterm2Session.GetApp().CreateWindow()
 		if err != nil {
-			warning("Failed to create window: %v", err)
+			warning("iTerm2 create window failed: %v", err)
 			return
 		}
-		tabs, err := window.ListTabs()
-		if err != nil || len(tabs) == 0 {
-			warning("Failed to list tabs: %v", err)
-			return
-		}
-		sessions, err := tabs[0].ListSessions()
-		if err != nil || len(sessions) == 0 {
-			warning("Failed to list sessions: %v", err)
-			return
-		}
-		m.setTitle(sessions[0], host.Alias)
-		if err := m.execCmd(sessions[0], host.Alias); err != nil {
-			warning("Failed to execute command: %v", err)
+		m.setTitle(session, host.Alias)
+		if err := m.execCmd(session, host.Alias); err != nil {
+			warning("iTerm2 execute command failed: %v", err)
 			return
 		}
 	}
 }
 
 func (m *iterm2Mgr) openTabs(hosts []*sshHost) {
-	window, session := m.getCurrentWindowSession()
-	if window == nil {
-		return
-	}
-	if session != nil {
-		m.setTitle(session, hosts[0].Alias)
-	}
+	window := m.iterm2Session.GetWindow()
+	m.setTitle(m.iterm2Session, hosts[0].Alias)
 	for _, host := range hosts[1:] {
-		tab, err := window.CreateTab()
+		_, session, err := window.CreateTab()
 		if err != nil {
-			warning("Failed to create tab: %v", err)
+			warning("iTerm2 create tab failed: %v", err)
 			return
 		}
-		sessions, err := tab.ListSessions()
-		if err != nil || len(sessions) == 0 {
-			warning("Failed to list sessions: %v", err)
-			return
-		}
-		m.setTitle(sessions[0], host.Alias)
-		if err := m.execCmd(sessions[0], host.Alias); err != nil {
-			warning("Failed to execute command: %v", err)
+		m.setTitle(session, host.Alias)
+		if err := m.execCmd(session, host.Alias); err != nil {
+			warning("iTerm2 execute command failed: %v", err)
 			return
 		}
 	}
 }
 
 func (m *iterm2Mgr) openPanes(hosts []*sshHost) {
-	_, session := m.getCurrentWindowSession()
-	if session == nil {
-		return
-	}
-	m.setTitle(session, hosts[0].Alias)
+	m.setTitle(m.iterm2Session, hosts[0].Alias)
 	matrix := getPanesMatrix(hosts)
-	sessions := make([]iterm2.Session, len(matrix))
-	sessions[0] = session
+	sessions := make([]*iterm2.Session, len(matrix))
+	sessions[0] = m.iterm2Session
 	for i := len(matrix) - 1; i > 0; i-- {
-		pane, err := session.SplitPane(iterm2.SplitPaneOptions{Vertical: true})
+		pane, err := m.iterm2Session.SplitPane(iterm2.SplitPaneOptions{Vertical: true})
 		if err != nil {
-			warning("Failed to split pane: %v", err)
+			warning("iTerm2 split pane failed: %v", err)
 			return
 		}
 		sessions[i] = pane
 		m.setTitle(pane, matrix[i][0].alias)
 		if err := m.execCmd(pane, matrix[i][0].alias); err != nil {
-			warning("Failed to execute command: %v", err)
+			warning("iTerm2 execute command failed: %v", err)
 			return
 		}
 	}
@@ -206,12 +149,12 @@ func (m *iterm2Mgr) openPanes(hosts []*sshHost) {
 		for j := len(matrix[i]) - 1; j > 0; j-- {
 			pane, err := session.SplitPane(iterm2.SplitPaneOptions{Vertical: false})
 			if err != nil {
-				warning("Failed to split pane: %v", err)
+				warning("iTerm2 split pane failed: %v", err)
 				return
 			}
 			m.setTitle(pane, matrix[i][j].alias)
 			if err := m.execCmd(pane, matrix[i][j].alias); err != nil {
-				warning("Failed to execute command: %v", err)
+				warning("iTerm2 execute command failed: %v", err)
 				return
 			}
 		}
@@ -219,18 +162,9 @@ func (m *iterm2Mgr) openPanes(hosts []*sshHost) {
 }
 
 func getIterm2Manager() terminalManager {
-	if os.Getenv("ITERM_SESSION_ID") == "" {
-		debug("no ITERM_SESSION_ID environment variable")
+	iterm2Session := getIterm2Session()
+	if iterm2Session == nil {
 		return nil
 	}
-	app, err := iterm2.NewApp("tssh")
-	if err != nil {
-		debug("new iTerm2 app failed: %v", err)
-		return nil
-	}
-	afterLoginFuncs = append(afterLoginFuncs, func() {
-		_ = app.Close()
-	})
-	debug("running in iTerm2")
-	return &iterm2Mgr{app: app}
+	return &iterm2Mgr{iterm2Session: iterm2Session}
 }

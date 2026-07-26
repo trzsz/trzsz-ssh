@@ -3,7 +3,7 @@
 /*
 MIT License
 
-Copyright (c) 2023-2025 The Trzsz SSH Authors.
+Copyright (c) 2023-2026 The Trzsz SSH Authors.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -28,24 +28,26 @@ package tssh
 
 import (
 	"bufio"
-	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"os"
 	"os/exec"
 	"os/signal"
-	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
+	"golang.org/x/crypto/ssh"
 )
+
+const kOpenSSH = "ssh"
 
 type controlMaster struct {
 	path    string
@@ -88,23 +90,30 @@ func (c *controlMaster) handleStdout() <-chan error {
 		defer func() { _ = c.stdout.Close() }()
 		defer close(doneCh)
 		buf := make([]byte, 1000)
-		n, err := c.stdout.Read(buf)
-		if err != nil {
-			doneCh <- fmt.Errorf("read stdout failed: %v", err)
+		for {
+			n, err := c.stdout.Read(buf)
+			if err != nil || n <= 0 {
+				doneCh <- fmt.Errorf("read stdout failed: %v", err)
+				return
+			}
+			out := strings.TrimSpace(ansi.Strip(string(buf[:n])))
+			if out == "" {
+				continue
+			}
+			if out == "ok" {
+				doneCh <- nil
+			} else {
+				doneCh <- fmt.Errorf("control master stdout invalid: %v", strconv.QuoteToASCII(string(buf[:n])))
+			}
 			return
 		}
-		if !bytes.Equal(bytes.TrimSpace(buf[:n]), []byte("ok")) {
-			doneCh <- fmt.Errorf("control master stdout invalid: %v", buf[:n])
-			return
-		}
-		doneCh <- nil
 	}()
 	return doneCh
 }
 
-func (c *controlMaster) fillPassword(args *sshArgs, param *sshParam, expectCount int) (cancel context.CancelFunc) {
+func (c *controlMaster) fillPassword(param *sshParam, expectCount int) (cancel context.CancelFunc) {
 	var ctx context.Context
-	expectTimeout := getExpectTimeout(args, "Ctrl")
+	expectTimeout := getExpectTimeout(param.args, "Ctrl")
 	if expectTimeout > 0 {
 		ctx, cancel = context.WithTimeout(context.Background(), time.Duration(expectTimeout)*time.Second)
 	} else {
@@ -113,7 +122,6 @@ func (c *controlMaster) fillPassword(args *sshArgs, param *sshParam, expectCount
 
 	expect := &sshExpect{
 		param: param,
-		args:  args,
 		ctx:   ctx,
 		pre:   "Ctrl",
 		out:   make(chan []byte, 100),
@@ -142,10 +150,10 @@ func (c *controlMaster) checkExit() <-chan struct{} {
 	return exitCh
 }
 
-func (c *controlMaster) start(args *sshArgs, param *sshParam) error {
+func (c *controlMaster) start(param *sshParam) error {
 	var err error
 	c.cmd = exec.Command(c.path, c.args...)
-	expectCount := getExpectCount(args, "Ctrl")
+	expectCount := getExpectCount(param.args, "Ctrl")
 	if expectCount > 0 {
 		c.cmd.SysProcAttr = &syscall.SysProcAttr{
 			Setsid:  true,
@@ -158,7 +166,7 @@ func (c *controlMaster) start(args *sshArgs, param *sshParam) error {
 		defer func() { _ = tty.Close() }()
 		c.cmd.Stdin = tty
 		c.ptmx = pty
-		cancel := c.fillPassword(args, param, expectCount)
+		cancel := c.fillPassword(param, expectCount)
 		defer cancel()
 	}
 	if c.stdout, err = c.cmd.StdoutPipe(); err != nil {
@@ -181,9 +189,7 @@ func (c *controlMaster) start(args *sshArgs, param *sshParam) error {
 
 	defer func() {
 		if !c.exited.Load() {
-			onExitFuncs = append(onExitFuncs, func() {
-				c.quit(exitCh)
-			})
+			addOnExitFunc(func() { c.quit(exitCh) })
 		}
 	}()
 
@@ -219,58 +225,57 @@ func (c *controlMaster) quit(exitCh <-chan struct{}) {
 	timer.Stop()
 }
 
-func getRealPath(path string) string {
-	realPath, err := filepath.EvalSymlinks(path)
-	if err != nil {
-		return path
-	}
-	return realPath
-}
+func startControlMaster(param *sshParam, sshPath string) error {
+	cmdArgs := []string{"-T", "-oRemoteCommand=none",
+		"-oConnectTimeout=" + strconv.Itoa(int(getConnectTimeout(param.args)/time.Second))}
 
-func getOpenSSH() (string, int, int, error) {
-	sshPath := "/usr/bin/ssh"
-	tsshPath, err := os.Executable()
-	if err != nil {
-		return "", 0, 0, err
-	}
-	if getRealPath(tsshPath) == getRealPath(sshPath) {
-		return "", 0, 0, fmt.Errorf("%s is the current program", sshPath)
-	}
-	out, err := exec.Command(sshPath, "-V").CombinedOutput()
-	if err != nil {
-		return "", 0, 0, err
-	}
-	re := regexp.MustCompile(`OpenSSH_(\d+)\.(\d+)`)
-	matches := re.FindStringSubmatch(string(out))
-	majorVersion := -1
-	minorVersion := -1
-	if len(matches) > 2 {
-		majorVersion, _ = strconv.Atoi(matches[1])
-		minorVersion, _ = strconv.Atoi(matches[2])
-	}
-	return sshPath, majorVersion, minorVersion, nil
-}
-
-func startControlMaster(args *sshArgs, param *sshParam, sshPath string) error {
-	cmdArgs := []string{"-T", "-oRemoteCommand=none", "-oConnectTimeout=10"}
-
+	args := param.args
 	if args.Debug {
 		cmdArgs = append(cmdArgs, "-v")
 	}
-	if !args.NoForwardAgent && args.ForwardAgent {
+	if args.IPv4Only {
+		cmdArgs = append(cmdArgs, "-4")
+	}
+	if args.IPv6Only {
+		cmdArgs = append(cmdArgs, "-6")
+	}
+	if args.Gateway {
+		cmdArgs = append(cmdArgs, "-g")
+	}
+
+	if args.NoForwardAgent {
+		cmdArgs = append(cmdArgs, "-a")
+	} else if args.ForwardAgent {
 		cmdArgs = append(cmdArgs, "-A")
 	}
+	if args.NoX11Forward {
+		cmdArgs = append(cmdArgs, "-x")
+	} else {
+		if args.X11Forward {
+			cmdArgs = append(cmdArgs, "-X")
+		}
+		if args.X11Trusted {
+			cmdArgs = append(cmdArgs, "-Y")
+		}
+	}
+
 	if args.LoginName != "" {
 		cmdArgs = append(cmdArgs, "-l", args.LoginName)
 	}
 	if args.Port != 0 {
 		cmdArgs = append(cmdArgs, "-p", strconv.Itoa(args.Port))
 	}
+	if args.CipherSpec != "" {
+		cmdArgs = append(cmdArgs, "-c", args.CipherSpec)
+	}
 	if args.ConfigFile != "" {
 		cmdArgs = append(cmdArgs, "-F", args.ConfigFile)
 	}
 	if args.ProxyJump != "" {
 		cmdArgs = append(cmdArgs, "-J", args.ProxyJump)
+	}
+	if args.ControlPath != "" {
+		cmdArgs = append(cmdArgs, "-S", args.ControlPath)
 	}
 
 	for _, identity := range args.Identity.values {
@@ -310,19 +315,57 @@ func startControlMaster(args *sshArgs, param *sshParam, sshPath string) error {
 	}
 
 	ctrlMaster := &controlMaster{path: sshPath, args: cmdArgs}
-	if err := ctrlMaster.start(args, param); err != nil {
+	if err := ctrlMaster.start(param); err != nil {
 		return err
 	}
 	debug("start control master success")
 	return nil
 }
 
-func connectViaControl(args *sshArgs, param *sshParam) SshClient {
-	ctrlMaster := getOptionConfig(args, "ControlMaster")
-	ctrlPath := getOptionConfig(args, "ControlPath")
+// execControlCmd forwards an OpenSSH multiplexing control command (`tssh -O <ctl_cmd>`)
+// to the native ssh master process and propagates its exit code.
+func execControlCmd(args *sshArgs, dest string) int {
+	cmdArgs, err := replaceOrAppendDest(os.Args[1:], args.Destination, dest)
+	if err != nil {
+		warning("replace or append destination failed: %v", err)
+		return kExitCodeToolsError
+	}
 
-	switch strings.ToLower(ctrlPath) {
-	case "", "none":
+	sshPath, _, _, err := getOpenSSH()
+	if err != nil {
+		warning("can't find openssh program: %v", err)
+		return kExitCodeToolsError
+	}
+
+	cmd := exec.Command(sshPath, cmdArgs...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if enableDebugLogging {
+		debug("control command: %s %s", sshPath, strings.Join(cmdArgs, " "))
+	}
+
+	if err := cmd.Run(); err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return exitErr.ExitCode()
+		}
+		warning("control command %v failed: %v", cmdArgs, err)
+		return kExitCodeToolsError
+	}
+
+	return 0
+}
+
+func connectViaControl(param *sshParam) SshClient {
+	args := param.args
+	ctrlPath := args.ControlPath
+	if ctrlPath == "" {
+		ctrlPath = getOptionConfig(args, "ControlPath")
+	}
+
+	if ctrlPath == "" || strings.EqualFold(ctrlPath, "none") {
 		return nil
 	}
 
@@ -340,22 +383,32 @@ func connectViaControl(args *sshArgs, param *sshParam) SshClient {
 	if majorVersion < 9 || (majorVersion == 9 && minorVersion < 6) {
 		tokens = "%CdhikLlnpru"
 	}
-	socket, err := expandTokens(ctrlPath, args, param, tokens)
+	socket, err := expandTokens(ctrlPath, param, tokens)
 	if err != nil {
-		warning("expand ControlPath [%s] failed: %v", socket, err)
+		warning("expand ControlPath [%s] failed: %v", ctrlPath, err)
 		return nil
 	}
 	socket = resolveHomeDir(socket)
 
-	switch strings.ToLower(ctrlMaster) {
-	case "yes", "ask":
-		if isFileExist(socket) {
-			warning("control socket [%s] already exists, disabling multiplexing", socket)
-			return nil
+	auto := false
+	master := args.ControlMaster
+	if !master {
+		ctrlMaster := getOptionConfig(args, "ControlMaster")
+		switch strings.ToLower(ctrlMaster) {
+		case "yes", "ask", "true":
+			master = true
+		case "auto", "autoask":
+			auto = true
 		}
-		fallthrough
-	case "auto", "autoask":
-		if err := startControlMaster(args, param, sshPath); err != nil {
+	}
+
+	if master && isFileExist(socket) {
+		warning("control socket [%s] already exists, disabling multiplexing", socket)
+		return nil
+	}
+
+	if auto || master {
+		if err := startControlMaster(param, sshPath); err != nil {
 			warning("start control master failed: %v", err)
 		}
 	}
@@ -368,7 +421,7 @@ func connectViaControl(args *sshArgs, param *sshParam) SshClient {
 		return nil
 	}
 
-	ncc, chans, reqs, err := NewControlClientConn(conn)
+	ncc, chans, reqs, err := ssh.NewControlClientConn(conn)
 	if err != nil {
 		warning("login to [%s] new conn from control path [%s] failed: %v", args.Destination, socket, err)
 		return nil

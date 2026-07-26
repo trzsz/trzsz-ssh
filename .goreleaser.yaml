@@ -60,6 +60,7 @@ nfpms:
   - id: tssh
     builds:
       - tssh
+    section: net
     file_name_template: >-
       {{ .ProjectName }}_
       {{- .Version }}_
@@ -70,13 +71,14 @@ nfpms:
       {{- else if eq .Arch "arm64" }}aarch64
       {{- else if eq .Arch "arm" }}armv{{ .Arm }}
       {{- else }}{{ .Arch }}{{ end }}
-    homepage: https://trzsz.github.io/
+    homepage: https://trzsz.github.io/tssh
     maintainer: Lonny Wong <lonnywong@qq.com>
-    description: |-
-      tssh is a simple ssh client with trzsz ( trz / tsz ) support.
+    description: |
+      tssh is a highly OpenSSH-compatible client with extended features.
     license: MIT
     formats:
       - rpm
+      - deb
     bindir: /usr/bin
     rpm:
       group: Unspecified

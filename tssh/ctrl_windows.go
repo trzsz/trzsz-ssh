@@ -1,7 +1,7 @@
 /*
 MIT License
 
-Copyright (c) 2023-2025 The Trzsz SSH Authors.
+Copyright (c) 2023-2026 The Trzsz SSH Authors.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -28,18 +28,32 @@ import (
 	"strings"
 )
 
-func connectViaControl(args *sshArgs, param *sshParam) SshClient {
-	_ = param
-	ctrlMaster := getOptionConfig(args, "ControlMaster")
-	ctrlPath := getOptionConfig(args, "ControlPath")
+const kOpenSSH = "ssh.exe"
 
-	switch strings.ToLower(ctrlMaster) {
-	case "auto", "yes", "ask", "autoask":
+func execControlCmd(_ *sshArgs, _ string) int {
+	warning("controlling the multiplexing master process is not supported on Windows")
+	return kExitCodeToolsError
+}
+
+func connectViaControl(param *sshParam) SshClient {
+	ctrlPath := param.args.ControlPath
+	if ctrlPath == "" {
+		ctrlPath = getOptionConfig(param.args, "ControlPath")
+	}
+
+	master := param.args.ControlMaster
+	if !master {
+		ctrlMaster := getOptionConfig(param.args, "ControlMaster")
+		switch strings.ToLower(ctrlMaster) {
+		case "auto", "yes", "ask", "autoask", "true":
+			master = true
+		}
+	}
+	if master {
 		warning("ControlMaster is not supported on Windows")
 	}
 
-	switch strings.ToLower(ctrlPath) {
-	case "", "none":
+	if ctrlPath == "" || strings.EqualFold(ctrlPath, "none") {
 		return nil
 	}
 

@@ -1,7 +1,7 @@
 /*
 MIT License
 
-Copyright (c) 2023-2025 The Trzsz SSH Authors.
+Copyright (c) 2023-2026 The Trzsz SSH Authors.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -36,6 +36,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
+
+	"github.com/trzsz/shellescape"
 )
 
 const kMaxBufferSize = 32 * 1024
@@ -141,18 +144,22 @@ func getRemoteServerOS(client SshClient) (string, error) {
 		return "", err
 	}
 	defer func() { _ = session.Close() }()
+
 	output, err := session.Output("uname -s")
 	if err != nil {
 		return "", err
 	}
+
 	name := strings.TrimSpace(string(output))
 	switch strings.ToLower(name) {
+	case "freebsd":
+		return "freebsd", nil
 	case "darwin":
 		return "macos", nil
 	case "linux":
 		return "linux", nil
 	default:
-		return "", fmt.Errorf("os [%s] is not support yet", name)
+		return "", fmt.Errorf("os [%s] is not supported yet", name)
 	}
 }
 
@@ -162,15 +169,17 @@ func getRemoteServerArch(client SshClient) (string, error) {
 		return "", err
 	}
 	defer func() { _ = session.Close() }()
+
 	output, err := session.Output("uname -m")
 	if err != nil {
 		return "", err
 	}
+
 	arch := strings.TrimSpace(string(output))
 	switch strings.ToLower(arch) {
-	case "x86_64":
+	case "x86_64", "amd64":
 		return "x86_64", nil
-	case "aarch64":
+	case "aarch64", "arm64":
 		return "aarch64", nil
 	case "armv6l":
 		return "armv6", nil
@@ -178,8 +187,12 @@ func getRemoteServerArch(client SshClient) (string, error) {
 		return "armv7", nil
 	case "i386", "i486", "i586", "i686":
 		return "i386", nil
+	case "loongarch64", "loong64":
+		return "loong64", nil
+	case "mipsle":
+		return "mipsle", nil
 	default:
-		return "", fmt.Errorf("arch [%s] is not support yet", arch)
+		return "", fmt.Errorf("arch [%s] is not supported yet", arch)
 	}
 }
 
@@ -201,10 +214,11 @@ func mkdirInstallPath(client SshClient, path string) error {
 }
 
 type binaryHelper struct {
-	trzsz bool
-	trz   []byte
-	tsz   []byte
-	tsshd []byte
+	trzsz  bool
+	trz    []byte
+	tsz    []byte
+	tsshd  []byte
+	suffix int64
 }
 
 func (h *binaryHelper) extractBinary(gzr io.Reader, version, svrOS, arch string) error {
@@ -411,7 +425,7 @@ func (h *binaryHelper) uploadBinary(client SshClient, path string) error {
 			return
 		}
 		if len(h.trz) > 0 {
-			if !writeTransferCommand(fmt.Sprintf("C0755 %d trz\n", len(h.trz))) {
+			if !writeTransferCommand(fmt.Sprintf("C0755 %d .trz.tmp.%x\n", len(h.trz), h.suffix)) {
 				return
 			}
 			if !writeBinaryContent(h.trz) {
@@ -419,7 +433,7 @@ func (h *binaryHelper) uploadBinary(client SshClient, path string) error {
 			}
 		}
 		if len(h.tsz) > 0 {
-			if !writeTransferCommand(fmt.Sprintf("C0755 %d tsz\n", len(h.tsz))) {
+			if !writeTransferCommand(fmt.Sprintf("C0755 %d .tsz.tmp.%x\n", len(h.tsz), h.suffix)) {
 				return
 			}
 			if !writeBinaryContent(h.tsz) {
@@ -427,7 +441,7 @@ func (h *binaryHelper) uploadBinary(client SshClient, path string) error {
 			}
 		}
 		if len(h.tsshd) > 0 {
-			if !writeTransferCommand(fmt.Sprintf("C0755 %d tsshd\n", len(h.tsshd))) {
+			if !writeTransferCommand(fmt.Sprintf("C0755 %d .tsshd.tmp.%x\n", len(h.tsshd), h.suffix)) {
 				return
 			}
 			if !writeBinaryContent(h.tsshd) {
@@ -442,8 +456,7 @@ func (h *binaryHelper) uploadBinary(client SshClient, path string) error {
 		return err
 	}
 	if err := session.Run(fmt.Sprintf("scp -tqr %s", path)); err != nil {
-		msg := readFromStream(stderr)
-		if msg != "" {
+		if msg, _ := readConsoleOutput(stderr); msg != "" {
 			errMsg = append(errMsg, msg)
 		}
 		if len(errMsg) > 0 {
@@ -451,6 +464,52 @@ func (h *binaryHelper) uploadBinary(client SshClient, path string) error {
 		}
 		return err
 	}
+	return nil
+}
+
+func (h *binaryHelper) renameBinary(client SshClient, path string) error {
+	quoteAbsPath := func(name string) string {
+		return shellescape.Quote(pathJoin(path, name))
+	}
+
+	rename := func(oldName, newName string) error {
+		session, err := client.NewSession()
+		if err != nil {
+			return err
+		}
+		defer func() { _ = session.Close() }()
+
+		cmd := fmt.Sprintf("mv %s %s", quoteAbsPath(oldName), quoteAbsPath(newName))
+
+		output, err := session.CombinedOutput(cmd)
+		if err != nil {
+			errMsg := string(bytes.TrimSpace(output))
+			if errMsg != "" {
+				return fmt.Errorf("%s", errMsg)
+			}
+			return err
+		}
+		return nil
+	}
+
+	if len(h.trz) > 0 {
+		if err := rename(fmt.Sprintf(".trz.tmp.%x", h.suffix), "trz"); err != nil {
+			return err
+		}
+	}
+
+	if len(h.tsz) > 0 {
+		if err := rename(fmt.Sprintf(".tsz.tmp.%x", h.suffix), "tsz"); err != nil {
+			return err
+		}
+	}
+
+	if len(h.tsshd) > 0 {
+		if err := rename(fmt.Sprintf(".tsshd.tmp.%x", h.suffix), "tsshd"); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -504,7 +563,7 @@ func execInstallTrzsz(args *sshArgs, client SshClient) {
 		return
 	}
 
-	h := binaryHelper{trzsz: true}
+	h := binaryHelper{trzsz: true, suffix: time.Now().UnixNano()}
 	if args.TrzszBinPath != "" {
 		if err := h.readBinary(args.TrzszBinPath, version, svrOS, arch); err != nil {
 			toolsWarn("InstallTrzsz", "extract installation files failed: %v", err)
@@ -520,6 +579,11 @@ func execInstallTrzsz(args *sshArgs, client SshClient) {
 
 	if err := h.uploadBinary(client, installPath); err != nil {
 		toolsWarn("InstallTrzsz", "upload trzsz binary files failed: %v", err)
+		return
+	}
+
+	if err := h.renameBinary(client, installPath); err != nil {
+		toolsWarn("InstallTrzsz", "rename trzsz binary files failed: %v", err)
 		return
 	}
 
@@ -576,7 +640,7 @@ func execInstallTsshd(args *sshArgs, client SshClient) {
 		return
 	}
 
-	h := binaryHelper{trzsz: false}
+	h := binaryHelper{trzsz: false, suffix: time.Now().UnixNano()}
 	if args.TsshdBinPath != "" {
 		if err := h.readBinary(args.TsshdBinPath, version, svrOS, arch); err != nil {
 			toolsWarn("InstallTsshd", "extract installation files failed: %v", err)
@@ -592,6 +656,11 @@ func execInstallTsshd(args *sshArgs, client SshClient) {
 
 	if err := h.uploadBinary(client, installPath); err != nil {
 		toolsWarn("InstallTsshd", "upload tsshd binary files failed: %v", err)
+		return
+	}
+
+	if err := h.renameBinary(client, installPath); err != nil {
+		toolsWarn("InstallTsshd", "rename tsshd binary files failed: %v", err)
 		return
 	}
 
