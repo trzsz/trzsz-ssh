@@ -737,10 +737,15 @@ func appendPromptHosts(oriArgs *sshArgs, hosts []*sshHost, seen map[string]bool,
 				continue
 			}
 
+			host := getOptionConfig(&args, "HostName")
+			if host == "" && args.canonicalDest != "" {
+				host = args.canonicalDest
+			}
+
 			hosts = append(hosts, &sshHost{
 				Args:          &args,
 				Alias:         alias,
-				Host:          getOptionConfig(&args, "HostName"),
+				Host:          host,
 				Port:          getOptionConfig(&args, "Port"),
 				User:          getOptionConfig(&args, "User"),
 				IdentityFile:  getOptionConfig(&args, "IdentityFile"),
