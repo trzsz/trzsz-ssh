@@ -129,7 +129,7 @@ func (m *iterm2Mgr) openPanes(hosts []*sshHost) {
 	sessions := make([]*iterm2.Session, len(matrix))
 	sessions[0] = m.iterm2Session
 	for i := len(matrix) - 1; i > 0; i-- {
-		pane, err := m.iterm2Session.SplitPane(iterm2.SplitPaneOptions{Vertical: false})
+		pane, err := m.iterm2Session.SplitPane(iterm2.SplitPaneOptions{Vertical: true})
 		if err != nil {
 			warning("iTerm2 split pane failed: %v", err)
 			return
