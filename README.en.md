@@ -793,6 +793,10 @@ trzsz-ssh ( tssh ) with [tsshd](https://github.com/trzsz/tsshd) also supports in
   PromptCursorIcon = 🧨
   PromptSelectedIcon = 🍺
 
+  # The cursor style of the search input when searching and selecting a server in tssh.
+  # Set to 'pipe' to display a vertical bar (|). The default is a solid block (█):
+  PromptSearchPointer = pipe
+
   # Auto set terminal title after login. It will not be reset after exiting. Please set PROMPT_COMMAND in local shell.
   # Set this to rtt to display the current connection RTT in the title (e.g. server 12ms).
   SetTerminalTitle = yes

@@ -577,6 +577,11 @@ func chooseAlias(args *sshArgs, keywords string) (string, bool, error) {
 		return v.FieldByName(field).IsValid()
 	}
 
+	pointer := blinkingBlockCursor
+	if strings.EqualFold(userConfig.promptSearchPointer, "pipe") {
+		pointer = blinkingPipeCursor
+	}
+
 	pipeIn, pipeOut := io.Pipe()
 	prompt := sshPrompt{
 		selector: &promptui.Select{
@@ -600,6 +605,7 @@ func chooseAlias(args *sshArgs, keywords string) (string, bool, error) {
 			Stdout:       &bellFilter{os.Stderr},
 			HideSelected: true,
 			Keywords:     keywords,
+			Pointer:      pointer,
 		},
 		pipeOut: pipeOut,
 		hosts:   hosts,
@@ -629,6 +635,14 @@ func chooseAlias(args *sshArgs, keywords string) (string, bool, error) {
 		termMgr.openTerminals(keywords, prompt.openType, selectedHosts)
 	}
 	return selectedHosts[0].Alias, false, nil
+}
+
+func blinkingPipeCursor(input []rune) []rune {
+	return append([]rune("\033[5m|\033[0m"), input...)
+}
+
+func blinkingBlockCursor(input []rune) []rune {
+	return []rune("\033[5m\u2588\033[0m")
 }
 
 func predictDestination(args *sshArgs, dest string) (string, bool, error) {

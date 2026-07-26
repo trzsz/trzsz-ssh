@@ -792,6 +792,9 @@ trzsz-ssh ( tssh ) 与 [tsshd](https://github.com/trzsz/tsshd) 一起，适用�
   PromptCursorIcon = 🧨
   PromptSelectedIcon = 🍺
 
+  # tssh 搜索和选择服务器时，搜索输入框的光标样式。配置为 pipe 时显示为竖线（|），默认是实心方块（█）：
+  PromptSearchPointer = pipe
+
   # 登录后自动设置终端标题，退出后不会重置，你需要参考下文在本地 shell 中设置 PROMPT_COMMAND
   # 设置为 rtt 时会在标题中显示当前连接 RTT（例如：server 12ms）。
   SetTerminalTitle = yes
