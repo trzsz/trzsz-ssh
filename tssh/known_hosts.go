@@ -30,11 +30,13 @@ import (
 	"crypto/hmac"
 	"crypto/sha1"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -48,6 +50,137 @@ var acceptHostKeys []string
 var acceptHostKeyMu sync.Mutex
 var addHostKeyMutex sync.Mutex
 var sshLoginSuccess atomic.Bool
+
+type malformedKnownHost struct {
+	path   string
+	line   int
+	reason string
+}
+
+type knownHostsSnapshot struct {
+	originalPath  string
+	temporaryPath string
+	lines         [][]byte
+}
+
+func createKnownHostsSnapshots(files []string) ([]*knownHostsSnapshot, error) {
+	snapshots := make([]*knownHostsSnapshot, 0, len(files))
+	cleanup := func() {
+		for _, snapshot := range snapshots {
+			_ = os.Remove(snapshot.temporaryPath)
+		}
+	}
+
+	for _, path := range files {
+		input, err := os.ReadFile(path)
+		if err != nil {
+			cleanup()
+			return nil, err
+		}
+
+		file, err := os.CreateTemp("", "tssh_known_hosts_*")
+		if err != nil {
+			cleanup()
+			return nil, err
+		}
+		temporaryPath := file.Name()
+		if err := writeAll(file, input); err != nil {
+			_ = file.Close()
+			_ = os.Remove(temporaryPath)
+			cleanup()
+			return nil, err
+		}
+		if err := file.Close(); err != nil {
+			_ = os.Remove(temporaryPath)
+			cleanup()
+			return nil, err
+		}
+
+		snapshots = append(snapshots, &knownHostsSnapshot{
+			originalPath:  path,
+			temporaryPath: temporaryPath,
+			lines:         bytes.Split(input, []byte{'\n'}),
+		})
+	}
+	return snapshots, nil
+}
+
+func parseKnownHostsLineError(err error, snapshots []*knownHostsSnapshot) (*knownHostsSnapshot, int, string, bool) {
+	message := err.Error()
+	for _, snapshot := range snapshots {
+		prefix := "knownhosts: " + snapshot.temporaryPath + ":"
+		if !strings.HasPrefix(message, prefix) {
+			continue
+		}
+		remainder := strings.TrimPrefix(message, prefix)
+		lineText, reason, ok := strings.Cut(remainder, ":")
+		if !ok {
+			return nil, 0, "", false
+		}
+		line, parseErr := strconv.Atoi(lineText)
+		if parseErr != nil || line < 1 || line > len(snapshot.lines) {
+			return nil, 0, "", false
+		}
+		return snapshot, line, strings.TrimSpace(reason), true
+	}
+	return nil, 0, "", false
+}
+
+func rewriteKnownHostsSnapshot(snapshot *knownHostsSnapshot) error {
+	return os.WriteFile(snapshot.temporaryPath, bytes.Join(snapshot.lines, []byte{'\n'}), 0600)
+}
+
+func restoreKnownHostsPaths(err error, snapshots []*knownHostsSnapshot) error {
+	message := err.Error()
+	for _, snapshot := range snapshots {
+		message = strings.ReplaceAll(message, snapshot.temporaryPath, snapshot.originalPath)
+	}
+	return errors.New(message)
+}
+
+func newKnownHostsDB(files ...string) (*knownhosts.HostKeyDB, []malformedKnownHost, error) {
+	db, err := knownhosts.NewDB(files...)
+	if err == nil {
+		return db, nil, nil
+	}
+
+	snapshots, snapshotErr := createKnownHostsSnapshots(files)
+	if snapshotErr != nil {
+		return nil, nil, snapshotErr
+	}
+	defer func() {
+		for _, snapshot := range snapshots {
+			_ = os.Remove(snapshot.temporaryPath)
+		}
+	}()
+
+	temporaryFiles := make([]string, 0, len(snapshots))
+	for _, snapshot := range snapshots {
+		temporaryFiles = append(temporaryFiles, snapshot.temporaryPath)
+	}
+
+	var malformed []malformedKnownHost
+	for {
+		db, err = knownhosts.NewDB(temporaryFiles...)
+		if err == nil {
+			return db, malformed, nil
+		}
+
+		snapshot, line, reason, ok := parseKnownHostsLineError(err, snapshots)
+		if !ok {
+			return nil, nil, restoreKnownHostsPaths(err, snapshots)
+		}
+		snapshot.lines[line-1] = nil
+		if err := rewriteKnownHostsSnapshot(snapshot); err != nil {
+			return nil, nil, err
+		}
+		malformed = append(malformed, malformedKnownHost{
+			path:   snapshot.originalPath,
+			line:   line,
+			reason: reason,
+		})
+	}
+}
 
 func isAcceptedHostKey(keyNormalizedLine string) bool {
 	acceptHostKeyMu.Lock()
@@ -216,9 +349,12 @@ func getHostKeyCallback(param *sshParam) (ssh.HostKeyCallback, []string, error) 
 		return nil, nil, err
 	}
 
-	khdb, err := knownhosts.NewDB(files...)
+	khdb, malformed, err := newKnownHostsDB(files...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("new knownhosts failed: %v", err)
+	}
+	for _, entry := range malformed {
+		warning("Ignoring malformed known_hosts entry %s:%d: %s", entry.path, entry.line, entry.reason)
 	}
 
 	hostKeyCallback := func(host string, remote net.Addr, key ssh.PublicKey) (err error) {
