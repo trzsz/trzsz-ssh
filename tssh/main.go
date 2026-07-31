@@ -27,6 +27,7 @@ package tssh
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -455,7 +456,11 @@ func sshStart(args *sshArgs) (int, error) {
 		}
 	} else {
 		if err := sshConn.session.Shell(); err != nil {
-			return kExitCodeShellFailed, fmt.Errorf("start shell failed: %v", err)
+			if !errors.Is(err, io.EOF) {
+				return kExitCodeShellFailed, fmt.Errorf("start shell failed: %v", err)
+			}
+			debug("shell request reached EOF before reply, continuing")
+			sshConn.startEOF = true
 		}
 	}
 

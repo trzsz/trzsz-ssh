@@ -255,6 +255,7 @@ type sshConnection struct {
 	closeMu   sync.Mutex
 	exited    atomic.Bool
 	waitWarn  sync.WaitGroup
+	startEOF  bool
 }
 
 func (c *sshConnection) Close() {
@@ -279,7 +280,7 @@ func (c *sshConnection) waitUntilExit() int {
 	go func() {
 		defer close(done)
 
-		if err := c.session.Wait(); err != nil && enableWarningLogging && !c.exited.Load() {
+		if err := c.session.Wait(); err != nil && enableWarningLogging && !c.exited.Load() && !c.startEOF {
 			var msg string
 			switch e := err.(type) {
 			case *ssh.ExitError:
