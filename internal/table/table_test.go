@@ -29,6 +29,7 @@ import (
 	"testing"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 var TableStyle = func(row, col int) lipgloss.Style {
@@ -113,8 +114,9 @@ func TestTableExample(t *testing.T) {
 └──────────┴───────────────────────────────┴─────────────────┘
 `)
 
-	if table.String() != expected {
-		t.Fatalf("expected:\n\n%s\n\ngot:\n\n%s", expected, table.String())
+	got := ansi.Strip(table.String())
+	if got != expected {
+		t.Fatalf("expected:\n\n%s\n\ngot:\n\n%s", expected, got)
 	}
 }
 

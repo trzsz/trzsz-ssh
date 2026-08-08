@@ -36,7 +36,7 @@ clean:
 	$(foreach f, $(wildcard ${BIN_DIR}/*), $(RM) $(f);)
 
 test:
-	${GO_TEST} -v -count=1 ./tssh
+	${GO_TEST} -v -count=1 ./...
 
 install: all
 ifdef WIN_TARGET
