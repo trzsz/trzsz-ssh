@@ -845,6 +845,11 @@ func sshConnect(args *sshArgs) (*sshConnection, error) {
 		return nil, err
 	}
 
+	// allocate a tty for upload with expect when tty is not enabled
+	if !tty && len(args.UploadFile.values) > 0 && getExpectCount(args, "") > 0 {
+		tty = true
+	}
+
 	// ssh login
 	client, err := sshLogin(param, nil, kUdpModeNo)
 	if err != nil {

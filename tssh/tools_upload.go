@@ -38,6 +38,17 @@ func execTrzUpload(sshConn *sshConnection) int {
 		return 0
 	}
 
+	expectCount := getExpectCount(sshConn.param.args, "")
+	if expectCount > 0 {
+		// start a shell for expect interactions
+		if err := sshConn.session.Shell(); err != nil {
+			warning("start shell before trz upload failed: %v", err)
+			return kExitCodeShellFailed
+		}
+		// execute expect interactions
+		execExpectInteractions(sshConn)
+	}
+
 	wrapStdIO(nil, nil, sshConn.serverErr, 0, 0, sshConn)
 	trzsz.SetAffectedByWindows(false)
 	width, _, err := getTerminalSize()
@@ -71,15 +82,30 @@ func execTrzUpload(sshConn *sshConnection) int {
 	if cmd == "" {
 		cmd = "trz -d"
 	}
-	if err := sshConn.session.Start(cmd); err != nil {
-		warning("start command [%s] failed: %v", cmd, err)
-		return kExitCodeTrzRunError
+
+	if expectCount > 0 {
+		// the shell is already running, so execute the command through its stdin.
+		if _, err := sshConn.serverIn.Write([]byte(cmd + "\r")); err != nil {
+			warning("send command [%s] failed: %v", cmd, err)
+			return kExitCodeTrzRunError
+		}
+	} else {
+		if err := sshConn.session.Start(cmd); err != nil {
+			warning("start command [%s] failed: %v", cmd, err)
+			return kExitCodeTrzRunError
+		}
 	}
-	_ = sshConn.session.Wait()
 
 	if err := <-errCh; err != nil {
 		warning("upload %v failed: %v", files, err)
 		return kExitCodeTrzRetError
+	}
+
+	if expectCount > 0 {
+		// give the remote command time to report the upload result
+		time.Sleep(time.Second)
+	} else {
+		_ = sshConn.session.Wait()
 	}
 	return 0
 }
