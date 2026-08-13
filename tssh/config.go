@@ -86,6 +86,7 @@ type tsshConfig struct {
 	defaultUploadPath     string
 	defaultDownloadPath   string
 	dragFileUploadCommand string
+	clientAutoUpload      *bool
 	progressColorPair     string
 	promptThemeLayout     string
 	promptThemeColors     map[string]string
@@ -209,6 +210,8 @@ func loadTsshConfig(path string) {
 			userConfig.exConfigPath = resolveHomeDir(value)
 		case name == "useopensshconfig" && userConfig.useOpenSSHConfig == nil:
 			userConfig.useOpenSSHConfig = parseBoolValue(name, value, false)
+		case name == "clientautoupload" && userConfig.clientAutoUpload == nil:
+			userConfig.clientAutoUpload = parseBoolValue(name, value, false)
 		case name == "fuzzyhostselection" && userConfig.fuzzyHostSelection == nil:
 			userConfig.fuzzyHostSelection = parseBoolValue(name, value, true)
 		case name == "defaultuploadpath" && userConfig.defaultUploadPath == "":
@@ -279,6 +282,9 @@ func showTsshConfig() {
 	}
 	if userConfig.useOpenSSHConfig != nil {
 		debug("UseOpenSSHConfig = %v", *userConfig.useOpenSSHConfig)
+	}
+	if userConfig.clientAutoUpload != nil {
+		debug("ClientAutoUpload = %v", *userConfig.clientAutoUpload)
 	}
 	if userConfig.fuzzyHostSelection != nil {
 		debug("FuzzyHostSelection = %v", *userConfig.fuzzyHostSelection)

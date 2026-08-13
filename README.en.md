@@ -389,6 +389,20 @@ trzsz-ssh ( tssh ) with [tsshd](https://github.com/trzsz/tsshd) also supports in
   tssh --upload-file /path/to/file1 --upload-file /path/to/dir2 xxx_server '~/.local/bin/trz -d /tmp/'
   ```
 
+- In the `~/.ssh/config` or `ExConfigPath` configuration file, configure `ClientAutoUpload` to `yes` to allow the server to upload files and directories automatically via `trz --local-path` without popping up the file selection dialog ( disabled by default, the file selection dialog will still pop up when the server requests an automatic upload ):
+
+  ```
+  Host xxx
+    # If configured in ~/.ssh/config, add `#!!` prefix to be compatible with openssh.
+    ClientAutoUpload yes
+  ```
+
+- The server should install the [trzsz](https://trzsz.github.io/go) version that supports `--local-path`, and configure `LocalPathUpload = true` in the server's `~/.trzsz.conf`, then run `trz --local-path` on the server to upload files and directories automatically without popping up the file selection dialog, such as:
+
+  ```sh
+  trz --local-path /path/to/file1,/path/to/dir2 /tmp/
+  ```
+
 - You can use `tsz` in the command line to directly download files and directories to your local computer. You can also use the `--download-path` argument to specify the path for local saving, such as:
 
   ```sh

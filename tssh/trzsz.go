@@ -144,6 +144,9 @@ func setupTrzszFilter(sshConn *sshConnection) error {
 	trzszFilter.SetDefaultDownloadPath(defaultDownloadPath)
 	trzszFilter.SetDragFileUploadCommand(dragFileUploadCommand)
 	trzszFilter.SetProgressColorPair(userConfig.progressColorPair)
+	if userConfig.clientAutoUpload != nil {
+		trzszFilter.SetClientAutoUpload(*userConfig.clientAutoUpload)
+	}
 
 	// setup tunnel connect
 	trzszFilter.SetTunnelConnector(func(port int) net.Conn {

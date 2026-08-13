@@ -388,6 +388,20 @@ trzsz-ssh ( tssh ) 与 [tsshd](https://github.com/trzsz/tsshd) 一起，适用�
   tssh --upload-file /path/to/file1 --upload-file /path/to/dir2 xxx_server '~/.local/bin/trz -d /tmp/'
   ```
 
+- 在 `~/.ssh/config` 或 `ExConfigPath` 配置文件中，配置 `ClientAutoUpload` 为 `yes`，允许服务器通过 `trz --local-path` 免弹窗自动上传文件（默认不开启，服务器请求自动上传时仍会弹出文件选择框）：
+
+  ```
+  Host xxx
+    # 如果配置在 ~/.ssh/config 中，可以加上 `#!!` 前缀，以兼容标准 ssh
+    ClientAutoUpload yes
+  ```
+
+- 服务器上需安装支持 `--local-path` 的 [trzsz](https://trzsz.github.io/cn/go) 版本，并在服务器的 `~/.trzsz.conf` 中配置 `LocalPathUpload = true`，然后在服务器上执行 `trz --local-path` 即可免弹窗自动上传文件或目录，如：
+
+  ```sh
+  trz --local-path /path/to/file1,/path/to/dir2 /tmp/
+  ```
+
 - 可在命令行中使用 `tsz` 直接下载文件或目录到本地，可一并使用 `--download-path` 参数指定本地保存的路径，如：
 
   ```sh
