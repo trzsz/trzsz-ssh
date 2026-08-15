@@ -258,6 +258,9 @@ func startControlMaster(param *sshParam, sshPath string) error {
 			cmdArgs = append(cmdArgs, "-Y")
 		}
 	}
+	if args.ControlMaster {
+		cmdArgs = append(cmdArgs, "-M")
+	}
 
 	if args.LoginName != "" {
 		cmdArgs = append(cmdArgs, "-l", args.LoginName)
