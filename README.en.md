@@ -770,6 +770,10 @@ trzsz-ssh ( tssh ) with [tsshd](https://github.com/trzsz/tsshd) also supports in
   # The automatically save path for tsz downloading, the default is empty which poping up a folder dialog.
   DefaultDownloadPath = ~/Downloads
 
+  # The directories allowed for automatic upload (without popping up a file selection dialog). You can configure one or multiple paths separated by spaces. If a path contains spaces, wrap the entire path in single or double quotes. The configured paths must be absolute paths or start with `~/`.
+  # ⚠️ Security Warning: Please use this feature with caution. If you log into a malicious server, the server could stealthily steal all files under the configured directories without your confirmation.
+  AllowedAutoUploadDirs = ~/Downloads/ '/Users/username/My Documents/'
+
   # The global drag file upload command, note that the priority configured in ~/.ssh/config is higher.
   DragFileUploadCommand = trz -y
 

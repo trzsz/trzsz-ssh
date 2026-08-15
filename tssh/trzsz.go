@@ -96,6 +96,12 @@ func setupTrzszFilter(sshConn *sshConnection) error {
 	}
 
 	// custom configuration
+	allowedAutoUploadDirs := getExOptionConfig(args, "AllowedAutoUploadDirs")
+	if strings.EqualFold(allowedAutoUploadDirs, "none") {
+		allowedAutoUploadDirs = ""
+	} else if allowedAutoUploadDirs == "" {
+		allowedAutoUploadDirs = userConfig.allowedAutoUploadDirs
+	}
 	defaultUploadPath := getExOptionConfig(args, "DefaultUploadPath")
 	if defaultUploadPath == "" {
 		defaultUploadPath = userConfig.defaultUploadPath
@@ -140,8 +146,15 @@ func setupTrzszFilter(sshConn *sshConnection) error {
 	})
 
 	// setup trzsz config
-	trzszFilter.SetDefaultUploadPath(defaultUploadPath)
-	trzszFilter.SetDefaultDownloadPath(defaultDownloadPath)
+	if err := trzszFilter.SetAllowedAutoUploadDirs(allowedAutoUploadDirs); err != nil {
+		warning("AllowedAutoUploadDirs %q is invalid: %v", allowedAutoUploadDirs, err)
+	}
+	if err := trzszFilter.SetDefaultUploadPath(defaultUploadPath); err != nil {
+		warning("DefaultUploadPath %q is invalid: %v", defaultUploadPath, err)
+	}
+	if err := trzszFilter.SetDefaultDownloadPath(defaultDownloadPath); err != nil {
+		warning("DefaultDownloadPath %q is invalid: %v", defaultDownloadPath, err)
+	}
 	trzszFilter.SetDragFileUploadCommand(dragFileUploadCommand)
 	trzszFilter.SetProgressColorPair(userConfig.progressColorPair)
 

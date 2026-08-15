@@ -769,6 +769,10 @@ trzsz-ssh ( tssh ) 与 [tsshd](https://github.com/trzsz/tsshd) 一起，适用�
   # tsz 下载时，自动保存的路径，为空时弹出对话框手工选择，默认为空
   DefaultDownloadPath = ~/Downloads
 
+  # 配置允许自动上传的目录（无需弹出文件选择框）。你可以配置一个或多个路径，使用空格分隔。如果路径中包含空格，请使用单引号或双引号将整个路径包裹起来。要求配置绝对路径，或者以 `~/` 开头。
+  # ⚠️ 安全风险： 请谨慎配置此功能。如果你登录了恶意的服务器，服务器可能会在不经你确认的情况下，偷偷地将这些配置目录下的所有文件全部偷走。
+  AllowedAutoUploadDirs = ~/Downloads/ '/Users/username/My Documents/'
+
   # 全局的拖拽文件上传命令，注意 ~/.ssh/config 中配置的优先级更高
   DragFileUploadCommand = trz -y
 

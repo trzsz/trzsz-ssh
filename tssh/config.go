@@ -83,6 +83,7 @@ type tsshConfig struct {
 	exConfigPath          string
 	useOpenSSHConfig      *bool
 	fuzzyHostSelection    *bool
+	allowedAutoUploadDirs string
 	defaultUploadPath     string
 	defaultDownloadPath   string
 	dragFileUploadCommand string
@@ -211,6 +212,8 @@ func loadTsshConfig(path string) {
 			userConfig.useOpenSSHConfig = parseBoolValue(name, value, false)
 		case name == "fuzzyhostselection" && userConfig.fuzzyHostSelection == nil:
 			userConfig.fuzzyHostSelection = parseBoolValue(name, value, true)
+		case name == "allowedautouploaddirs" && userConfig.allowedAutoUploadDirs == "":
+			userConfig.allowedAutoUploadDirs = value
 		case name == "defaultuploadpath" && userConfig.defaultUploadPath == "":
 			userConfig.defaultUploadPath = resolveHomeDir(value)
 		case name == "defaultdownloadpath" && userConfig.defaultDownloadPath == "":
@@ -248,6 +251,9 @@ func loadTsshConfig(path string) {
 			userConfig.customDnsServer = value
 		}
 	}
+	if err := scanner.Err(); err != nil {
+		warning("read config %q failed: %v", path, err)
+	}
 }
 
 func parseTsshConfig() {
@@ -282,6 +288,9 @@ func showTsshConfig() {
 	}
 	if userConfig.fuzzyHostSelection != nil {
 		debug("FuzzyHostSelection = %v", *userConfig.fuzzyHostSelection)
+	}
+	if userConfig.allowedAutoUploadDirs != "" {
+		debug("AllowedAutoUploadDirs = %s", userConfig.allowedAutoUploadDirs)
 	}
 	if userConfig.defaultUploadPath != "" {
 		debug("DefaultUploadPath = %s", userConfig.defaultUploadPath)
