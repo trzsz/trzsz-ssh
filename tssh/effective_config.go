@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -17,7 +19,7 @@ type effectiveSshConfig struct {
 
 var openSSHEffectiveCfgCache struct {
 	mu sync.Mutex
-	m  map[string]*effectiveSshConfig // dest -> cfg (nil means tried but unavailable)
+	m  map[string]*effectiveSshConfig // command key -> cfg (nil means tried but unavailable)
 }
 
 func (c *effectiveSshConfig) get(key string) string {
@@ -64,23 +66,83 @@ func parseOpenSSHConfigDump(out []byte) *effectiveSshConfig {
 	return cfg
 }
 
+func openSSHEffectiveConfigCommandArgs(args *sshArgs, user, port string) ([]string, string) {
+	cmdArgs := []string{"-G"}
+
+	// Passing -F suppresses the system SSH config, so preserve OpenSSH's
+	// default lookup unless tssh selected a different config file explicitly.
+	if userConfig != nil {
+		defaultPath := filepath.Join(userHomeDir, ".ssh", "config")
+		customPath := args != nil && args.ConfigFile != "" || userConfig.configPath != defaultPath
+		if customPath {
+			configPath := userConfig.configPath
+			if configPath == "" {
+				configPath = os.DevNull
+			}
+			cmdArgs = append(cmdArgs, "-F", configPath)
+		}
+	}
+
+	// Only promote User and Port from generic -o values because they affect
+	// Match evaluation. Other -o values may be tssh-only directives that
+	// OpenSSH would reject.
+	loginName := strings.TrimSpace(user)
+	if args != nil {
+		if args.LoginName != "" {
+			loginName = args.LoginName
+		} else if loginName == "" {
+			loginName = args.Option.get("User")
+		}
+	}
+	if loginName != "" {
+		cmdArgs = append(cmdArgs, "-l", loginName)
+	}
+
+	portNumber := strings.TrimSpace(port)
+	if args != nil {
+		if args.Port > 0 {
+			portNumber = strconv.Itoa(args.Port)
+		} else if portNumber == "" {
+			portNumber = args.Option.get("Port")
+		}
+	}
+	if portNumber != "" {
+		cmdArgs = append(cmdArgs, "-p", portNumber)
+	}
+
+	dest := ""
+	if args != nil {
+		dest = args.Destination
+	}
+	cmdArgs = append(cmdArgs, dest)
+
+	// The complete argv, rather than only the destination, identifies the
+	// effective configuration. This prevents a prior UI lookup from being
+	// reused for a later user/port/config-file variant of the same alias.
+	return cmdArgs, strings.Join(cmdArgs, "\x00")
+}
+
 func getOpenSSHEffectiveConfig(args *sshArgs, user, port string) *effectiveSshConfig {
 	if userConfig == nil || !userConfig.shouldUseOpenSSHConfig() {
 		return nil
 	}
 
-	dest := args.Destination
+	cmdArgs, cacheKey := openSSHEffectiveConfigCommandArgs(args, user, port)
+	dest := ""
+	if args != nil {
+		dest = args.Destination
+	}
 
 	openSSHEffectiveCfgCache.mu.Lock()
 	if openSSHEffectiveCfgCache.m == nil {
 		openSSHEffectiveCfgCache.m = make(map[string]*effectiveSshConfig)
 	}
-	if cfg, ok := openSSHEffectiveCfgCache.m[dest]; ok {
+	if cfg, ok := openSSHEffectiveCfgCache.m[cacheKey]; ok {
 		openSSHEffectiveCfgCache.mu.Unlock()
 		return cfg
 	}
 	// Mark as tried early to avoid repeated expensive calls.
-	openSSHEffectiveCfgCache.m[dest] = nil
+	openSSHEffectiveCfgCache.m[cacheKey] = nil
 	openSSHEffectiveCfgCache.mu.Unlock()
 
 	sshPath, _, _, err := getOpenSSH()
@@ -88,28 +150,6 @@ func getOpenSSHEffectiveConfig(args *sshArgs, user, port string) *effectiveSshCo
 		debug("OpenSSH not available, skip ssh -G config evaluation: %v", err)
 		return nil
 	}
-
-	cmdArgs := []string{"-G"}
-
-	// Forward the user-specified -F config file to ssh.
-	if args != nil && args.ConfigFile != "" {
-		cmdArgs = append(cmdArgs, "-F", args.ConfigFile)
-	}
-
-	// If user/port are explicitly specified by args/destination, pass them to
-	// OpenSSH so token expansion matches tssh behavior.
-	if args != nil && args.LoginName != "" {
-		cmdArgs = append(cmdArgs, "-l", args.LoginName)
-	} else if user != "" {
-		cmdArgs = append(cmdArgs, "-l", user)
-	}
-	if args != nil && args.Port > 0 {
-		cmdArgs = append(cmdArgs, "-p", strconv.Itoa(args.Port))
-	} else if port != "" {
-		cmdArgs = append(cmdArgs, "-p", port)
-	}
-
-	cmdArgs = append(cmdArgs, dest)
 
 	debug("effective config args: %v", cmdArgs)
 
@@ -126,7 +166,7 @@ func getOpenSSHEffectiveConfig(args *sshArgs, user, port string) *effectiveSshCo
 
 	// Cache success.
 	openSSHEffectiveCfgCache.mu.Lock()
-	openSSHEffectiveCfgCache.m[dest] = cfg
+	openSSHEffectiveCfgCache.m[cacheKey] = cfg
 	openSSHEffectiveCfgCache.mu.Unlock()
 
 	debug("loaded ssh -G effective config for [%s]", dest)

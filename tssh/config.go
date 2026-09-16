@@ -495,7 +495,7 @@ func getConfigSplits(args *sshArgs, key string) []string {
 	if userConfig.shouldUseOpenSSHConfig() {
 		if cfg := getOpenSSHEffectiveConfig(args, "", ""); cfg != nil {
 			if value := cfg.get(key); value != "" {
-				values, err := shlex.Split(value)
+				values, err := splitConfigValue(value, key)
 				if err != nil {
 					warning("split effective config [%s] value [%s] failed: %v", key, value, err)
 				} else if len(values) > 0 {
@@ -593,7 +593,7 @@ func getAllConfigSplits(args *sshArgs, key string) []string {
 		if cfg := getOpenSSHEffectiveConfig(args, "", ""); cfg != nil {
 			var values []string
 			for _, value := range cfg.getAll(key) {
-				vals, err := shlex.Split(value)
+				vals, err := splitConfigValue(value, key)
 				if err != nil {
 					warning("split effective config [%s] value [%s] failed: %v", key, value, err)
 				} else if len(vals) > 0 {
@@ -716,7 +716,7 @@ func recursiveGetHosts(args *sshArgs, cfgHosts []*ssh_config.Host, seen map[stri
 
 func appendPromptHosts(oriArgs *sshArgs, hosts []*sshHost, seen map[string]bool, cfgHosts ...*ssh_config.Host) []*sshHost {
 	for _, host := range cfgHosts {
-		for _, pattern := range host.Patterns {
+		for _, pattern := range getPromptHostPatterns(host) {
 			alias := pattern.String()
 
 			if seen[alias] {
@@ -768,6 +768,64 @@ func appendPromptHosts(oriArgs *sshArgs, hosts []*sshHost, seen map[string]bool,
 	return hosts
 }
 
+func getPromptHostPatterns(host *ssh_config.Host) []*ssh_config.Pattern {
+	if host == nil {
+		return nil
+	}
+
+	// ssh_config.Host keeps the Match marker private. Its String method is
+	// part of the public API and preserves whether a block was introduced by
+	// Host or Match, so inspect only the generated directive name here rather
+	// than depending on an unexported field.
+	line := host.String()
+	if idx := strings.IndexByte(line, '\n'); idx >= 0 {
+		line = line[:idx]
+	}
+	fields := strings.Fields(line)
+	if len(fields) == 0 || !strings.EqualFold(fields[0], "match") {
+		return host.Patterns
+	}
+
+	// Match host is useful for discovering aliases in the login prompt, but
+	// ssh_config stores every token after the first criterion as a pattern.
+	// Keep only the host patterns before the next criterion.
+	criterionIdx := 1
+	if criterionIdx < len(fields) && fields[criterionIdx] == "=" {
+		criterionIdx++
+	}
+	if criterionIdx >= len(fields) {
+		return nil
+	}
+	criterion := strings.ToLower(fields[criterionIdx])
+	if criterion == "all" {
+		return host.Patterns
+	}
+	if criterion != "host" {
+		return nil
+	}
+
+	patternCount := 0
+	for _, field := range fields[criterionIdx+1:] {
+		if field == "#" || isMatchCriterion(field) {
+			break
+		}
+		patternCount++
+	}
+	if patternCount > len(host.Patterns) {
+		patternCount = len(host.Patterns)
+	}
+	return host.Patterns[:patternCount]
+}
+
+func isMatchCriterion(value string) bool {
+	switch strings.ToLower(value) {
+	case "all", "canonical", "exec", "final", "host", "localnetwork", "localuser", "originalhost", "tagged", "user":
+		return true
+	default:
+		return false
+	}
+}
+
 func getGroupLabels(args *sshArgs) string {
 	var groupLabels []string
 	addGroupLabel := func(groupLabel string) {
@@ -793,7 +851,7 @@ func getOptionConfig(args *sshArgs, option string) string {
 
 func getOptionConfigSplits(args *sshArgs, option string) []string {
 	if value := args.Option.get(option); value != "" {
-		values, err := shlex.Split(value)
+		values, err := splitConfigValue(value, option)
 		if err != nil {
 			warning("split option [%s] value [%s] failed: %v", option, value, err)
 		}
@@ -809,7 +867,7 @@ func getAllOptionConfig(args *sshArgs, option string) []string {
 func getAllOptionConfigSplits(args *sshArgs, option string) []string {
 	var all []string
 	for _, value := range args.Option.getAll(option) {
-		values, err := shlex.Split(value)
+		values, err := splitConfigValue(value, option)
 		if err != nil {
 			warning("split option [%s] value [%s] failed: %v", option, value, err)
 		} else if len(values) > 0 {
@@ -821,6 +879,58 @@ func getAllOptionConfigSplits(args *sshArgs, option string) []string {
 		all = append(all, values...)
 	}
 	return all
+}
+
+func splitConfigValue(value, option string) ([]string, error) {
+	if runtime.GOOS == "windows" && isPathConfigOption(option) {
+		return splitWindowsConfigValue(value)
+	}
+	return shlex.Split(value)
+}
+
+func isPathConfigOption(option string) bool {
+	switch strings.ToLower(option) {
+	case "userknownhostsfile", "globalknownhostsfile", "identityfile", "certificatefile", "revokedhostkeys":
+		return true
+	default:
+		return false
+	}
+}
+
+// splitWindowsConfigValue parses path lists emitted by Windows OpenSSH while
+// preserving backslashes used as path separators.
+func splitWindowsConfigValue(value string) ([]string, error) {
+	var values []string
+	var current strings.Builder
+	inQuote := false
+	hasToken := false
+	flush := func() {
+		if hasToken {
+			values = append(values, current.String())
+			current.Reset()
+			hasToken = false
+		}
+	}
+
+	for i := 0; i < len(value); i++ {
+		ch := value[i]
+		if ch == 34 {
+			inQuote = !inQuote
+			hasToken = true
+			continue
+		}
+		if !inQuote && (ch == 32 || ch == 9 || ch == 13 || ch == 10) {
+			flush()
+			continue
+		}
+		current.WriteByte(ch)
+		hasToken = true
+	}
+	if inQuote {
+		return nil, fmt.Errorf("unterminated quote")
+	}
+	flush()
+	return values, nil
 }
 
 func getExOptionConfig(args *sshArgs, option string) string {
