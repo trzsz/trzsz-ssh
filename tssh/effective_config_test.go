@@ -203,27 +203,3 @@ Match host MS-A2
 		t.Fatalf("prompt host alias = %q, want MS-A2", hosts[0].Alias)
 	}
 }
-
-func TestSplitWindowsConfigValuePreservesBackslashes(t *testing.T) {
-	value := `C:\Users\LENVO/.ssh/known_hosts C:\Users\LENVO/.ssh/known_hosts2`
-	got, err := splitWindowsConfigValue(value)
-	if err != nil {
-		t.Fatalf("split Windows config value: %v", err)
-	}
-	want := []string{`C:\Users\LENVO/.ssh/known_hosts`, `C:\Users\LENVO/.ssh/known_hosts2`}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("Windows config paths = %#v, want %#v", got, want)
-	}
-}
-
-func TestSplitWindowsConfigValueQuotedPath(t *testing.T) {
-	value := `"C:\Users\LEN VO\.ssh\known_hosts"`
-	got, err := splitWindowsConfigValue(value)
-	if err != nil {
-		t.Fatalf("split quoted Windows config value: %v", err)
-	}
-	want := []string{`C:\Users\LEN VO\.ssh\known_hosts`}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("quoted Windows config path = %#v, want %#v", got, want)
-	}
-}

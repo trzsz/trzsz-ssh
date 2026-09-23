@@ -883,7 +883,7 @@ func getAllOptionConfigSplits(args *sshArgs, option string) []string {
 
 func splitConfigValue(value, option string) ([]string, error) {
 	if runtime.GOOS == "windows" && isPathConfigOption(option) {
-		return splitWindowsConfigValue(value)
+		return splitCommandLine(value)
 	}
 	return shlex.Split(value)
 }
@@ -895,42 +895,6 @@ func isPathConfigOption(option string) bool {
 	default:
 		return false
 	}
-}
-
-// splitWindowsConfigValue parses path lists emitted by Windows OpenSSH while
-// preserving backslashes used as path separators.
-func splitWindowsConfigValue(value string) ([]string, error) {
-	var values []string
-	var current strings.Builder
-	inQuote := false
-	hasToken := false
-	flush := func() {
-		if hasToken {
-			values = append(values, current.String())
-			current.Reset()
-			hasToken = false
-		}
-	}
-
-	for i := 0; i < len(value); i++ {
-		ch := value[i]
-		if ch == 34 {
-			inQuote = !inQuote
-			hasToken = true
-			continue
-		}
-		if !inQuote && (ch == 32 || ch == 9 || ch == 13 || ch == 10) {
-			flush()
-			continue
-		}
-		current.WriteByte(ch)
-		hasToken = true
-	}
-	if inQuote {
-		return nil, fmt.Errorf("unterminated quote")
-	}
-	flush()
-	return values, nil
 }
 
 func getExOptionConfig(args *sshArgs, option string) string {
