@@ -346,12 +346,10 @@ func getHostKeyCallback(param *sshParam) (ssh.HostKeyCallback, []string, error) 
 		return nil, nil, err
 	}
 
-	if primaryPath != "" {
-		if param.args.RemoveHostKey {
-			for _, path := range files {
-				if err := removeHostKey(path, param); err != nil {
-					warning("remove host key failed: %v", err)
-				}
+	if param.args.RemoveHostKey {
+		for _, path := range files {
+			if err := removeHostKey(path, param); err != nil {
+				warning("remove host key failed: %v", err)
 			}
 		}
 	}
