@@ -71,50 +71,41 @@ func openSSHEffectiveConfigCommandArgs(args *sshArgs, user, port string) ([]stri
 
 	// Passing -F suppresses the system SSH config, so preserve OpenSSH's
 	// default lookup unless tssh selected a different config file explicitly.
-	if userConfig != nil {
-		defaultPath := filepath.Join(userHomeDir, ".ssh", "config")
-		customPath := args != nil && args.ConfigFile != "" || userConfig.configPath != defaultPath
-		if customPath {
-			configPath := userConfig.configPath
-			if configPath == "" {
-				configPath = os.DevNull
-			}
-			cmdArgs = append(cmdArgs, "-F", configPath)
+	defaultPath := filepath.Join(userHomeDir, ".ssh", "config")
+	if args.ConfigFile != "" || userConfig.configPath != defaultPath {
+		configPath := userConfig.configPath
+		if configPath == "" {
+			configPath = os.DevNull
 		}
+		cmdArgs = append(cmdArgs, "-F", configPath)
 	}
 
 	// Only promote User and Port from generic -o values because they affect
 	// Match evaluation. Other -o values may be tssh-only directives that
 	// OpenSSH would reject.
 	loginName := strings.TrimSpace(user)
-	if args != nil {
-		if args.LoginName != "" {
-			loginName = args.LoginName
-		} else if loginName == "" {
-			loginName = args.Option.get("User")
-		}
+	if args.LoginName != "" {
+		loginName = args.LoginName
+	} else if loginName == "" {
+		loginName = args.Option.get("User")
 	}
 	if loginName != "" {
 		cmdArgs = append(cmdArgs, "-l", loginName)
 	}
 
 	portNumber := strings.TrimSpace(port)
-	if args != nil {
-		if args.Port > 0 {
-			portNumber = strconv.Itoa(args.Port)
-		} else if portNumber == "" {
-			portNumber = args.Option.get("Port")
-		}
+	if args.Port > 0 {
+		portNumber = strconv.Itoa(args.Port)
+	} else if portNumber == "" {
+		portNumber = args.Option.get("Port")
 	}
 	if portNumber != "" {
 		cmdArgs = append(cmdArgs, "-p", portNumber)
 	}
 
-	dest := ""
-	if args != nil {
-		dest = args.Destination
+	if args.Destination != "" {
+		cmdArgs = append(cmdArgs, args.Destination)
 	}
-	cmdArgs = append(cmdArgs, dest)
 
 	// The complete argv, rather than only the destination, identifies the
 	// effective configuration. This prevents a prior UI lookup from being
@@ -128,10 +119,7 @@ func getOpenSSHEffectiveConfig(args *sshArgs, user, port string) *effectiveSshCo
 	}
 
 	cmdArgs, cacheKey := openSSHEffectiveConfigCommandArgs(args, user, port)
-	dest := ""
-	if args != nil {
-		dest = args.Destination
-	}
+	dest := args.Destination
 
 	openSSHEffectiveCfgCache.mu.Lock()
 	if openSSHEffectiveCfgCache.m == nil {
