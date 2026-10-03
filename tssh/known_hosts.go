@@ -35,6 +35,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -209,6 +210,12 @@ func ensureNewline(file *os.File) error {
 }
 
 func writeKnownHost(args *sshArgs, path, host string, key ssh.PublicKey) error {
+	if dir := filepath.Dir(path); dir != "." && dir != "" {
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			return err
+		}
+	}
+
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0600)
 	if err != nil {
 		return err
@@ -288,6 +295,7 @@ func addHostKey(args *sshArgs, path, host string, key ssh.PublicKey, ask bool, d
 
 func getHostKeyCallback(param *sshParam) (ssh.HostKeyCallback, []string, error) {
 	var files []string
+	var primaryPath string
 	addKnownHostsFiles := func(key string, user bool, defaults []string) error {
 		knownHostsFiles := getOptionConfigSplits(param.args, key)
 		if len(knownHostsFiles) == 0 {
@@ -311,6 +319,11 @@ func getHostKeyCallback(param *sshParam) (ssh.HostKeyCallback, []string, error) 
 			} else {
 				resolvedPath = path
 			}
+			if user && primaryPath == "" {
+				// Keep the first user file as the writable destination even when it
+				// does not exist yet. OpenSSH creates this file on first use.
+				primaryPath = resolvedPath
+			}
 			if !isFileExist(resolvedPath) {
 				debug("%s [%s] does not exist", key, resolvedPath)
 				continue
@@ -333,14 +346,10 @@ func getHostKeyCallback(param *sshParam) (ssh.HostKeyCallback, []string, error) 
 		return nil, nil, err
 	}
 
-	primaryPath := ""
-	if len(files) > 0 {
-		primaryPath = files[0]
-		if param.args.RemoveHostKey {
-			for _, path := range files {
-				if err := removeHostKey(path, param); err != nil {
-					warning("remove host key failed: %v", err)
-				}
+	if param.args.RemoveHostKey {
+		for _, path := range files {
+			if err := removeHostKey(path, param); err != nil {
+				warning("remove host key failed: %v", err)
 			}
 		}
 	}
