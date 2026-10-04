@@ -25,6 +25,7 @@ SOFTWARE.
 package tssh
 
 import (
+	"fmt"
 	"strings"
 )
 
@@ -34,6 +35,14 @@ func execControlCmd(_ *sshArgs, _ string) int {
 	warning("controlling the multiplexing master process is not supported on Windows")
 	return kExitCodeToolsError
 }
+
+type muxMaster struct{}
+
+func startMuxMaster(_ *sshParam, _ SshClient, _ string) (*muxMaster, error) {
+	return nil, fmt.Errorf("ControlMaster is not supported on Windows")
+}
+
+func waitMuxMasterClients(_ *sshConnection, _ *stdinState) {}
 
 func connectViaControl(param *sshParam) SshClient {
 	ctrlPath := param.args.ControlPath

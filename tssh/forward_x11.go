@@ -50,7 +50,7 @@ func sshX11Forward(sshConn *sshConnection) {
 		return
 	}
 
-	if sshConn.param.control && sshConn.param.udpMode == kUdpModeNo {
+	if sshConn.param.control && !sshConn.param.hasUdpClient() {
 		warning("X11 forwarding is not supported when logging in via a control socket")
 		return
 	}
@@ -130,7 +130,7 @@ func sshX11Forward(sshConn *sshConnection) {
 		return
 	}
 
-	if sshConn.param.udpMode == kUdpModeNo {
+	if !sshConn.param.hasUdpClient() {
 		debug("request ssh X11 forwarding success")
 	}
 

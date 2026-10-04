@@ -63,6 +63,18 @@ type sshParam struct {
 	udpMode udpModeType
 	ipv4    bool
 	ipv6    bool
+
+	// controlUdp is set when the client is attached to a tssh UDP control master,
+	// the client is then the final client and no udp login is required.
+	controlUdp bool
+	// muxMasterPath is the control socket to listen on as a native UDP control master.
+	muxMasterPath string
+}
+
+// hasUdpClient reports whether the final client is a real UDP client (*sshUdpClient),
+// as opposed to a TCP-style client, including one multiplexed through a control socket.
+func (p *sshParam) hasUdpClient() bool {
+	return p.udpMode != kUdpModeNo && !p.controlUdp
 }
 
 func (p *sshParam) setNetworkAddressFamily(conn net.Conn) {
@@ -723,12 +735,23 @@ func sshLogin(param *sshParam, proxy *proxyJump, requireUDP udpModeType) (SshCli
 	if err != nil {
 		return nil, err
 	}
-	if param.udpMode == kUdpModeNo {
+	if param.udpMode == kUdpModeNo || param.controlUdp {
 		return tcpClient, nil
 	}
 
 	// udp login
-	return udpLogin(param, tcpClient)
+	udpClient, err := udpLogin(param, tcpClient)
+	if err != nil {
+		return nil, err
+	}
+
+	// start the native control master for udp mode
+	if param.muxMasterPath != "" {
+		if _, err := startMuxMaster(param, udpClient, param.muxMasterPath); err != nil {
+			warning("start control master failed: %v", err)
+		}
+	}
+	return udpClient, nil
 }
 
 func keepAlive(sshConn *sshConnection) {

@@ -359,7 +359,7 @@ func sshPortForward(sshConn *sshConnection) {
 
 	// local forward
 	for _, f := range args.LocalForward.cfgs {
-		if f.udp && sshConn.param.udpMode == kUdpModeNo {
+		if f.udp && !sshConn.param.hasUdpClient() {
 			warnRequiredUDP()
 			continue
 		}
@@ -374,7 +374,7 @@ func sshPortForward(sshConn *sshConnection) {
 		localForward(sshConn, f, gateway, timeout, unlinkUnix, bindMask)
 	}
 	for _, s := range getAllExOptionConfig(args, "UdpLocalForward", true) {
-		if sshConn.param.udpMode == kUdpModeNo {
+		if !sshConn.param.hasUdpClient() {
 			warnRequiredUDP()
 			break
 		}
@@ -388,7 +388,7 @@ func sshPortForward(sshConn *sshConnection) {
 
 	// remote forward
 	for _, f := range args.RemoteForward.cfgs {
-		if f.udp && sshConn.param.udpMode == kUdpModeNo {
+		if f.udp && !sshConn.param.hasUdpClient() {
 			warnRequiredUDP()
 			continue
 		}
@@ -403,7 +403,7 @@ func sshPortForward(sshConn *sshConnection) {
 		remoteForward(sshConn, f, gateway, timeout)
 	}
 	for _, s := range getAllExOptionConfig(args, "UdpRemoteForward", true) {
-		if sshConn.param.udpMode == kUdpModeNo {
+		if !sshConn.param.hasUdpClient() {
 			warnRequiredUDP()
 			break
 		}
