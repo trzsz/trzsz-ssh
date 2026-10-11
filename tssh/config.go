@@ -495,7 +495,7 @@ func getConfigSplits(args *sshArgs, key string) []string {
 	if userConfig.shouldUseOpenSSHConfig() {
 		if cfg := getOpenSSHEffectiveConfig(args, "", ""); cfg != nil {
 			if value := cfg.get(key); value != "" {
-				values, err := shlex.Split(value)
+				values, err := splitConfigValue(value, key)
 				if err != nil {
 					warning("split effective config [%s] value [%s] failed: %v", key, value, err)
 				} else if len(values) > 0 {
@@ -593,7 +593,7 @@ func getAllConfigSplits(args *sshArgs, key string) []string {
 		if cfg := getOpenSSHEffectiveConfig(args, "", ""); cfg != nil {
 			var values []string
 			for _, value := range cfg.getAll(key) {
-				vals, err := shlex.Split(value)
+				vals, err := splitConfigValue(value, key)
 				if err != nil {
 					warning("split effective config [%s] value [%s] failed: %v", key, value, err)
 				} else if len(vals) > 0 {
@@ -793,7 +793,7 @@ func getOptionConfig(args *sshArgs, option string) string {
 
 func getOptionConfigSplits(args *sshArgs, option string) []string {
 	if value := args.Option.get(option); value != "" {
-		values, err := shlex.Split(value)
+		values, err := splitConfigValue(value, option)
 		if err != nil {
 			warning("split option [%s] value [%s] failed: %v", option, value, err)
 		}
@@ -809,7 +809,7 @@ func getAllOptionConfig(args *sshArgs, option string) []string {
 func getAllOptionConfigSplits(args *sshArgs, option string) []string {
 	var all []string
 	for _, value := range args.Option.getAll(option) {
-		values, err := shlex.Split(value)
+		values, err := splitConfigValue(value, option)
 		if err != nil {
 			warning("split option [%s] value [%s] failed: %v", option, value, err)
 		} else if len(values) > 0 {
@@ -821,6 +821,22 @@ func getAllOptionConfigSplits(args *sshArgs, option string) []string {
 		all = append(all, values...)
 	}
 	return all
+}
+
+func splitConfigValue(value, option string) ([]string, error) {
+	if runtime.GOOS == "windows" && isPathConfigOption(option) {
+		return splitCommandLine(value)
+	}
+	return shlex.Split(value)
+}
+
+func isPathConfigOption(option string) bool {
+	switch strings.ToLower(option) {
+	case "userknownhostsfile", "globalknownhostsfile", "identityfile", "certificatefile", "revokedhostkeys":
+		return true
+	default:
+		return false
+	}
 }
 
 func getExOptionConfig(args *sshArgs, option string) string {
