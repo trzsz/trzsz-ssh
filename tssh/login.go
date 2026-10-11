@@ -87,7 +87,7 @@ func joinHostPort(host, port string) string {
 
 func parseDestination(dest string) (user, host, port string) {
 	// user
-	idx := strings.Index(dest, "@")
+	idx := strings.LastIndexByte(dest, '@')
 	if idx >= 0 {
 		user = strings.TrimSpace(dest[:idx])
 		dest = dest[idx+1:]

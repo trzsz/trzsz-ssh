@@ -50,6 +50,8 @@ func TestParseDestination(t *testing.T) {
 	assertDestEqual("dest:", "", "dest", "")
 	assertDestEqual("@dest:", "", "dest", "")
 	assertDestEqual("user@dest", "user", "dest", "")
+	assertDestEqual("a@a.com@dest", "a@a.com", "dest", "")
+	assertDestEqual("a@a.com@dest:2222", "a@a.com", "dest", "2222")
 	assertDestEqual("dest:1022", "", "dest", "1022")
 	assertDestEqual("user@dest:1022", "user", "dest", "1022")
 
