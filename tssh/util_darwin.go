@@ -26,8 +26,13 @@ package tssh
 
 import (
 	"bytes"
+	"context"
 	"os"
+	"os/exec"
+	"regexp"
+	"strconv"
 	"sync"
+	"time"
 
 	"github.com/trzsz/iterm2"
 	"golang.org/x/sys/unix"
@@ -107,4 +112,48 @@ func getIterm2Session() *iterm2.Session {
 		}
 	})
 	return iterm2Session
+}
+
+var initSshEnvOnce sync.Once
+var runningInSshEnv bool
+var sysCapRegex = regexp.MustCompile(`"System Capabilities"\s*=\s*(\d+)`)
+
+const kSystemCapabilityGraphics = (1 << 1)
+
+func shouldPauseReconnect() (bool, string) {
+	initSshEnvOnce.Do(func() {
+		runningInSshEnv = isDockerEnv() || isRemoteSshEnv(os.Getppid())
+	})
+	if runningInSshEnv || isSshTmuxEnv() {
+		return false, ""
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "ioreg", "-r", "-k", "System Capabilities", "-d", "1")
+	output, err := cmd.Output()
+	if err != nil {
+		debug("execute ioreg command failed: %v", err)
+		return false, ""
+	}
+
+	matches := sysCapRegex.FindSubmatch(output)
+	if len(matches) < 2 {
+		debug("no 'System Capabilities' key in output: %s", string(output))
+		return false, ""
+	}
+
+	capStr := string(matches[1])
+	capabilities, err := strconv.ParseUint(capStr, 10, 64)
+	if err != nil {
+		debug("parse System Capabilities %q failed: %v", capStr, err)
+		return false, ""
+	}
+
+	if capabilities&kSystemCapabilityGraphics == 0 {
+		return true, "macOS Graphics capability is unavailable (possibly Dark Wake)"
+	}
+
+	return false, ""
 }

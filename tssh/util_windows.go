@@ -152,3 +152,7 @@ func getAdapterAddresses() ([]byte, error) {
 		}
 	}
 }
+
+func shouldPauseReconnect() (bool, string) {
+	return false, ""
+}

@@ -100,3 +100,7 @@ func getIterm2Manager() terminalManager {
 func getIterm2Session() *iterm2.Session {
 	return nil
 }
+
+func shouldPauseReconnect() (bool, string) {
+	return false, ""
+}
