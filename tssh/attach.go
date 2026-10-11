@@ -36,7 +36,7 @@ import (
 
 	"charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/mattn/go-runewidth"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/trzsz/tsshd/tsshd"
 )
 
@@ -314,14 +314,14 @@ func clipString(s string, maxW int) string {
 	if maxW <= 0 {
 		return ""
 	}
-	if runewidth.StringWidth(s) <= maxW {
+	if ansi.StringWidth(s) <= maxW {
 		return s
 	}
 	if maxW == 1 {
 		return "…"
 	}
 
-	return runewidth.Truncate(s, maxW-1, "") + "…"
+	return ansi.Truncate(s, maxW-1, "") + "…"
 }
 
 func clipText(text string, maxW, maxH int) string {
@@ -335,8 +335,8 @@ func clipText(text string, maxW, maxH int) string {
 	}
 
 	for i, line := range lines {
-		if runewidth.StringWidth(line) > maxW {
-			lines[i] = runewidth.Truncate(line, maxW, "")
+		if ansi.StringWidth(line) > maxW {
+			lines[i] = ansi.Truncate(line, maxW, "")
 		}
 	}
 
