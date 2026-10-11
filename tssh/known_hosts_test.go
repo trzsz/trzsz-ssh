@@ -147,3 +147,36 @@ func TestNewKnownHostsDBKeepsNonParseErrorsFatal(t *testing.T) {
 	require.Error(t, err)
 	assert.Nil(t, malformed)
 }
+
+func TestHostKeyCallbackCreatesMissingUserKnownHostsFile(t *testing.T) {
+	oldUserConfig, oldUserHomeDir, oldEnableWarning := userConfig, userHomeDir, enableWarningLogging
+	defer func() {
+		userConfig, userHomeDir, enableWarningLogging = oldUserConfig, oldUserHomeDir, oldEnableWarning
+	}()
+	userConfig, userHomeDir, enableWarningLogging = &tsshConfig{}, t.TempDir(), false
+
+	knownHostsPath := filepath.Join(userHomeDir, ".ssh", "known_hosts")
+	args := &sshArgs{
+		Destination: "example.test",
+		Option: sshOption{options: map[string][]string{
+			"userknownhostsfile":    {knownHostsPath},
+			"globalknownhostsfile":  {"none"},
+			"stricthostkeychecking": {"no"},
+		}},
+	}
+	param := &sshParam{args: args, addr: "example.test:22"}
+	callback, _, err := getHostKeyCallback(param)
+	require.NoError(t, err)
+
+	key := newKnownHostsTestKey(t)
+	require.NoError(t, callback("example.test:22", &net.TCPAddr{IP: net.ParseIP("192.0.2.1"), Port: 22}, key))
+
+	content, err := os.ReadFile(knownHostsPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(content), key.Type())
+
+	db, malformed, err := newKnownHostsDB(knownHostsPath)
+	require.NoError(t, err)
+	assert.Empty(t, malformed)
+	assert.NoError(t, checkKnownHostsTestKey(db, "example.test", 22, key))
+}
