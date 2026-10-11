@@ -214,7 +214,7 @@ trzsz-ssh ( tssh ) 与 [tsshd](https://github.com/trzsz/tsshd) 一起，适用�
 
 - 使用之前，需要配置好 `~/.ssh/config` ( Windows 是 `C:\Users\xxx\.ssh\config`, `xxx` 换成用户名 )。
 
-- 关于如何配置 `~/.ssh/config`，请参考 [openssh](https://manpages.debian.org/bookworm/openssh-client/ssh_config.5.en.html) ( `Match` 中的 `exec` 暂时要参考下文配置 `UseOpenSSHConfig` 才支持 )，或参考 tssh wiki [SSH基本配置](https://github.com/trzsz/trzsz-ssh/wiki/SSH%E5%9F%BA%E6%9C%AC%E9%85%8D%E7%BD%AE)。
+- 关于如何配置 `~/.ssh/config`，请参考 [openssh](https://manpages.debian.org/bookworm/openssh-client/ssh_config.5.en.html)，或参考 tssh wiki [SSH基本配置](https://github.com/trzsz/trzsz-ssh/wiki/SSH%E5%9F%BA%E6%9C%AC%E9%85%8D%E7%BD%AE)。内置解析器支持 `Match all` 和单独的 `Match host`；其他条件、组合条件以及 `Match exec` 需要参考下文启用 `UseOpenSSHConfig`。
 
 - 直接无参数运行 `tssh` 命令就会打开登录界面，或者有除目标机器外的其他参数也会打开登录界面。
 
@@ -804,6 +804,7 @@ trzsz-ssh ( tssh ) 与 [tsshd](https://github.com/trzsz/tsshd) 一起，适用�
   SetTerminalTitle = yes
 
   # 使用 `ssh -G` 解析 OpenSSH 配置，包括 `Match` 规则
+  # 登录界面会为每个别名求值；配置中的 `Match exec` 命令也会随之执行
   UseOpenSSHConfig = yes
 
   # 启用目标主机部分匹配时的模糊选择功能。

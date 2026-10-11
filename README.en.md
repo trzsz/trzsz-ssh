@@ -215,7 +215,7 @@ trzsz-ssh ( tssh ) with [tsshd](https://github.com/trzsz/tsshd) also supports in
 
 - Before use, you need to configure `~/.ssh/config` (for Windows, it is `C:\Users\xxx\.ssh\config`, replace `xxx` with your username).
 
-- For how to configure `~/.ssh/config`, please refer to the documentation of [openssh](https://manpages.debian.org/bookworm/openssh-client/ssh_config.5.en.html). `Match exec` is supported only when `UseOpenSSHConfig` is enabled (see configuration below).
+- For how to configure `~/.ssh/config`, please refer to the documentation of [openssh](https://manpages.debian.org/bookworm/openssh-client/ssh_config.5.en.html). The built-in parser supports `Match all` and a standalone `Match host`; other criteria, combined criteria, and `Match exec` require `UseOpenSSHConfig` to be enabled (see configuration below).
 
 - Running `tssh` without arguments will open the login prompt. If there are arguments except destination will also open the login prompt.
 
@@ -806,6 +806,7 @@ trzsz-ssh ( tssh ) with [tsshd](https://github.com/trzsz/tsshd) also supports in
   SetTerminalTitle = yes
 
   # Use `ssh -G` to evaluate OpenSSH config, including `Match` blocks.
+  # The login prompt evaluates every alias, including commands in `Match exec`.
   UseOpenSSHConfig = yes
 
   # Enable fuzzy host selection for partially matched destinations.
