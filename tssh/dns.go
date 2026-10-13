@@ -144,14 +144,19 @@ const (
 	sshfpTypeSHA256 = 2
 )
 
-// dnssecRootTrustAnchors is the IANA DNSSEC Root Zone Trust Anchor.
+// dnssecRootTrustAnchors are the IANA DNSSEC Root Zone Trust Anchors (KSK-2017 and KSK-2024).
 // See: https://data.iana.org/root-anchors/root-anchors.xml
 var dnssecRootTrustAnchors = []*dns.DS{{
 	Hdr:        dns.RR_Header{Name: ".", Rrtype: dns.TypeDS, Class: dns.ClassINET},
 	KeyTag:     20326,
 	Algorithm:  dns.RSASHA256,
 	DigestType: dns.SHA256,
-	Digest:     "e06d44b80b8f1d39a95c0b0d7c65d08458e880409bbc683457104237c7f8ec8d"}}
+	Digest:     "e06d44b80b8f1d39a95c0b0d7c65d08458e880409bbc683457104237c7f8ec8d"}, {
+	Hdr:        dns.RR_Header{Name: ".", Rrtype: dns.TypeDS, Class: dns.ClassINET},
+	KeyTag:     38696,
+	Algorithm:  dns.RSASHA256,
+	DigestType: dns.SHA256,
+	Digest:     "683d2d0acb8c9b712a1948b27f741219298d0a450d612c483af444a4c0fb2b16"}}
 
 var dnssecNow = time.Now
 var lookupDNSSEC = queryDNSSEC
