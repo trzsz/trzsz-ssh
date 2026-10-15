@@ -84,6 +84,25 @@ var getHostname = func() string {
 	return hostname
 }
 
+// jumpHostOf extracts the host from a proxy jump specification like
+// [user@]host[:port], the same way OpenSSH derives options.jump_host in
+// parse_jump(), so that the %C hash matches OpenSSH exactly.
+func jumpHostOf(spec string) string {
+	if idx := strings.LastIndexByte(spec, '@'); idx >= 0 {
+		spec = spec[idx+1:]
+	}
+	if strings.HasPrefix(spec, "[") { // ipv6 literal, e.g. [::1]:2222
+		if idx := strings.IndexByte(spec, ']'); idx > 0 {
+			return spec[1:idx]
+		}
+		return spec[1:]
+	}
+	if idx := strings.IndexByte(spec, ':'); idx >= 0 {
+		spec = spec[:idx]
+	}
+	return spec
+}
+
 func expandTokens(str string, param *sshParam, tokens string) (string, error) {
 	if !strings.ContainsRune(str, '%') {
 		return str, nil
@@ -145,8 +164,12 @@ func expandTokens(str string, param *sshParam, tokens string) (string, error) {
 			}
 		case 'C':
 			hashStr := fmt.Sprintf("%s%s%s%s", getHostname(), param.host, param.port, param.user)
+			// OpenSSH includes the host of the last proxy jump in the
+			// connection hash since 9.6, when the %j token was introduced;
+			// older versions hash without it, so the token set indicates
+			// whether the jump host takes part in the hash.
 			if len(param.proxies) > 0 && strings.ContainsRune(tokens, 'j') {
-				hashStr += param.proxies[len(param.proxies)-1]
+				hashStr += jumpHostOf(param.proxies[len(param.proxies)-1])
 			}
 			fmt.Fprintf(&buf, "%x", sha1.Sum([]byte(hashStr)))
 		case 'k':
