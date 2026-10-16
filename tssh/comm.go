@@ -569,8 +569,23 @@ func formatSshTime(seconds uint32) string {
 	return string(buf)
 }
 
+var (
+	openSshOnce  sync.Once
+	openSshPath  string
+	openSshMajor int
+	openSshMinor int
+	openSshErr   error
+)
+
 // getOpenSSH returns a usable OpenSSH binary path and its (major, minor) version.
 func getOpenSSH() (string, int, int, error) {
+	openSshOnce.Do(func() {
+		openSshPath, openSshMajor, openSshMinor, openSshErr = findOpenSSH()
+	})
+	return openSshPath, openSshMajor, openSshMinor, openSshErr
+}
+
+func findOpenSSH() (string, int, int, error) {
 	re := regexp.MustCompile(`OpenSSH.*?_(\d+)\.(\d+)`)
 
 	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {

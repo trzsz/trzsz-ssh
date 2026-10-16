@@ -84,6 +84,20 @@ var getHostname = func() string {
 	return hostname
 }
 
+// supportsTokenJ reports whether the local OpenSSH client supports the %j token.
+// If the version cannot be determined, assume support to avoid unnecessarily
+// restricting token expansion.
+func supportsTokenJ() bool {
+	_, majorVersion, minorVersion, err := getOpenSSH()
+	if err != nil || majorVersion < 0 || minorVersion < 0 {
+		return true
+	}
+	if majorVersion > 9 || (majorVersion == 9 && minorVersion >= 6) {
+		return true
+	}
+	return false
+}
+
 // jumpHostOf extracts the host from a proxy jump specification like
 // [user@]host[:port], the same way OpenSSH derives options.jump_host in
 // parse_jump(), so that the %C hash matches OpenSSH exactly.
@@ -156,7 +170,10 @@ func expandTokens(str string, param *sshParam, tokens string) (string, error) {
 			buf.WriteString(hostname)
 		case 'j':
 			if len(param.proxies) > 0 {
-				proxy := param.proxies[len(param.proxies)-1]
+				if !supportsTokenJ() {
+					return "", fmt.Errorf("local OpenSSH client [%s] is too old; %%j is not supported for compatibility", openSshPath)
+				}
+				proxy := jumpHostOf(param.proxies[len(param.proxies)-1])
 				if !isHostValid(proxy) {
 					return "", fmt.Errorf("proxy [%s] contains invalid characters", proxy)
 				}
@@ -164,11 +181,8 @@ func expandTokens(str string, param *sshParam, tokens string) (string, error) {
 			}
 		case 'C':
 			hashStr := fmt.Sprintf("%s%s%s%s", getHostname(), param.host, param.port, param.user)
-			// OpenSSH includes the host of the last proxy jump in the
-			// connection hash since 9.6, when the %j token was introduced;
-			// older versions hash without it, so the token set indicates
-			// whether the jump host takes part in the hash.
-			if len(param.proxies) > 0 && strings.ContainsRune(tokens, 'j') {
+			// OpenSSH 9.6 and later include the jump host in the %C hash.
+			if len(param.proxies) > 0 && supportsTokenJ() {
 				hashStr += jumpHostOf(param.proxies[len(param.proxies)-1])
 			}
 			fmt.Fprintf(&buf, "%x", sha1.Sum([]byte(hashStr)))

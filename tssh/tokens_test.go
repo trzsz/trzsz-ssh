@@ -35,10 +35,14 @@ func TestExpandTokens(t *testing.T) {
 	assert := assert.New(t)
 	require := require.New(t)
 	originalGetHostname := getHostname
+	_, _, _, _ = getOpenSSH()
+	originalOpenSshMajor, originalOpenSshMinor, originalOpenSshErr := openSshMajor, openSshMinor, openSshErr
 	defer func() {
 		getHostname = originalGetHostname
+		openSshMajor, openSshMinor, openSshErr = originalOpenSshMajor, originalOpenSshMinor, originalOpenSshErr
 	}()
 	getHostname = func() string { return "myhostname.mydomain.com" }
+	openSshMajor, openSshMinor, openSshErr = 9, 5, nil
 
 	param := &sshParam{
 		args: &sshArgs{
@@ -98,11 +102,16 @@ func TestExpandTokens(t *testing.T) {
 func TestProxyJumpToken(t *testing.T) {
 	assert := assert.New(t)
 	require := require.New(t)
+
 	originalGetHostname := getHostname
+	_, _, _, _ = getOpenSSH()
+	originalOpenSshMajor, originalOpenSshMinor, originalOpenSshErr := openSshMajor, openSshMinor, openSshErr
 	defer func() {
 		getHostname = originalGetHostname
+		openSshMajor, openSshMinor, openSshErr = originalOpenSshMajor, originalOpenSshMinor, originalOpenSshErr
 	}()
 	getHostname = func() string { return "myhostname.mydomain.com" }
+	openSshMajor, openSshMinor, openSshErr = 9, 6, nil
 
 	param := &sshParam{
 		args: &sshArgs{
@@ -133,6 +142,26 @@ func TestProxyJumpToken(t *testing.T) {
 	assertProxyJumpToken("%j", "server")
 	assertProxyJumpToken("_%j_", "_server_")
 	assertProxyJumpToken("/%C/", "/dc78bc912643b984e78d7d80f9912dbc794d2455/")
+
+	// %j should return only the host, stripping the user and port if present.
+	param.proxies = []string{"user@jump"}
+	assertProxyJumpToken("%j", "jump")
+
+	param.proxies = []string{"jump:2222"}
+	assertProxyJumpToken("%j", "jump")
+
+	param.proxies = []string{"user@jump:2222"}
+	assertProxyJumpToken("%j", "jump")
+
+	param.proxies = []string{"[::1]"}
+	assertProxyJumpToken("%j", "::1")
+
+	param.proxies = []string{"user@[::1]:2222"}
+	assertProxyJumpToken("%j", "::1")
+
+	// For multiple hops, %j should return the host of the last hop.
+	param.proxies = []string{"jump1", "user@jump2:2222"}
+	assertProxyJumpToken("%j", "jump2")
 }
 
 func TestInvalidHost(t *testing.T) {
@@ -174,29 +203,36 @@ func TestInvalidHost(t *testing.T) {
 	assertInvalidHost("invalid\u2029hostname")
 }
 
-/*
-%C is the OpenSSH connection hash (ssh_connection_hash in readconf.c):
-sha1(thishost + remhost + portstr + remuser [+ jumphost]), where jumphost
-is the host of the last proxy jump: parse_jump() works backwards through
-the jump list, strips the user and the port, and keeps only the last hop.
-OpenSSH has included the jump host since 9.6, when ssh_connection_hash()
-gained its jumphost argument and the %j token was introduced; on older
-versions the hash does not include it at all, which is why the token set
-used to expand ControlPath is version dependent.
-
-Verified against OpenSSH 9.9p2 on macOS:
-  ssh -G -o ControlPath=cm-%C -J jump myhost
-  → controlpath cm-4fefbc9c... == sha1(hostname + "myhost" + "22" + user + "jump")
-and -J user@jump / -J jump:2222 / -J user@jump:2222 / -J a,b all yield the
-same hash as -J jump / -J b.
-The values below are recomputed for the stubbed local hostname "mylocal".
-*/
+// %C is the OpenSSH connection hash (ssh_connection_hash in readconf.c):
+// sha1(thishost + remhost + portstr + remuser [+ jumphost]), where jumphost
+// is the host of the last proxy jump. parse_jump() works backwards through
+// the jump list, strips the user and port, and keeps only the last hop.
+// OpenSSH 9.6 and later include the jump host in the hash; older versions
+// do not. The %j token was introduced in OpenSSH 9.6.
+//
+// Verified the hash calculation against OpenSSH 9.9p2 on macOS using:
+//
+//	/usr/bin/ssh -F /dev/null -G -o ControlPath=cm-%C -J jump -l myuser -p 22 myhost
+//
+// The resulting hash matches:
+//
+//	sha1(thishost + "myhost" + "22" + "myuser" + "jump")
+//
+// The same hash is produced by -J user@jump, -J jump:2222, and
+// -J user@jump:2222. For multiple hops, only the last hop is included,
+// so -J a,b produces the same hash as -J b.
+//
+// The expected hashes below are computed using the stubbed local hostname "mylocal".
 func TestControlPathHash(t *testing.T) {
 	assert := assert.New(t)
 	require := require.New(t)
+
 	originalGetHostname := getHostname
+	_, _, _, _ = getOpenSSH()
+	originalOpenSshMajor, originalOpenSshMinor, originalOpenSshErr := openSshMajor, openSshMinor, openSshErr
 	defer func() {
 		getHostname = originalGetHostname
+		openSshMajor, openSshMinor, openSshErr = originalOpenSshMajor, originalOpenSshMinor, originalOpenSshErr
 	}()
 	getHostname = func() string { return "mylocal" }
 
@@ -215,29 +251,33 @@ func TestControlPathHash(t *testing.T) {
 	const lastJumpHash = "7ee756f38d0df9dc5046c8e4595edeef824ba164"
 	const ipv6JumpHash = "710d7ae1d5e5d19787e991ab4ae24297353acfc8"
 
-	assertHash := func(proxies []string, tokens, expected string) {
+	assertHash := func(proxies []string, supportsJ bool, expected string) {
 		t.Helper()
-		result, err := expandTokens("%C", newParam(proxies...), tokens)
+		openSshMajor, openSshMinor, openSshErr = 9, 6, nil
+		if !supportsJ {
+			openSshMajor, openSshMinor = 9, 5
+		}
+		result, err := expandTokens("%C", newParam(proxies...), "%CdhijkLlnpru")
 		require.Nil(err)
 		assert.Equal(expected, result)
 	}
 
 	// OpenSSH 9.6 and above: only the host of the last proxy jump is hashed.
-	assertHash(nil, "%CdhijkLlnpru", noJumpHash)
-	assertHash([]string{"jump"}, "%CdhijkLlnpru", jumpHash)
-	assertHash([]string{"user@jump"}, "%CdhijkLlnpru", jumpHash)
-	assertHash([]string{"jump:2222"}, "%CdhijkLlnpru", jumpHash)
-	assertHash([]string{"user@jump:2222"}, "%CdhijkLlnpru", jumpHash)
+	assertHash(nil, true, noJumpHash)
+	assertHash([]string{"jump"}, true, jumpHash)
+	assertHash([]string{"user@jump"}, true, jumpHash)
+	assertHash([]string{"jump:2222"}, true, jumpHash)
+	assertHash([]string{"user@jump:2222"}, true, jumpHash)
 	// only the last hop takes part in the hash
-	assertHash([]string{"jump1", "jump2"}, "%CdhijkLlnpru", lastJumpHash)
+	assertHash([]string{"jump1", "jump2"}, true, lastJumpHash)
 	// IPv6 literal: parse_jump keeps the address without the brackets
-	assertHash([]string{"[::1]"}, "%CdhijkLlnpru", ipv6JumpHash)
-	assertHash([]string{"user@[::1]:2222"}, "%CdhijkLlnpru", ipv6JumpHash)
+	assertHash([]string{"[::1]"}, true, ipv6JumpHash)
+	assertHash([]string{"user@[::1]:2222"}, true, ipv6JumpHash)
 
 	// OpenSSH below 9.6: the jump host is not part of the hash at all.
-	assertHash(nil, "%CdhikLlnpru", noJumpHash)
-	assertHash([]string{"jump"}, "%CdhikLlnpru", noJumpHash)
-	assertHash([]string{"user@jump:2222"}, "%CdhikLlnpru", noJumpHash)
+	assertHash(nil, false, noJumpHash)
+	assertHash([]string{"jump"}, false, noJumpHash)
+	assertHash([]string{"user@jump:2222"}, false, noJumpHash)
 }
 
 func TestInvalidUser(t *testing.T) {
