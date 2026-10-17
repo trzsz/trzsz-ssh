@@ -6,7 +6,7 @@ require (
 	charm.land/bubbles/v2 v2.2.1
 	charm.land/bubbletea/v2 v2.1.0
 	charm.land/lipgloss/v2 v2.0.6
-	github.com/Microsoft/go-winio v0.6.3
+	github.com/Microsoft/go-winio v0.6.4
 	github.com/charmbracelet/colorprofile v0.4.3
 	github.com/charmbracelet/x/ansi v0.11.9
 	github.com/chzyer/readline v1.5.1
@@ -23,11 +23,11 @@ require (
 	github.com/stretchr/testify v1.12.1
 	github.com/trzsz/go-arg v1.5.4
 	github.com/trzsz/go-socks5 v0.1.1
-	github.com/trzsz/iterm2 v0.2.1
+	github.com/trzsz/iterm2 v0.2.2
 	github.com/trzsz/pageant v0.1.1
 	github.com/trzsz/promptui v0.10.8
 	github.com/trzsz/shellescape v1.6.0
-	github.com/trzsz/ssh_config v1.3.9
+	github.com/trzsz/ssh_config v1.3.10
 	github.com/trzsz/trzsz-go v1.2.1-0.20261010161529-351cf747d8f9
 	github.com/trzsz/tsshd v0.1.11-0.20261011000715-fb44a5536419
 	golang.org/x/crypto v0.58.0
@@ -42,6 +42,7 @@ require (
 	github.com/andybrewer/mack v0.0.0-20251024001139-afd410b36447 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/boombuler/barcode v1.1.0 // indirect
+	github.com/buildkite/shellwords v1.0.1 // indirect
 	github.com/charmbracelet/ultraviolet v0.0.0-20261008173134-6b8d4baf91b4 // indirect
 	github.com/charmbracelet/x/term v0.2.2 // indirect
 	github.com/charmbracelet/x/termios v0.1.1 // indirect
@@ -57,8 +58,8 @@ require (
 	github.com/jcmturner/goidentity/v6 v6.0.1 // indirect
 	github.com/jcmturner/rpc/v2 v2.0.3 // indirect
 	github.com/josephspurrier/goversioninfo v1.7.0 // indirect
-	github.com/klauspost/compress v1.20.1 // indirect
-	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
+	github.com/klauspost/compress v1.20.3 // indirect
+	github.com/klauspost/cpuid/v2 v2.4.1 // indirect
 	github.com/klauspost/reedsolomon v1.14.2 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.1 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
