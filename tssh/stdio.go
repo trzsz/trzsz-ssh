@@ -47,6 +47,9 @@ func writeAll(dst io.Writer, data []byte) error {
 		if err != nil {
 			return err
 		}
+		if n == 0 {
+			return io.ErrShortWrite
+		}
 		m += n
 	}
 	return nil

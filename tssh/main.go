@@ -373,6 +373,9 @@ func sshStart(args *sshArgs) (int, error) {
 		return kExitCodeLoginFailed, err
 	}
 	defer func() {
+		// keep the control master alive while multiplexed clients are still connected
+		waitMuxMasterClients(sshConn)
+
 		cleanupOnClose()
 		sshConn.Close()
 	}()
@@ -400,7 +403,7 @@ func sshStart(args *sshArgs) (int, error) {
 	}
 
 	// ssh port forwarding
-	if !sshConn.param.control {
+	if !sshConn.param.controlClient {
 		sshPortForward(sshConn)
 	}
 
@@ -416,7 +419,7 @@ func sshStart(args *sshArgs) (int, error) {
 	}
 
 	// ssh agent forward
-	if !sshConn.param.control {
+	if !sshConn.param.controlClient {
 		sshAgentForward(sshConn)
 	}
 

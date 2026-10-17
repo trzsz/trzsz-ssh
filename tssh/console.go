@@ -37,6 +37,8 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+// In UDP attach mode, the default exit behavior is to detach.
+// Set this to true when the tsshd server needs to exit as well (not just detach).
 var wantExit atomic.Bool
 
 type menuItem struct {

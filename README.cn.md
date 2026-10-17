@@ -1042,6 +1042,22 @@ Host xxx
 
 - `UdpSessionName`: 自定义会话名称。仅在 `UdpSessionAttach` 配置为 `yes` 或通过 `--attach` 参数登录时生效。若服务器端已存在该名称的会话，将直接附加；若不存在，则以此名称创建新会话，供后续登录时自动附加。
 
+### UDP 多路复用
+
+- 在 UDP 模式下，`tssh` 本身充当 `ControlMaster`（不涉及 OpenSSH），因此后续登录会复用已建立的 UDP 连接，无需重新进行 SSH 登录或启动新的 `tsshd` 进程：
+
+  ```sh
+  tssh --udp -M -S ~/.ssh/ctl-%C xxx        # 主连接：正常登录并监听控制套接字
+  tssh -S ~/.ssh/ctl-%C xxx                 # 后续会话、命令、-L / -R / -D 端口转发均可复用此 UDP 连接
+  tssh -O check -S ~/.ssh/ctl-%C xxx        # 支持对 tssh 和 OpenSSH 主连接执行 check、exit、stop
+  ```
+
+  或者在 `~/.ssh/config` 中将 `ControlMaster auto`、`ControlPath` 与 `UdpMode` 配合配置：第一次执行 `tssh xxx` 会自动成为主连接，后续连接将自动进行多路复用。
+
+- 当多路复用客户端仍处于连接状态而主连接的 shell 退出时，主连接将继续运行，直到所有客户端退出（按 `Ctrl+C` 可强制退出）。`tssh --udp -M -N xxx` 可保持主连接在没有 shell 的情况下运行。目前 UDP 模式下尚不支持 `ControlPersist`。
+
+- 目前仅支持 `tssh` 连接到 UDP 主连接（多路复用代理模式）。暂不支持诸如 `ssh -S`、`scp` 和 `rsync` 等 OpenSSH 客户端（多路复用乘客模式）。通过控制套接字暂不支持 X11 转发、Agent 转发、UDP 端口转发以及端口为 `0` 的 `-R` 转发。
+
 ### UDP 端口转发
 
 使用 UDP 模式时，支持 UDP 端口转发。

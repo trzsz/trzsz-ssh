@@ -1045,6 +1045,22 @@ Host xxx
 
 - `UdpSessionName`: Customizes the session name. This only takes effect when `UdpSessionAttach` is set to `yes` or when logging in with the `--attach` argument. If a session with this name already exists on the server, it will attach directly; if not, a new session with this name will be created for automatic attachment in future logins.
 
+### UDP Multiplexing
+
+- In UDP mode, `tssh` itself acts as the `ControlMaster` (OpenSSH is not involved), so later logins reuse the established UDP connection without a new SSH login or a new `tsshd` process:
+
+  ```sh
+  tssh --udp -M -S ~/.ssh/ctl-%C xxx        # the master: logs in normally and listens on the control socket
+  tssh -S ~/.ssh/ctl-%C xxx                 # further sessions, commands, -L / -R / -D forwards reuse the UDP connection
+  tssh -O check -S ~/.ssh/ctl-%C xxx        # check | exit | stop are supported for tssh and OpenSSH masters
+  ```
+
+  Or configure `ControlMaster auto` and `ControlPath` together with `UdpMode` in `~/.ssh/config`: the first `tssh xxx` becomes the master, the following ones are multiplexed automatically.
+
+- When the shell of the master exits while multiplexed clients are still connected, the master keeps running until they exit (press `Ctrl+C` to force exit). `tssh --udp -M -N xxx` keeps a master running without a shell. `ControlPersist` is not supported in UDP mode yet.
+
+- Only `tssh` can connect to a UDP master (mux proxy mode). OpenSSH clients such as `ssh -S`, `scp` and `rsync` (mux passenger mode) are not supported yet. X11 forwarding, agent forwarding, UDP port forwarding and `-R` with port `0` are not supported through the control socket.
+
 ### UDP Port Forwarding
 
 When running in UDP mode, UDP port forwarding is supported.

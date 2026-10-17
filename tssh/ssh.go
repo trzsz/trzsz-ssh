@@ -256,6 +256,7 @@ type sshConnection struct {
 	exited    atomic.Bool
 	waitWarn  sync.WaitGroup
 	startEOF  bool
+	exitCode  atomic.Pointer[int]
 }
 
 func (c *sshConnection) Close() {
@@ -303,19 +304,23 @@ func (c *sshConnection) waitUntilExit() int {
 	select {
 	case code := <-c.exitChan:
 		debug("force exit with code: %d", code)
-		return code
+		c.exitCode.CompareAndSwap(nil, &code)
 	case code := <-done:
 		wantExit.Store(true)
 		c.waitWarn.Wait()
 		debug("session wait completed with code: %d", code)
-		return code
+		c.exitCode.CompareAndSwap(nil, &code)
 	}
+
+	return *c.exitCode.Load()
 }
 
 func (c *sshConnection) forceExit(code int, cause string) {
 	if !c.exited.CompareAndSwap(false, true) {
 		return
 	}
+
+	c.exitCode.CompareAndSwap(nil, &code)
 
 	if lastJumpUdpClient != nil {
 		if notif := lastJumpUdpClient.notifModel.Load(); notif != nil {
