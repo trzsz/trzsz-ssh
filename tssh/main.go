@@ -373,6 +373,9 @@ func sshStart(args *sshArgs) (int, error) {
 		return kExitCodeLoginFailed, err
 	}
 	defer func() {
+		// keep the control master alive while multiplexed clients are still connected
+		waitMuxMasterClients(sshConn)
+
 		cleanupOnClose()
 		sshConn.Close()
 	}()
@@ -399,8 +402,8 @@ func sshStart(args *sshArgs) (int, error) {
 		return 0, nil
 	}
 
-	// ssh port forwarding (a tssh udp control master serves the forwarding channels itself)
-	if !sshConn.param.control || sshConn.param.controlUdp {
+	// ssh port forwarding
+	if !sshConn.param.controlClient {
 		sshPortForward(sshConn)
 	}
 
@@ -416,7 +419,7 @@ func sshStart(args *sshArgs) (int, error) {
 	}
 
 	// ssh agent forward
-	if !sshConn.param.control {
+	if !sshConn.param.controlClient {
 		sshAgentForward(sshConn)
 	}
 
@@ -468,7 +471,6 @@ func sshStart(args *sshArgs) (int, error) {
 	execExpectInteractions(sshConn)
 
 	// make stdin raw
-	var rawState *stdinState
 	if isTerminal && sshConn.tty {
 		state, err := makeStdinRaw()
 		if err != nil {
@@ -476,7 +478,6 @@ func sshStart(args *sshArgs) (int, error) {
 		}
 		addOnExitFunc(func() { resetStdin(state) })
 		defer resetStdin(state)
-		rawState = state
 	}
 
 	// setup trzsz filter if necessary
@@ -495,9 +496,6 @@ func sshStart(args *sshArgs) (int, error) {
 	if args.Background {
 		_ = sshConn.client.Wait()
 	}
-
-	// keep the control master alive while multiplexed clients are still connected
-	waitMuxMasterClients(sshConn, rawState)
 
 	// wait for the output
 	outputWaitGroup.Wait()

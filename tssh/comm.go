@@ -78,6 +78,7 @@ const (
 	kExitCodeSignalKill  = 206
 	kExitCodeTmuxDetach  = 207
 	kExitCodeUdpDetach   = 208
+	kExitCodeMasterExit  = 209
 )
 
 var debugLogFile *os.File
@@ -635,8 +636,9 @@ func wildcardToRegexp(pattern string) string {
 
 // newFileUnlinker returns a thread-safe, idempotent cleanup function
 // that closes the provided resource and safely unlinks the Unix socket file.
-func newFileUnlinker(path string, closer io.Closer) func() error {
+func newFileUnlinker(path string, closer io.Closer) func() (bool, error) {
 	var once sync.Once
+	var removed bool
 	var closeErr error
 
 	// Snapshot the file information at creation time to prevent
@@ -646,7 +648,12 @@ func newFileUnlinker(path string, closer io.Closer) func() error {
 		warning("stat created file [%s] failed: %v", path, err)
 	}
 
-	cleanup := func() error {
+	// Disable automatic unlinking so cleanup can verify the file identity first.
+	if unixListener, ok := closer.(*net.UnixListener); ok && unixListener != nil {
+		unixListener.SetUnlinkOnClose(false)
+	}
+
+	cleanup := func() (bool, error) {
 		once.Do(func() {
 			// 1. Close the resource first.
 			if closer != nil {
@@ -673,9 +680,10 @@ func newFileUnlinker(path string, closer io.Closer) func() error {
 				warning("unlink file [%s] failed: %v", path, err)
 				return
 			}
+			removed = true
 			debug("unlink file [%s] successful", path)
 		})
-		return closeErr
+		return removed, closeErr
 	}
 
 	// Return the cleanup function to be used with defer.

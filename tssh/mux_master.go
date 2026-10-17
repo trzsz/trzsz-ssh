@@ -51,6 +51,8 @@ type muxMaster struct {
 
 	listening atomic.Bool
 	closed    atomic.Bool
+
+	sockCleanup func() (bool, error)
 }
 
 // kMaxUnixSocketPath is the size of sockaddr_un.sun_path (104 on BSD/macOS, 108 on Linux).
@@ -61,9 +63,7 @@ var muxMasters []*muxMaster
 
 // startMuxMaster creates the control socket and starts serving mux clients.
 func startMuxMaster(param *sshParam, client SshClient, socket string) (*muxMaster, error) {
-	oldMask := syscall.Umask(0177)
 	listener, err := net.Listen("unix", socket)
-	syscall.Umask(oldMask)
 	if err != nil {
 		if len(socket) >= kMaxUnixSocketPath {
 			return nil, fmt.Errorf("listen on control socket [%s] failed: %v (ControlPath too long, max %d bytes)",
@@ -71,13 +71,18 @@ func startMuxMaster(param *sshParam, client SshClient, socket string) (*muxMaste
 		}
 		return nil, fmt.Errorf("listen on control socket [%s] failed: %v", socket, err)
 	}
-	_ = os.Chmod(socket, 0600)
+	if err := os.Chmod(socket, 0600); err != nil {
+		_ = listener.Close()
+		_ = os.Remove(socket)
+		return nil, fmt.Errorf("chmod on control socket [%s] failed: %v", socket, err)
+	}
 
 	m := &muxMaster{
-		socket:   socket,
-		listener: listener,
-		client:   client,
-		conns:    make(map[*muxProxyConn]struct{}),
+		socket:      socket,
+		listener:    listener,
+		client:      client,
+		conns:       make(map[*muxProxyConn]struct{}),
+		sockCleanup: newFileUnlinker(socket, listener),
 	}
 	m.connCond = sync.NewCond(&m.connMu)
 	m.listening.Store(true)
@@ -88,7 +93,7 @@ func startMuxMaster(param *sshParam, client SshClient, socket string) (*muxMaste
 	muxMastersMu.Unlock()
 
 	addOnCloseFunc(m.close)
-	addOnExitFunc(m.removeSocket)
+	addOnExitFunc(func() { _, _ = m.sockCleanup() })
 
 	go m.serve()
 	debug("control master listening on [%s] for [%s]", socket, param.args.Destination)
@@ -97,14 +102,34 @@ func startMuxMaster(param *sshParam, client SshClient, socket string) (*muxMaste
 
 // terminateMuxMaster exits the master process after a MUX_C_TERMINATE request.
 func terminateMuxMaster(client SshClient) {
-	if udpClient, ok := client.(*sshUdpClient); ok {
-		if sshConn := udpClient.sshConn.Load(); sshConn != nil {
-			sshConn.forceExit(0, "control master terminated by control command")
-			return
-		}
+	// When any hop exits, the entire link becomes unusable, meaning all hops must exit together.
+	// In UDP mode, we must explicitly force the last-hop UDP connection to exit;
+	// otherwise, it may continuously attempt to reconnect.
+
+	if lastJumpUdpClient == nil {
+		// Currently, the tssh control master only supports UDP mode, so lastJumpUdpClient
+		// should never be nil. This branch acts as a safeguard.
+		warning("should not reach here, possible bug, lastJumpUdpClient=%v", lastJumpUdpClient)
+		_ = client.Close()
+		return
 	}
-	wantExit.Store(true)
-	_ = client.Close()
+
+	// Wait up to 10 seconds for sshConn to be initialized
+	for range 1000 {
+		if lastJumpUdpClient.sshConn.Load() != nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if sshConn := lastJumpUdpClient.sshConn.Load(); sshConn != nil {
+		sshConn.forceExit(kExitCodeMasterExit, "control master terminated by control command")
+	} else {
+		// sshConn must be set after login completes; it should not be nil here
+		warning("should not reach here, possible bug, lastJumpUdpClient.sshConn=%v", lastJumpUdpClient.sshConn.Load())
+		_ = client.Close()
+		return
+	}
 }
 
 func (m *muxMaster) serve() {
@@ -207,15 +232,8 @@ func (m *muxMaster) stopListening() {
 	if !m.listening.CompareAndSwap(true, false) {
 		return
 	}
-	_ = m.listener.Close()
-	m.removeSocket()
+	_, _ = m.sockCleanup()
 	debug("control master stopped listening on [%s]", m.socket)
-}
-
-func (m *muxMaster) removeSocket() {
-	if err := os.Remove(m.socket); err != nil && !errors.Is(err, os.ErrNotExist) {
-		debug("remove control socket [%s] failed: %v", m.socket, err)
-	}
 }
 
 // close stops listening and disconnects every client.
@@ -269,16 +287,13 @@ func waitMuxMastersIdle() {
 
 // waitMuxMasterClients keeps the master process alive after its own session ended
 // until every multiplexed client has disconnected (Ctrl+C still forces the exit).
-func waitMuxMasterClients(sshConn *sshConnection, rawState *stdinState) {
+func waitMuxMasterClients(sshConn *sshConnection) {
 	if sshConn.exited.Load() {
 		return
 	}
 	count := muxMastersClientCount()
 	if count == 0 {
 		return
-	}
-	if rawState != nil {
-		resetStdin(rawState)
 	}
 	warning("control master: %d multiplexed client(s) still connected, waiting for them to exit (press Ctrl+C to force exit)", count)
 	waitMuxMastersIdle()
@@ -290,6 +305,7 @@ func removeStaleMuxSocket(socket string) bool {
 	if !isFileExist(socket) {
 		return false
 	}
+	unlinker := newFileUnlinker(socket, nil)
 	conn, err := net.DialTimeout("unix", socket, 500*time.Millisecond)
 	if err == nil {
 		_ = conn.Close()
@@ -298,7 +314,7 @@ func removeStaleMuxSocket(socket string) bool {
 	if !errors.Is(err, syscall.ECONNREFUSED) && !errors.Is(err, syscall.ENOENT) {
 		return false
 	}
-	if err := os.Remove(socket); err != nil {
+	if removed, _ := unlinker(); !removed {
 		return false
 	}
 	debug("removed stale control socket [%s]", socket)

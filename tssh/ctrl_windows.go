@@ -42,7 +42,7 @@ func startMuxMaster(_ *sshParam, _ SshClient, _ string) (*muxMaster, error) {
 	return nil, fmt.Errorf("ControlMaster is not supported on Windows")
 }
 
-func waitMuxMasterClients(_ *sshConnection, _ *stdinState) {}
+func waitMuxMasterClients(_ *sshConnection) {}
 
 func connectViaControl(param *sshParam) SshClient {
 	ctrlPath := param.args.ControlPath

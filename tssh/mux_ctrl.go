@@ -33,14 +33,11 @@ import (
 	"time"
 )
 
-// kMuxAllTokens is the full ControlPath token set (OpenSSH >= 9.6 also supports %j).
-const kMuxAllTokens = "%CdhijkLlnpru"
-
-// resolveControlPathOption returns the configured ControlPath, or "" if multiplexing is disabled.
-func resolveControlPathOption(args *sshArgs) string {
-	ctrlPath := args.ControlPath
+// resolveControlPath returns the configured ControlPath, or "" if multiplexing is disabled.
+func resolveControlPath(param *sshParam) string {
+	ctrlPath := param.args.ControlPath
 	if ctrlPath == "" {
-		ctrlPath = getOptionConfig(args, "ControlPath")
+		ctrlPath = getOptionConfig(param.args, "ControlPath")
 	}
 	if strings.EqualFold(ctrlPath, "none") {
 		return ""
@@ -63,19 +60,9 @@ func getControlMasterMode(args *sshArgs) (master, auto bool) {
 	return false, false
 }
 
-// resolveControlSocket expands the ControlPath of dest for a control command.
-func resolveControlSocket(args *sshArgs, dest string) (string, error) {
-	args.Destination = dest
-	args.originalDest = dest
-	ctrlPath := resolveControlPathOption(args)
-	if ctrlPath == "" {
-		return "", fmt.Errorf("no ControlPath specified for [%s]", dest)
-	}
-	param, err := getSshParam(args, false)
-	if err != nil {
-		return "", err
-	}
-	socket, err := expandTokens(ctrlPath, param, kMuxAllTokens)
+// resolveControlSocket expands the ControlPath tokens for the given SSH parameters.
+func resolveControlSocket(param *sshParam, ctrlPath string) (string, error) {
+	socket, err := expandTokens(ctrlPath, param, "%CdhijkLlnpru")
 	if err != nil {
 		return "", fmt.Errorf("expand ControlPath [%s] failed: %v", ctrlPath, err)
 	}

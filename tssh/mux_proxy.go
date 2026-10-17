@@ -414,15 +414,13 @@ func (c *muxProxyConn) handlePacket(pkt []byte) error {
 		if err := ssh.Unmarshal(pkt, &msg); err != nil {
 			return fmt.Errorf("parse channel open confirmation failed: %v", err)
 		}
-		c.deliverOpenReply(msg.PeersID, &msg)
-		return nil
+		return c.deliverOpenReply(msg.PeersID, &msg)
 	case kSshMsgChannelOpenFailure:
 		var msg sshChannelOpenFailureMsg
 		if err := ssh.Unmarshal(pkt, &msg); err != nil {
 			return fmt.Errorf("parse channel open failure failed: %v", err)
 		}
-		c.deliverOpenReply(msg.PeersID, &msg)
-		return nil
+		return c.deliverOpenReply(msg.PeersID, &msg)
 	case kSshMsgChannelWindowAdjust, kSshMsgChannelData, kSshMsgChannelExtendedData, kSshMsgChannelEOF,
 		kSshMsgChannelClose, kSshMsgChannelRequest, kSshMsgChannelSuccess, kSshMsgChannelFailure:
 		if len(pkt) < 5 {
@@ -441,12 +439,15 @@ func (c *muxProxyConn) handlePacket(pkt []byte) error {
 	}
 }
 
-func (c *muxProxyConn) deliverOpenReply(id uint32, reply any) {
+func (c *muxProxyConn) deliverOpenReply(id uint32, reply any) error {
 	ch := c.lookupChannel(id)
 	if ch == nil {
-		return
+		return nil
 	}
 	if confirm, ok := reply.(*sshChannelOpenConfirmMsg); ok && ch.remoteWin == nil {
+		if confirm.MaxPacketSize == 0 {
+			return errors.New("invalid channel open confirmation: max packet size is zero")
+		}
 		// bind in the read loop so later packets for this channel see a complete channel
 		ch.remoteID = confirm.MyID
 		ch.remoteWin = newMuxWindow(confirm.MyWindow)
@@ -456,6 +457,7 @@ func (c *muxProxyConn) deliverOpenReply(id uint32, reply any) {
 	case ch.openReply <- reply:
 	default:
 	}
+	return nil
 }
 
 func (c *muxProxyConn) replyGlobalRequest(msg *sshGlobalRequestMsg, ok bool) error {
@@ -717,6 +719,10 @@ func (c *muxProxyConn) bindChannel(ch *muxChannel, msg *sshChannelOpenMsg) error
 }
 
 func (c *muxProxyConn) openSessionChannel(msg *sshChannelOpenMsg) {
+	if msg.MaxPacketSize == 0 {
+		c.sendOpenFailure(msg.PeersID, ssh.ConnectionFailed, "invalid channel open request: max packet size is zero")
+		return
+	}
 	session, err := c.client.NewSession()
 	if err != nil {
 		c.sendOpenFailure(msg.PeersID, ssh.ConnectionFailed, fmt.Sprintf("new session failed: %v", err))
@@ -746,6 +752,10 @@ func (c *muxProxyConn) openSessionChannel(msg *sshChannelOpenMsg) {
 }
 
 func (c *muxProxyConn) openDirectChannel(msg *sshChannelOpenMsg, network, addr string) {
+	if msg.MaxPacketSize == 0 {
+		c.sendOpenFailure(msg.PeersID, ssh.ConnectionFailed, "invalid channel open request: max packet size is zero")
+		return
+	}
 	conn, err := c.client.DialTimeout(network, addr, c.dialTimeout)
 	if err != nil {
 		c.sendOpenFailure(msg.PeersID, ssh.ConnectionFailed, fmt.Sprintf("dial %s failed: %v", addr, err))

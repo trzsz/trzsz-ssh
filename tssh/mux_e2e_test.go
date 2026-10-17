@@ -187,6 +187,7 @@ func runCommand(t *testing.T, client SshClient, cmd string) string {
 // slaves through the control socket with the production login code, and verifies that
 // the server saw exactly one connection carrying all sessions.
 func TestMuxEndToEnd(t *testing.T) {
+	defer suppressStderr(t)()
 	server := startTestSshServer(t)
 	echoAddr := startTestEchoServer(t)
 
@@ -217,7 +218,7 @@ func TestMuxEndToEnd(t *testing.T) {
 		client := connectViaControl(param)
 		require.NotNil(t, client, "slave %d failed to attach to the control socket", i)
 		defer func() { _ = client.Close() }()
-		assert.True(t, param.controlUdp, "slave %d did not recognize the tssh udp master", i)
+		assert.True(t, param.udpTransport, "slave %d did not recognize the tssh udp master", i)
 		slaves = append(slaves, client)
 
 		cmd := fmt.Sprintf("slave-%d", i)

@@ -114,8 +114,7 @@ func muxWritePacket(w io.Writer, body []byte) error {
 	buf := make([]byte, 4+len(body))
 	binary.BigEndian.PutUint32(buf, uint32(len(body)))
 	copy(buf[4:], body)
-	_, err := w.Write(buf)
-	return err
+	return writeAll(w, buf)
 }
 
 // muxReadMessage reads a mux message and splits off its type.

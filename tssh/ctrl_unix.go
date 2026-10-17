@@ -331,7 +331,18 @@ func startControlMaster(param *sshParam, sshPath string) error {
 func execControlCmd(args *sshArgs, dest string) int {
 	switch strings.ToLower(args.ControlCmd) {
 	case "check", "exit", "stop":
-		socket, err := resolveControlSocket(args, dest)
+		args.Destination, args.originalDest = dest, dest
+		param, err := getSshParam(args, false)
+		if err != nil {
+			warning("parse login param failed: %v", err)
+			return kExitCodeToolsError
+		}
+		ctrlPath := resolveControlPath(param)
+		if ctrlPath == "" {
+			warning("no ControlPath specified for [%s]", dest)
+			return kExitCodeToolsError
+		}
+		socket, err := resolveControlSocket(param, ctrlPath)
 		if err != nil {
 			warning("resolve control socket failed: %v", err)
 			return kExitCodeToolsError
@@ -373,94 +384,49 @@ func execControlCmd(args *sshArgs, dest string) int {
 }
 
 func connectViaControl(param *sshParam) SshClient {
-	args := param.args
-	ctrlPath := resolveControlPathOption(args)
+	ctrlPath := resolveControlPath(param)
 	if ctrlPath == "" {
 		return nil
 	}
-	master, auto := getControlMasterMode(args)
 
-	// udp mode: tssh itself is the control master, no OpenSSH involved
-	if param.udpMode != kUdpModeNo {
-		return connectViaUdpControl(param, ctrlPath, master, auto)
-	}
-
-	sshPath, majorVersion, minorVersion, err := getOpenSSH()
+	socket, err := resolveControlSocket(param, ctrlPath)
 	if err != nil {
-		warning("can't find openssh program: %v", err)
-		return nil
-	}
-	if majorVersion < 0 || minorVersion < 0 {
-		warning("can't get openssh version of %s", sshPath)
+		warning("resolve control socket failed: %v", err)
 		return nil
 	}
 
-	tokens := kMuxAllTokens
-	if majorVersion < 9 || (majorVersion == 9 && minorVersion < 6) {
-		tokens = "%CdhikLlnpru"
-	}
-	socket, err := expandTokens(ctrlPath, param, tokens)
-	if err != nil {
-		warning("expand ControlPath [%s] failed: %v", ctrlPath, err)
-		return nil
-	}
-	socket = resolveHomeDir(socket)
-
-	if master && isFileExist(socket) {
-		warning("control socket [%s] already exists, disabling multiplexing", socket)
-		return nil
-	}
-
-	if auto || master {
-		if err := startControlMaster(param, sshPath); err != nil {
-			warning("start control master failed: %v", err)
-		}
-	}
-
-	debug("login to [%s] via control path: %s", args.Destination, socket)
-
-	conn, err := net.DialTimeout("unix", socket, time.Second)
-	if err != nil {
-		warning("login to [%s] dial control path [%s] failed: %v", args.Destination, socket, err)
-		return nil
-	}
-
-	ncc, chans, reqs, err := ssh.NewControlClientConn(conn)
-	if err != nil {
-		warning("login to [%s] new conn from control path [%s] failed: %v", args.Destination, socket, err)
-		return nil
-	}
-
-	debug("login to [%s] via control path [%s] success", args.Destination, socket)
-	return sshNewClient(ncc, chans, reqs)
-}
-
-// connectViaUdpControl handles ControlMaster / ControlPath in udp mode. The master role is
-// taken by tssh itself once the udp login completed (see startMuxMaster), and slaves attach
-// to a running tssh udp master through the control socket in mux proxy mode.
-func connectViaUdpControl(param *sshParam, ctrlPath string, master, auto bool) SshClient {
-	args := param.args
-	socket, err := expandTokens(ctrlPath, param, kMuxAllTokens)
-	if err != nil {
-		warning("expand ControlPath [%s] failed: %v", ctrlPath, err)
-		return nil
-	}
-	socket = resolveHomeDir(socket)
+	udp := param.udpMode != kUdpModeNo
+	master, auto := getControlMasterMode(param.args)
 
 	if master {
 		if isFileExist(socket) {
 			warning("control socket [%s] already exists, disabling multiplexing", socket)
 			return nil
 		}
-		param.muxMasterPath = socket
-		return nil
+		// In UDP mode, tssh itself acts as the control master.
+		if udp {
+			param.muxMasterPath = socket
+			return nil
+		}
 	}
 
-	debug("login to [%s] via control path: %s", args.Destination, socket)
+	// In non-UDP mode, start an OpenSSH subprocess as the control master.
+	if !udp && (auto || master) {
+		sshPath, _, _, err := getOpenSSH()
+		if err != nil {
+			warning("can't find openssh program: %v", err)
+			return nil
+		}
+		if err := startControlMaster(param, sshPath); err != nil {
+			warning("start control master failed: %v", err)
+		}
+	}
 
+	debug("login to [%s] via control path: %s", param.args.Destination, socket)
 	conn, err := net.DialTimeout("unix", socket, time.Second)
 	if err != nil {
-		if auto {
+		// In UDP auto mode, fall back to becoming the master if no usable master exists.
+		if udp && auto {
 			if removeStaleMuxSocket(socket) || !isFileExist(socket) {
 				param.muxMasterPath = socket
 			} else {
@@ -468,24 +434,23 @@ func connectViaUdpControl(param *sshParam, ctrlPath string, master, auto bool) S
 			}
 			return nil
 		}
-		warning("login to [%s] dial control path [%s] failed: %v", args.Destination, socket, err)
+		warning("login to [%s] dial control path [%s] failed: %v", param.args.Destination, socket, err)
 		return nil
 	}
 
 	ncc, chans, reqs, err := ssh.NewControlClientConn(conn)
 	if err != nil {
-		warning("login to [%s] new conn from control path [%s] failed: %v", args.Destination, socket, err)
+		warning("login to [%s] new conn from control path [%s] failed: %v", param.args.Destination, socket, err)
 		return nil
 	}
-	client := sshNewClient(ncc, chans, reqs)
 
-	if isUdpMuxMaster(client) {
-		param.controlUdp = true
-		debug("login to [%s] via tssh udp control master [%s] success", args.Destination, socket)
-		return client
+	client := sshNewClient(ncc, chans, reqs)
+	debug("login to [%s] via control path [%s] success", param.args.Destination, socket)
+
+	if udp && isUdpMuxMaster(client) {
+		debug("control socket [%s] is a tssh UDP master", socket)
+		param.udpTransport = true
 	}
 
-	// an OpenSSH (tcp) master: use it to start tsshd, then switch to udp as usual
-	debug("login to [%s] via control path [%s] success, control master is not a tssh udp master", args.Destination, socket)
 	return client
 }

@@ -58,23 +58,18 @@ type sshParam struct {
 	addr    string
 	proxies []string
 	command string
-	control bool
 	proxy   *proxyJump
 	udpMode udpModeType
 	ipv4    bool
 	ipv6    bool
-
-	// controlUdp is set when the client is attached to a tssh UDP control master,
-	// the client is then the final client and no udp login is required.
-	controlUdp bool
+	// asUdpProxy indicates whether this proxy's next hop requires UDP.
+	asUdpProxy bool
+	// controlClient indicates whether the client connects to a local master through ControlPath.
+	controlClient bool
+	// udpTransport indicates whether the remote connection uses UDP, either directly or through a UDP master.
+	udpTransport bool
 	// muxMasterPath is the control socket to listen on as a native UDP control master.
 	muxMasterPath string
-}
-
-// hasUdpClient reports whether the final client is a real UDP client (*sshUdpClient),
-// as opposed to a TCP-style client, including one multiplexed through a control socket.
-func (p *sshParam) hasUdpClient() bool {
-	return p.udpMode != kUdpModeNo && !p.controlUdp
 }
 
 func (p *sshParam) setNetworkAddressFamily(conn net.Conn) {
@@ -651,10 +646,11 @@ func connectDirectly(param *sshParam, config *ssh.ClientConfig) (SshClient, erro
 	return sshNewClient(ncc, chans, reqs), nil
 }
 
-func tcpLogin(param *sshParam, proxy *proxyJump, requireUDP udpModeType) (SshClient, error) {
+func tcpLogin(param *sshParam, proxy *proxyJump, requiredUDP udpModeType) (SshClient, error) {
 	// ssh multiplexing
 	if client := connectViaControl(param); client != nil {
-		param.control = true
+		// The client is connected to a local master through ControlPath.
+		param.controlClient = true
 		return client, nil
 	}
 
@@ -687,16 +683,17 @@ func tcpLogin(param *sshParam, proxy *proxyJump, requireUDP udpModeType) (SshCli
 	}
 
 	// has proxies
+	effectiveUDP := requiredUDP
 	udpModes := make([]udpModeType, len(param.proxies))
 	for i := len(param.proxies) - 1; i >= 0; i-- { // init proxy udp mode
 		proxyArgs := &sshArgs{Destination: param.proxies[i]}
 		udpMode := getUdpMode(proxyArgs)
-		if requireUDP != kUdpModeNo && udpMode == kUdpModeNo {
-			udpMode = requireUDP
+		if effectiveUDP != kUdpModeNo && udpMode == kUdpModeNo {
+			udpMode = effectiveUDP
 		}
-		if requireUDP == kUdpModeNo && udpMode != kUdpModeNo {
+		if effectiveUDP == kUdpModeNo && udpMode != kUdpModeNo {
 			initGlobalUdpAliveTimeout(proxyArgs)
-			requireUDP = udpMode
+			effectiveUDP = udpMode
 		}
 		udpModes[i] = udpMode
 	}
@@ -705,6 +702,11 @@ func tcpLogin(param *sshParam, proxy *proxyJump, requireUDP udpModeType) (SshCli
 		if err != nil {
 			return nil, err
 		}
+		nextMode := requiredUDP
+		if i+1 < len(udpModes) {
+			nextMode = udpModes[i+1]
+		}
+		proxyParam.asUdpProxy = nextMode != kUdpModeNo
 		proxyClient, err := sshLogin(proxyParam, proxy, udpModes[i])
 		if err != nil {
 			return nil, err
@@ -716,14 +718,14 @@ func tcpLogin(param *sshParam, proxy *proxyJump, requireUDP udpModeType) (SshCli
 	return client, err
 }
 
-func sshLogin(param *sshParam, proxy *proxyJump, requireUDP udpModeType) (SshClient, error) {
+func sshLogin(param *sshParam, proxy *proxyJump, requiredUDP udpModeType) (SshClient, error) {
 	// init udp mode
-	if requireUDP != kUdpModeNo && param.udpMode == kUdpModeNo {
-		param.udpMode = requireUDP
+	if requiredUDP != kUdpModeNo && param.udpMode == kUdpModeNo {
+		param.udpMode = requiredUDP
 	}
-	if requireUDP == kUdpModeNo && param.udpMode != kUdpModeNo {
+	if requiredUDP == kUdpModeNo && param.udpMode != kUdpModeNo {
 		initGlobalUdpAliveTimeout(param.args)
-		requireUDP = param.udpMode
+		requiredUDP = param.udpMode
 	}
 
 	// setup log level
@@ -731,13 +733,22 @@ func sshLogin(param *sshParam, proxy *proxyJump, requireUDP udpModeType) (SshCli
 	defer resetLogLevel()
 
 	// tcp login
-	tcpClient, err := tcpLogin(param, proxy, requireUDP)
+	tcpClient, err := tcpLogin(param, proxy, requiredUDP)
 	if err != nil {
 		return nil, err
 	}
-	if param.udpMode == kUdpModeNo || param.controlUdp {
+
+	// If UDP is disabled or the client is connected to a UDP master,
+	// return the TCP client without performing another UDP login,
+	// unless this proxy's next hop requires UDP.
+	if param.udpMode == kUdpModeNo || (param.controlClient && param.udpTransport && !param.asUdpProxy) {
 		return tcpClient, nil
 	}
+
+	// The TCP client may be connected to an OpenSSH master through ControlPath.
+	// UDP login establishes a direct connection, so clear controlClient and
+	// mark the transport as UDP.
+	param.controlClient, param.udpTransport = false, true
 
 	// udp login
 	udpClient, err := udpLogin(param, tcpClient)
@@ -894,7 +905,7 @@ func sshConnect(args *sshArgs) (*sshConnection, error) {
 	}
 
 	// tcp keep alive
-	if !param.control && param.udpMode == kUdpModeNo {
+	if !param.controlClient && !param.udpTransport {
 		keepAlive(sshConn)
 	}
 

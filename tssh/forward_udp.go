@@ -359,11 +359,12 @@ func cloneNetAddr(addr net.Addr) net.Addr {
 
 type cleanupPacketConn struct {
 	net.PacketConn
-	cleanup func() error
+	cleanup func() (bool, error)
 }
 
 func (c *cleanupPacketConn) Close() error {
-	return c.cleanup()
+	_, err := c.cleanup()
+	return err
 }
 
 func listenOnLocalUDP(gateway bool, addr *string, port, name string, unlinkUnix bool, bindMask int) (conns []net.PacketConn) {
@@ -531,11 +532,12 @@ func remoteForwardUDP(sshConn *sshConnection, f *forwardCfg, gateway bool, timeo
 
 type unixgramConn struct {
 	io.ReadWriteCloser
-	cleanup func() error
+	cleanup func() (bool, error)
 }
 
 func (c *unixgramConn) Close() error {
-	return c.cleanup()
+	_, err := c.cleanup()
+	return err
 }
 
 func dialUDP(network, address string, timeout time.Duration) (io.ReadWriteCloser, error) {

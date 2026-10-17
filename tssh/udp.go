@@ -178,9 +178,20 @@ var lastJumpUdpClient *sshUdpClient
 var globalUdpAliveTimeout time.Duration
 
 func quitCallback(name, reason string) {
-	for lastJumpUdpClient == nil || lastJumpUdpClient.sshConn.Load() == nil {
-		time.Sleep(10 * time.Millisecond) // waiting for sshConn to be initialized
+	// Wait up to 10 seconds for lastJumpUdpClient and sshConn to be initialized
+	for range 1000 {
+		if lastJumpUdpClient != nil && lastJumpUdpClient.sshConn.Load() != nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
+
+	if lastJumpUdpClient == nil || lastJumpUdpClient.sshConn.Load() == nil {
+		warning("quitCallback failed: lastJumpUdpClient [%v] or sshConn not initialized within timeout (name: %s, reason: %s)",
+			lastJumpUdpClient, name, reason)
+		return
+	}
+
 	lastJumpUdpClient.sshConn.Load().forceExit(kExitCodeSignalKill, fmt.Sprintf("[%s] %s", name, reason))
 }
 

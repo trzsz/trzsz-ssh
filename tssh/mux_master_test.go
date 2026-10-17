@@ -39,6 +39,20 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+func suppressStderr(t *testing.T) func() {
+	t.Helper()
+
+	oldStderr := os.Stderr
+	nullFile, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	require.NoError(t, err)
+	os.Stderr = nullFile
+
+	return func() {
+		os.Stderr = oldStderr
+		_ = nullFile.Close()
+	}
+}
+
 func newTestMuxMaster(t *testing.T, backend SshClient) (*muxMaster, string) {
 	t.Helper()
 	// keep the socket path short: unix socket paths are limited to ~104 bytes on macOS
@@ -107,6 +121,8 @@ func TestMuxMasterProxyClientSession(t *testing.T) {
 }
 
 func TestMuxMasterControlCommands(t *testing.T) {
+	defer suppressStderr(t)()
+
 	backend := newFakeSshClient()
 	m, socket := newTestMuxMaster(t, backend)
 	terminated := make(chan struct{}, 1)

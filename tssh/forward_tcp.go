@@ -83,11 +83,12 @@ func unlinkStaleUnixSocket(path string) error {
 
 type cleanupListener struct {
 	net.Listener
-	cleanup func() error
+	cleanup func() (bool, error)
 }
 
 func (l *cleanupListener) Close() error {
-	return l.cleanup()
+	_, err := l.cleanup()
+	return err
 }
 
 func listenOnLocalTCP(gateway bool, addr *string, port, name string, unlinkUnix bool, bindMask int) (listeners []net.Listener) {
