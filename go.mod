@@ -29,7 +29,7 @@ require (
 	github.com/trzsz/shellescape v1.6.0
 	github.com/trzsz/ssh_config v1.3.10
 	github.com/trzsz/trzsz-go v1.2.1-0.20261010161529-351cf747d8f9
-	github.com/trzsz/tsshd v0.1.11-0.20261011000715-fb44a5536419
+	github.com/trzsz/tsshd v0.1.11-0.20261018030357-680dee6cc7e2
 	golang.org/x/crypto v0.58.0
 	golang.org/x/sys v0.49.0
 	golang.org/x/term v0.47.0
@@ -66,7 +66,7 @@ require (
 	github.com/ncruces/zenity v0.10.15 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/randall77/makefat v0.0.0-20260406194835-1b91746796b7 // indirect
-	github.com/rcarmo/go-te v0.1.0 // indirect
+	github.com/rcarmo/go-te v0.1.1-0.20261011111757-c4b625a6ea41 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/tjfoc/gmsm v1.4.1 // indirect
 	github.com/trzsz/kcp-go/v5 v5.6.73 // indirect

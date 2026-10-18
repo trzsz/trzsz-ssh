@@ -285,17 +285,21 @@ func (c *sshConnection) waitUntilExit() int {
 			var msg string
 			switch e := err.(type) {
 			case *ssh.ExitError:
-				msg = e.String()
+				if e.Signal() != "" || e.Msg() != "" {
+					msg = e.String()
+				}
 			case *ssh.ExitMissingError:
 				msg = "Connection lost: possible network interruption"
 			default:
 				msg = fmt.Sprintf("Connection error: %v", err)
 			}
 
-			if isTerminal && c.tty {
-				_, _ = os.Stderr.Write([]byte("\n\r")) // make the top message still visible after exiting
+			if msg != "" {
+				if isTerminal && c.tty {
+					_, _ = os.Stderr.Write([]byte("\n\r")) // make the top message still visible after exiting
+				}
+				warning("%s", msg)
 			}
-			warning("%s", msg)
 		}
 
 		done <- c.session.GetExitCode()
@@ -393,6 +397,7 @@ type sshSessionWrapper struct {
 	ssh.Session
 	height int
 	width  int
+	code   int
 }
 
 func (s *sshSessionWrapper) RequestPty(term string, height, width int, termmodes ssh.TerminalModes) error {
@@ -419,8 +424,18 @@ func (s *sshSessionWrapper) GetTerminalWidth() int {
 	return s.width
 }
 
+func (s *sshSessionWrapper) Wait() error {
+	err := s.Session.Wait()
+	if err == nil {
+		s.code = 0
+	} else if exitErr, ok := err.(*ssh.ExitError); ok {
+		s.code = exitErr.ExitStatus()
+	}
+	return err
+}
+
 func (s *sshSessionWrapper) GetExitCode() int {
-	return 0
+	return s.code
 }
 
 type sshClientWrapper struct {
@@ -441,7 +456,7 @@ func (c *sshClientWrapper) NewSession() (SshSession, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &sshSessionWrapper{*session, 0, 0}, nil
+	return &sshSessionWrapper{Session: *session, height: 0, width: 0, code: -1}, nil
 }
 
 func (c *sshClientWrapper) DialTimeout(network, addr string, timeout time.Duration) (conn net.Conn, err error) {

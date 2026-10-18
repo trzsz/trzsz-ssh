@@ -137,8 +137,8 @@ github.com/quic-go/go-ossfuzz-seeds v0.1.0 h1:APacT+iIaNF6fd8AGEiN3bT/Jtkd2jz4v4
 github.com/quic-go/go-ossfuzz-seeds v0.1.0/go.mod h1:3IOHRbJIc+L6YKMwfDtJAM9Vj9k0YY4muhuyUYk5tbk=
 github.com/randall77/makefat v0.0.0-20260406194835-1b91746796b7 h1:m1yKMZwDSXkT5o2MKhd6ihdzb2dYb6eElNE04xjOSEY=
 github.com/randall77/makefat v0.0.0-20260406194835-1b91746796b7/go.mod h1:T1TLSfyWVBRXVGzWd0o9BI4kfoO9InEgfQe4NV3mLz8=
-github.com/rcarmo/go-te v0.1.0 h1:BH9Ub+A0AVBY5Q00El4QMVaWAMbycVHgMHQI2Kz8J/o=
-github.com/rcarmo/go-te v0.1.0/go.mod h1:cLsrtroxCubS+OHHwH0riB6xeNESfntaHEeI1jPAedk=
+github.com/rcarmo/go-te v0.1.1-0.20261011111757-c4b625a6ea41 h1:2/mUYeX6pQsYjHyMRN9e4Tkqt/64fYNadLWsW6GEpkM=
+github.com/rcarmo/go-te v0.1.1-0.20261011111757-c4b625a6ea41/go.mod h1:cLsrtroxCubS+OHHwH0riB6xeNESfntaHEeI1jPAedk=
 github.com/rivo/uniseg v0.2.0/go.mod h1:J6wj4VEh+S6ZtnVlnTBMWIodfgj8LQOQFoIToxlJtxc=
 github.com/rivo/uniseg v0.4.4/go.mod h1:FN3SvrM+Zdj16jyLfmOkMNblXMcoc8DfTHruCPUcx88=
 github.com/rivo/uniseg v0.4.7 h1:WUdvkW8uEhrYfLC4ZzdpI2ztxP1I582+49Oc5Mq64VQ=
@@ -180,8 +180,8 @@ github.com/trzsz/ssh_config v1.3.10 h1:JeKtvLMYYeHna8Jofa4SP5BxDUxv/7KVp1bpcbuyA
 github.com/trzsz/ssh_config v1.3.10/go.mod h1:dW6PcBrIapRWevZFLl9yJtqKH6iVUlrhhYB1UGhocDQ=
 github.com/trzsz/trzsz-go v1.2.1-0.20261010161529-351cf747d8f9 h1:toidn3jVZtZYGc8ZNPEMsit7VGlc2WZkXDzv9A21Poc=
 github.com/trzsz/trzsz-go v1.2.1-0.20261010161529-351cf747d8f9/go.mod h1:OxT8FSP64MSE13VkXcVmQvx2eV0qJKU1CM03rJs/aY4=
-github.com/trzsz/tsshd v0.1.11-0.20261011000715-fb44a5536419 h1:qlO4dZOeFr6x6t9yMemFvzWFA+6GgYzcZ2HYKP2LSyc=
-github.com/trzsz/tsshd v0.1.11-0.20261011000715-fb44a5536419/go.mod h1:WIg0PCv3qR4QSnKdE+4hA/+bGt81fE6Ba7vOEFoHGVM=
+github.com/trzsz/tsshd v0.1.11-0.20261018030357-680dee6cc7e2 h1:xvJKtTXb+thKFBVOVBJ6l9zT711jZLZpL8VEobSrlwc=
+github.com/trzsz/tsshd v0.1.11-0.20261018030357-680dee6cc7e2/go.mod h1:GQuQevJokp+vLqjOTQpzgo3MCf0WdBM1tQyQxggS8Rw=
 github.com/xo/terminfo v1.2.0 h1:d0ZTOCpuGE0lwSAOs0zcJjwz3jWQyqcRt9XbGJpCOl4=
 github.com/xo/terminfo v1.2.0/go.mod h1:lGzkSo8Fe7IRh/w+Gqz7n5mDog4FVXCj3gy/DYTBqio=
 github.com/xtaci/lossyconn v0.0.0-20190602105132-8df528c0c9ae h1:J0GxkO96kL4WF+AIT3M4mfUVinOCPgf2uUWYFUzN0sM=
