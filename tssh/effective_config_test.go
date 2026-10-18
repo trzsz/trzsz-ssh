@@ -11,7 +11,7 @@ func TestParseOpenSSHConfigDump(t *testing.T) {
 		"proxycommand sh -c \"aws ssm start-session --target %h --document-name AWS-StartSSHSession --parameters 'portNumber=22' --region ap-northeast-1\"\n" +
 		"userknownhostsfile ~/.ssh/known_hosts ~/.ssh/known_hosts2\n")
 
-	cfg := parseOpenSSHConfigDump(out)
+	cfg := parseEffectiveConfigDump(out)
 	if cfg.get("HostName") != "example.com" {
 		t.Fatalf("hostname = %q", cfg.get("HostName"))
 	}

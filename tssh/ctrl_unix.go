@@ -305,11 +305,8 @@ func startControlMaster(param *sshParam, sshPath string) error {
 		}
 	}
 
-	if args.originalDest != "" {
-		cmdArgs = append(cmdArgs, args.originalDest)
-	} else {
-		cmdArgs = append(cmdArgs, args.Destination)
-	}
+	cmdArgs = append(cmdArgs, args.originalDest)
+
 	// 10 seconds is enough for tssh to connect
 	cmdArgs = append(cmdArgs, "echo ok; sleep 10")
 
@@ -331,7 +328,7 @@ func startControlMaster(param *sshParam, sshPath string) error {
 func execControlCmd(args *sshArgs, dest string) int {
 	switch strings.ToLower(args.ControlCmd) {
 	case "check", "exit", "stop":
-		args.Destination, args.originalDest = dest, dest
+		args.Destination = dest
 		param, err := getSshParam(args, false)
 		if err != nil {
 			warning("parse login param failed: %v", err)

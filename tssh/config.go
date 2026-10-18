@@ -448,7 +448,7 @@ func getCfg(alias, key string, cfgs ...*sshConfig) string {
 
 func getConfig(args *sshArgs, key string) string {
 	if userConfig.shouldUseOpenSSHConfig() {
-		if cfg := getOpenSSHEffectiveConfig(args, "", ""); cfg != nil {
+		if cfg := getEffectiveConfig(args); cfg != nil {
 			if value := cfg.get(key); value != "" {
 				return value
 			}
@@ -492,7 +492,7 @@ func getCfgSplits(alias, key string, cfgs ...*sshConfig) []string {
 
 func getConfigSplits(args *sshArgs, key string) []string {
 	if userConfig.shouldUseOpenSSHConfig() {
-		if cfg := getOpenSSHEffectiveConfig(args, "", ""); cfg != nil {
+		if cfg := getEffectiveConfig(args); cfg != nil {
 			if value := cfg.get(key); value != "" {
 				values, err := ssh_config.SplitConfigValue(key, value)
 				if err != nil {
@@ -543,7 +543,7 @@ func getAllCfg(alias, key string, cfgs ...*sshConfig) []string {
 
 func getAllConfig(args *sshArgs, key string) []string {
 	if userConfig.shouldUseOpenSSHConfig() {
-		if cfg := getOpenSSHEffectiveConfig(args, "", ""); cfg != nil {
+		if cfg := getEffectiveConfig(args); cfg != nil {
 			if values := cfg.getAll(key); len(values) > 0 {
 				return values
 			}
@@ -589,7 +589,7 @@ func getAllCfgSplits(alias, key string, cfgs ...*sshConfig) []string {
 
 func getAllConfigSplits(args *sshArgs, key string) []string {
 	if userConfig.shouldUseOpenSSHConfig() {
-		if cfg := getOpenSSHEffectiveConfig(args, "", ""); cfg != nil {
+		if cfg := getEffectiveConfig(args); cfg != nil {
 			var values []string
 			for _, value := range cfg.getAll(key) {
 				vals, err := ssh_config.SplitConfigValue(key, value)
@@ -620,6 +620,7 @@ func getAllConfigSplits(args *sshArgs, key string) []string {
 }
 
 func getExConfig(args *sshArgs, key string) string {
+	userConfig.doLoadConfig()
 	userConfig.doLoadExConfig()
 
 	value := getCfg(args.Destination, key, userConfig.exConfig, userConfig.config, userConfig.sysConfig)
@@ -646,6 +647,7 @@ func getAllExConfig(args *sshArgs, key string, extend bool) []string {
 		return getAllConfig(args, key)
 	}
 
+	userConfig.doLoadConfig()
 	userConfig.doLoadExConfig()
 
 	values := getAllCfg(args.Destination, key, userConfig.exConfig, userConfig.config, userConfig.sysConfig)
@@ -731,7 +733,7 @@ func appendPromptHosts(oriArgs *sshArgs, hosts []*sshHost, seen map[string]bool,
 			}
 
 			args := *oriArgs
-			args.Destination = alias
+			args.Destination, args.originalDest = alias, alias
 
 			if !userConfig.shouldUseOpenSSHConfig() {
 				if v := getOptionConfig(&args, "CanonicalizeHostname"); strings.EqualFold(v, "always") || strings.EqualFold(v, "yes") {

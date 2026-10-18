@@ -159,13 +159,10 @@ func getSshParam(args *sshArgs, proxy bool) (*sshParam, error) {
 		return nil, fmt.Errorf("invalid destination (empty host): %s", args.Destination)
 	}
 
-	args.Destination = destHost
-
-	// Preload effective OpenSSH configuration using `ssh -G`, allowing getConfig()
-	// to evaluate Match blocks and other complex OpenSSH rules.
-	if userConfig.shouldUseOpenSSHConfig() {
-		_ = getOpenSSHEffectiveConfig(args, destUser, destPort)
+	if args.originalDest == "" {
+		args.originalDest = args.Destination
 	}
+	args.Destination = destHost
 
 	// canonicalize
 	if v := getOptionConfig(args, "CanonicalizeHostname"); strings.EqualFold(v, "true") ||

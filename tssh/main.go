@@ -360,7 +360,6 @@ func TsshMain(argv []string) int {
 
 	// start ssh program
 	args.Destination = dest
-	args.originalDest = dest
 	var code int
 	code, err = sshStart(&args)
 	return code

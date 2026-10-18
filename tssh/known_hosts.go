@@ -416,15 +416,11 @@ func getHostKeyCallback(param *sshParam) (ssh.HostKeyCallback, []string, error) 
 			warnChangedKey(key)
 			fmt.Fprintf(os.Stderr, "Add correct host key in %s to get rid of this message.\r\n", path)
 			if primaryPath != "" {
-				dest := param.args.originalDest
-				if dest == "" {
-					dest = param.args.Destination
-				}
 				port := ""
 				if param.args.Port != 0 {
 					port = fmt.Sprintf("-p %d ", param.args.Port)
 				}
-				fmt.Fprintf(os.Stderr, "Or reconnect with:\r\n  tssh --remove-host-key %s%s\r\n", port, dest)
+				fmt.Fprintf(os.Stderr, "Or reconnect with:\r\n  tssh --remove-host-key %s%s\r\n", port, param.args.originalDest)
 			}
 		} else if knownhosts.IsHostUnknown(err) && primaryPath != "" {
 			ask := true
