@@ -169,13 +169,25 @@ func (c *controlMaster) start(param *sshParam) error {
 		cancel := c.fillPassword(param, expectCount)
 		defer cancel()
 	}
-	if c.stdout, err = c.cmd.StdoutPipe(); err != nil {
+
+	stdoutReader, stdoutWriter, err := os.Pipe()
+	if err != nil {
 		return fmt.Errorf("stdout pipe failed: %v", err)
 	}
-	if c.stderr, err = c.cmd.StderrPipe(); err != nil {
+	defer func() { _ = stdoutWriter.Close() }() // Close the parent's write end to allow EOF.
+	c.stdout, c.cmd.Stdout = stdoutReader, stdoutWriter
+
+	stderrReader, stderrWriter, err := os.Pipe()
+	if err != nil {
+		_ = stdoutReader.Close()
 		return fmt.Errorf("stderr pipe failed: %v", err)
 	}
+	defer func() { _ = stderrWriter.Close() }() // Close the parent's write end to allow EOF.
+	c.stderr, c.cmd.Stderr = stderrReader, stderrWriter
+
 	if err := c.cmd.Start(); err != nil {
+		_ = stdoutReader.Close()
+		_ = stderrReader.Close()
 		return fmt.Errorf("control master start failed: %v", err)
 	}
 
@@ -437,6 +449,7 @@ func connectViaControl(param *sshParam) SshClient {
 
 	ncc, chans, reqs, err := ssh.NewControlClientConn(conn)
 	if err != nil {
+		_ = conn.Close()
 		warning("login to [%s] new conn from control path [%s] failed: %v", param.args.Destination, socket, err)
 		return nil
 	}

@@ -158,6 +158,16 @@ func setupTrzszFilter(sshConn *sshConnection) error {
 	trzszFilter.SetDragFileUploadCommand(dragFileUploadCommand)
 	trzszFilter.SetProgressColorPair(userConfig.progressColorPair)
 
+	if enableZmodem {
+		autoRename := getExOptionConfig(args, "ZmodemAutoRename")
+		if autoRename == "" {
+			autoRename = userConfig.zmodemAutoRename
+		}
+		if autoRename != "" {
+			trzszFilter.SetZmodemAutoRename(*parseBoolValue("ZmodemAutoRename", autoRename, false))
+		}
+	}
+
 	// setup tunnel connect
 	trzszFilter.SetTunnelConnector(func(port int) net.Conn {
 		conn, _ := sshConn.client.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second)

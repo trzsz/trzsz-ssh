@@ -38,6 +38,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/trzsz/shellescape"
 	"github.com/trzsz/tsshd/tsshd"
 	"golang.org/x/crypto/ssh"
@@ -378,31 +379,52 @@ func execProxyCommand(param *sshParam) (net.Conn, string, error) {
 	if err != nil {
 		return nil, command, err
 	}
-	cmdOut, err := cmd.StdoutPipe()
+
+	stdoutReader, stdoutWriter, err := os.Pipe()
 	if err != nil {
+		_ = cmdIn.Close()
 		return nil, command, err
 	}
+	defer func() { _ = stdoutWriter.Close() }() // Close the parent's write end to allow EOF.
+	cmd.Stdout = stdoutWriter
 
+	var stderrReader, stderrWriter *os.File
 	if enableDebugLogging {
-		stderr, err := cmd.StderrPipe()
+		stderrReader, stderrWriter, err = os.Pipe()
 		if err != nil {
+			_ = cmdIn.Close()
+			_ = stdoutReader.Close()
 			return nil, command, err
 		}
-		go func() {
-			scanner := bufio.NewScanner(stderr)
-			for scanner.Scan() {
-				debug("proxy command stderr: %s", scanner.Text())
-			}
-		}()
+		defer func() { _ = stderrWriter.Close() }() // Close the parent's write end to allow EOF.
+		cmd.Stderr = stderrWriter
 	} else {
 		cmd.Stderr = io.Discard
 	}
 
 	if err := cmd.Start(); err != nil {
+		_ = cmdIn.Close()
+		_ = stdoutReader.Close()
+		if stderrReader != nil {
+			_ = stderrReader.Close()
+		}
 		return nil, command, err
 	}
 
-	pipe := &cmdPipe{cmd: cmd, stdin: cmdIn, stdout: cmdOut, addr: param.addr}
+	if stderrReader != nil {
+		go func() {
+			defer func() { _ = stderrReader.Close() }()
+			scanner := bufio.NewScanner(stderrReader)
+			for scanner.Scan() {
+				line := strings.TrimSpace(ansi.Strip(scanner.Text()))
+				if line != "" {
+					debug("proxy command stderr: %s", line)
+				}
+			}
+		}()
+	}
+
+	pipe := &cmdPipe{cmd: cmd, stdin: cmdIn, stdout: stdoutReader, addr: param.addr}
 
 	go func() {
 		if err := cmd.Wait(); err != nil && !pipe.closed.Load() {
@@ -599,6 +621,7 @@ func connectViaProxyJump(param *sshParam, config *ssh.ClientConfig) (SshClient, 
 	param.setNetworkAddressFamily(conn)
 	ncc, chans, reqs, err := ssh.NewClientConn(&connWithTimeout{conn, config.Timeout, true}, param.addr, config)
 	if err != nil {
+		_ = conn.Close()
 		return nil, fmt.Errorf("proxy jump [%s] new conn [%s] failed: %v", param.proxy.name, param.addr, err)
 	}
 	debug("login to [%s] via proxy jump [%s] success", param.args.Destination, param.proxy.name)
@@ -617,6 +640,7 @@ func connectViaProxyCommand(param *sshParam, config *ssh.ClientConfig) (SshClien
 	}
 	ncc, chans, reqs, err := ssh.NewClientConn(conn, param.addr, config)
 	if err != nil {
+		_ = conn.Close()
 		return nil, fmt.Errorf("proxy command [%s] new conn [%s] failed: %v", cmd, param.addr, err)
 	}
 	debug("login to [%s] via proxy command [%s] success", param.args.Destination, cmd)
@@ -637,6 +661,7 @@ func connectDirectly(param *sshParam, config *ssh.ClientConfig) (SshClient, erro
 	param.setNetworkAddressFamily(conn)
 	ncc, chans, reqs, err := ssh.NewClientConn(&connWithTimeout{conn, config.Timeout, true}, param.addr, config)
 	if err != nil {
+		_ = conn.Close()
 		return nil, fmt.Errorf("login to [%s] new conn [%s] failed: %v", param.args.Destination, param.addr, err)
 	}
 	debug("login to [%s] success", param.args.Destination)

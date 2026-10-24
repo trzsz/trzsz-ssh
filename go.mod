@@ -28,8 +28,8 @@ require (
 	github.com/trzsz/promptui v0.10.8
 	github.com/trzsz/shellescape v1.6.0
 	github.com/trzsz/ssh_config v1.3.10
-	github.com/trzsz/trzsz-go v1.2.1-0.20261010161529-351cf747d8f9
-	github.com/trzsz/tsshd v0.1.11-0.20261018030357-680dee6cc7e2
+	github.com/trzsz/trzsz-go v1.2.1-0.20261024075151-75236ad0789f
+	github.com/trzsz/tsshd v0.1.11-0.20261024082917-5874860ecb2f
 	golang.org/x/crypto v0.58.0
 	golang.org/x/sys v0.49.0
 	golang.org/x/term v0.47.0
@@ -43,7 +43,7 @@ require (
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/boombuler/barcode v1.1.0 // indirect
 	github.com/buildkite/shellwords v1.0.1 // indirect
-	github.com/charmbracelet/ultraviolet v0.0.0-20261008173134-6b8d4baf91b4 // indirect
+	github.com/charmbracelet/ultraviolet v0.0.0-20261023060817-a45b7c86333f // indirect
 	github.com/charmbracelet/x/term v0.2.2 // indirect
 	github.com/charmbracelet/x/termios v0.1.1 // indirect
 	github.com/charmbracelet/x/windows v0.2.2 // indirect

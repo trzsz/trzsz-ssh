@@ -780,6 +780,9 @@ trzsz-ssh ( tssh ) with [tsshd](https://github.com/trzsz/tsshd) also supports in
   # The trzsz progress bar will gradient from the first color to the second color. Don't include `#`.
   ProgressColorPair = B14FFF 00FFA3
 
+  # Whether to automatically rename files on name conflicts during Zmodem (rz/sz) transfers.
+  ZmodemAutoRename = no
+
   # When searching and selecting servers with tssh, the theme and colors.
   PromptThemeLayout = simple
   PromptThemeColors = {"active_host": "magenta|bold", "inactive_host": "magenta"}

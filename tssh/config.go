@@ -87,6 +87,7 @@ type tsshConfig struct {
 	defaultDownloadPath   string
 	dragFileUploadCommand string
 	progressColorPair     string
+	zmodemAutoRename      string
 	promptThemeLayout     string
 	promptThemeColors     map[string]string
 	promptPageSize        uint8
@@ -221,6 +222,8 @@ func loadTsshConfig(path string) {
 			userConfig.dragFileUploadCommand = value
 		case name == "progresscolorpair" && userConfig.progressColorPair == "":
 			userConfig.progressColorPair = value
+		case name == "zmodemautorename" && userConfig.zmodemAutoRename == "":
+			userConfig.zmodemAutoRename = value
 		case name == "promptthemelayout" && userConfig.promptThemeLayout == "":
 			userConfig.promptThemeLayout = value
 		case name == "promptthemecolors" && len(userConfig.promptThemeColors) == 0:
@@ -302,6 +305,9 @@ func showTsshConfig() {
 	}
 	if userConfig.progressColorPair != "" {
 		debug("ProgressColorPair = %s", userConfig.progressColorPair)
+	}
+	if userConfig.zmodemAutoRename != "" {
+		debug("ZmodemAutoRename = %s", userConfig.zmodemAutoRename)
 	}
 	if userConfig.promptThemeLayout != "" {
 		debug("PromptThemeLayout = %s", userConfig.promptThemeLayout)

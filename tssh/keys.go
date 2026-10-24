@@ -162,7 +162,7 @@ func (s *skSigner) SignWithAlgorithm(rand io.Reader, data []byte, algorithm stri
 		cmd.Stdout = &stdout
 
 		if enableDebugLogging {
-			stderr, err := cmd.StderrPipe()
+			stderr, err := cmd.StderrPipe() // Losing some debug output is acceptable, so extra pipe management is unnecessary.
 			if err != nil {
 				return nil, fmt.Errorf("stderr pipe failed: %v", err)
 			}
@@ -205,6 +205,9 @@ func (s *skSigner) SignWithAlgorithm(rand io.Reader, data []byte, algorithm stri
 		}
 		switch resp.RespType {
 		case 0: // SSH_SK_HELPER_ERROR
+			if len(resp.Rest) < 4 {
+				return nil, fmt.Errorf("ssh-sk-helper response invalid: len(resp.Rest)=%d", len(resp.Rest))
+			}
 			code := binary.BigEndian.Uint32(resp.Rest)
 			if code == 60 { // SSH_ERR_DEVICE_NOT_FOUND = -60
 				return nil, fmt.Errorf("device not found")

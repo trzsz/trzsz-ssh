@@ -779,6 +779,9 @@ trzsz-ssh ( tssh ) 与 [tsshd](https://github.com/trzsz/tsshd) 一起，适用�
   # trzsz 进度条将从第一种颜色渐变到第二种颜色。注意不要带 `#`。
   ProgressColorPair = B14FFF 00FFA3
 
+  # 使用 Zmodem（rz/sz）传输文件遇到同名冲突时是否自动重命名文件。
+  ZmodemAutoRename = no
+
   # tssh 搜索和选择服务器时，配置主题风格和自定义颜色
   PromptThemeLayout = simple
   PromptThemeColors = {"active_host": "magenta|bold", "inactive_host": "magenta"}

@@ -35,6 +35,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/charmbracelet/x/ansi"
 )
 
 func enableWaypipe(sshConn *sshConnection) error {
@@ -115,24 +117,34 @@ func runWaypipeClient(args *sshArgs, token string) (string, error) {
 	if err != nil || len(argv) == 0 {
 		return "", fmt.Errorf("split waypipe client command [%s] failed: %v", command, err)
 	}
-	cmd := exec.Command(argv[0], argv[1:]...)
-	stderr, err := cmd.StderrPipe()
+
+	stderrReader, stderrWriter, err := os.Pipe()
 	if err != nil {
 		return "", fmt.Errorf("stderr pipe for waypipe client failed: %v", err)
 	}
+	defer func() { _ = stderrWriter.Close() }() // Close the parent's write end to allow EOF.
+
+	cmd := exec.Command(argv[0], argv[1:]...)
+	cmd.Stderr = stderrWriter
 	if err := cmd.Start(); err != nil {
+		_ = stderrReader.Close()
 		return "", fmt.Errorf("start waypipe client [%s] failed: %v", command, err)
 	}
+
+	go func() { _ = cmd.Wait() }()
+
 	go func() {
-		scanner := bufio.NewScanner(stderr)
+		defer func() { _ = stderrReader.Close() }()
+		scanner := bufio.NewScanner(stderrReader)
 		for scanner.Scan() {
-			output := scanner.Text()
-			if strings.TrimSpace(output) == "" {
+			output := strings.TrimSpace(ansi.Strip(scanner.Text()))
+			if output == "" {
 				continue
 			}
 			warning("waypipe client output error: %s", output)
 		}
 	}()
+
 	addOnExitFunc(func() { _ = cmd.Process.Signal(syscall.SIGINT) })
 
 	return clientSocket, nil
