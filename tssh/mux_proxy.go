@@ -69,8 +69,8 @@ func muxServerHello(rw io.ReadWriter) error {
 	if version != kMuxProtocolVersion {
 		return fmt.Errorf("unsupported mux protocol version %d", version)
 	}
-	// extension name/value pairs are ignored
-	if err := muxWriteMessage(rw, kMuxMsgHello, kMuxProtocolVersion); err != nil {
+	// the client's extension name/value pairs are ignored
+	if err := muxWriteMessage(rw, kMuxMsgHello, kMuxProtocolVersion, kMuxHelloExtTssh, kTsshVersion); err != nil {
 		return fmt.Errorf("write mux hello failed: %w", err)
 	}
 	return nil

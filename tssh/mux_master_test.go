@@ -53,7 +53,9 @@ func suppressStderr(t *testing.T) func() {
 	}
 }
 
-func newTestMuxMaster(t *testing.T, backend SshClient) (*muxMaster, string) {
+// newTestMuxMaster starts a master on a temporary control socket; terminate replaces the
+// process exit of a MUX_C_TERMINATE request (nil for tests that never send one).
+func newTestMuxMaster(t *testing.T, backend SshClient, terminate func()) (*muxMaster, string) {
 	t.Helper()
 	// keep the socket path short: unix socket paths are limited to ~104 bytes on macOS
 	dir, err := os.MkdirTemp("", "tsshmux")
@@ -61,7 +63,11 @@ func newTestMuxMaster(t *testing.T, backend SshClient) (*muxMaster, string) {
 	socket := filepath.Join(dir, "ctl")
 	param := &sshParam{args: &sshArgs{}}
 	param.args.Destination = "test-host"
-	m, err := startMuxMaster(param, backend, socket)
+	oriUserConfig := userConfig
+	if userConfig == nil {
+		userConfig = &tsshConfig{}
+	}
+	m, err := startMuxMasterWithTerminate(param, backend, socket, terminate)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		m.close()
@@ -69,12 +75,13 @@ func newTestMuxMaster(t *testing.T, backend SshClient) (*muxMaster, string) {
 		muxMastersMu.Lock()
 		muxMasters = nil
 		muxMastersMu.Unlock()
+		userConfig = oriUserConfig
 	})
 	return m, socket
 }
 
 func TestMuxMasterSocketPermissions(t *testing.T) {
-	_, socket := newTestMuxMaster(t, newFakeSshClient())
+	_, socket := newTestMuxMaster(t, newFakeSshClient(), nil)
 	info, err := os.Stat(socket)
 	require.NoError(t, err)
 	assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
@@ -83,7 +90,7 @@ func TestMuxMasterSocketPermissions(t *testing.T) {
 
 func TestMuxMasterProxyClientSession(t *testing.T) {
 	backend := newFakeSshClient()
-	m, socket := newTestMuxMaster(t, backend)
+	m, socket := newTestMuxMaster(t, backend, nil)
 
 	conn, err := net.DialTimeout("unix", socket, time.Second)
 	require.NoError(t, err)
@@ -124,9 +131,9 @@ func TestMuxMasterControlCommands(t *testing.T) {
 	defer suppressStderr(t)()
 
 	backend := newFakeSshClient()
-	m, socket := newTestMuxMaster(t, backend)
 	terminated := make(chan struct{}, 1)
-	m.terminate = func() { terminated <- struct{}{} }
+	terminate := func() { terminated <- struct{}{} }
+	_, socket := newTestMuxMaster(t, backend, terminate)
 
 	assert.Equal(t, 0, muxControlCommand(socket, "check"))
 	assert.Equal(t, kExitCodeToolsError, muxControlCommand(socket, "bogus"))
@@ -147,8 +154,7 @@ func TestMuxMasterControlCommands(t *testing.T) {
 	assert.True(t, ok)
 
 	// exit goes through a fresh master
-	m2, socket2 := newTestMuxMaster(t, backend)
-	m2.terminate = m.terminate
+	_, socket2 := newTestMuxMaster(t, backend, terminate)
 	assert.Equal(t, 0, muxControlCommand(socket2, "exit"))
 	select {
 	case <-terminated:
@@ -157,14 +163,14 @@ func TestMuxMasterControlCommands(t *testing.T) {
 	}
 }
 
-func TestMuxMasterRejectsPassengerAndBadHello(t *testing.T) {
-	_, socket := newTestMuxMaster(t, newFakeSshClient())
+func TestMuxMasterRejectsBadRequests(t *testing.T) {
+	_, socket := newTestMuxMaster(t, newFakeSshClient(), nil)
 
-	// passenger mode (MUX_C_NEW_SESSION) is refused with a reason
-	conn, err := net.DialTimeout("unix", socket, time.Second)
+	// a malformed session request is refused with a reason
+	client, err := dialMuxMaster(socket, time.Second)
 	require.NoError(t, err)
-	defer func() { _ = conn.Close() }()
-	require.NoError(t, muxClientHello(conn))
+	defer client.close()
+	conn := client.conn
 	require.NoError(t, muxWriteMessage(conn, kMuxCNewSession, uint32(7), "", uint32(0)))
 	msgType, body, err := muxReadMessage(conn)
 	require.NoError(t, err)
@@ -174,7 +180,7 @@ func TestMuxMasterRejectsPassengerAndBadHello(t *testing.T) {
 	assert.Equal(t, uint32(7), rid)
 	reason, ok := muxReadString(&body)
 	require.True(t, ok)
-	assert.Contains(t, reason, "proxy mode")
+	assert.Contains(t, reason, "invalid session request")
 
 	// wrong protocol version closes the connection
 	conn2, err := net.DialTimeout("unix", socket, time.Second)

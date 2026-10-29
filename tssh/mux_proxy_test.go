@@ -85,12 +85,13 @@ type fakeSshClient struct {
 	mu        sync.Mutex
 	sessions  []*fakeSshSession
 	listeners map[string]*fakeListener
+	channels  map[string]chan ssh.NewChannel
 	dialFn    func(network, addr string) (net.Conn, error)
 	closed    bool
 }
 
 func newFakeSshClient() *fakeSshClient {
-	return &fakeSshClient{listeners: make(map[string]*fakeListener)}
+	return &fakeSshClient{listeners: make(map[string]*fakeListener), channels: make(map[string]chan ssh.NewChannel)}
 }
 
 func (c *fakeSshClient) Wait() error { return nil }
@@ -98,7 +99,13 @@ func (c *fakeSshClient) Wait() error { return nil }
 func (c *fakeSshClient) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.closed {
+		return nil
+	}
 	c.closed = true
+	for _, ch := range c.channels {
+		close(ch)
+	}
 	return nil
 }
 
@@ -163,7 +170,23 @@ func (c *fakeSshClient) ListenUDP(network, addr string) (PacketListener, error) 
 	return nil, fmt.Errorf("ListenUDP not supported")
 }
 
-func (c *fakeSshClient) HandleChannelOpen(channelType string) <-chan ssh.NewChannel { return nil }
+// HandleChannelOpen returns a channel the first time per channel type and nil afterwards, like ssh.Client.
+func (c *fakeSshClient) HandleChannelOpen(channelType string) <-chan ssh.NewChannel {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if _, ok := c.channels[channelType]; ok || c.closed {
+		return nil
+	}
+	ch := make(chan ssh.NewChannel)
+	c.channels[channelType] = ch
+	return ch
+}
+
+func (c *fakeSshClient) channel(channelType string) chan ssh.NewChannel {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.channels[channelType]
+}
 
 func (c *fakeSshClient) SendRequest(name string, wantReply bool, payload []byte) (bool, []byte, error) {
 	return false, nil, fmt.Errorf("global request not supported")

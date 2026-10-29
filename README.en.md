@@ -602,14 +602,7 @@ trzsz-ssh ( tssh ) with [tsshd](https://github.com/trzsz/tsshd) also supports in
       #!! encQuestionAnswer1 756b17766f45bdc44c37f811db9990b0880318d5f00f6531b15e068ef1fde2666550
   ```
 
-- - If `ControlMaster` multiplexing is enabled, or in older versions of the `Warp` terminal, you will need to use the `Automated Interaction` mentioned earlier to achieve remembering password. Please refer to the earlier `Automated Interaction` section, simply add a `Ctrl` prefix as follows:
-
-  ```
-  Host ctrl
-      #!! CtrlExpectCount 1  # Configure the number of automated interactions, typically only requires entering the password once
-      #!! CtrlExpectPattern1 *assword    # Configure the matching expression for the password prompt
-      #!! CtrlExpectSendPass1 d7983b...  # Configure the password encoded by `tssh --enc-secret`
-  ```
+- With `ControlMaster` multiplexing (also with `ControlPersist`, e.g. in older versions of the `Warp` terminal) `tssh` logs in by itself, so the options above apply as they are. The `Ctrl` prefixed `Automated Interaction` options of earlier versions are no longer needed.
 
 - Support remember `Passphrase` for private keys ( It's recommended to use `ssh-agent` ). Support configuring `Passphrase` together with `IdentityFile`. Support configuring `Passphrase` using private key filename instead of host alias. For example:
 
@@ -737,21 +730,7 @@ trzsz-ssh ( tssh ) with [tsshd](https://github.com/trzsz/tsshd) also supports in
       #!! OtpCommand2 python C:\your_python_code.py %q
   ```
 
-- If `ControlMaster` multiplexing is enabled, or in older versions of the `Warp` terminal, you will need to use the `Automated Interaction` mentioned earlier to achieve remembering answers.
-
-  ```
-  Host ctrl_totp
-      #!! CtrlExpectCount 1  # Configure the number of automated interactions
-      #!! CtrlExpectPattern1 code:  # Configure the matching expression for the password prompt (totp 2FA)
-      #!! CtrlExpectSendTotp1 xxxxx  # Configure the secret (plain text) of totp, generally obtained by scanning the QR code
-      #!! CtrlExpectSendEncTotp1 622ada31cf...  # Or configure the encrypted secret of totp encoded using `tssh --enc-secret`
-
-  Host ctrl_otp
-      #!! CtrlExpectCount 1  # Configure the number of automated interactions
-      #!! CtrlExpectPattern1 token:  # Configure the matching expression for the password prompt (one-time password)
-      #!! CtrlExpectSendOtp1 oathtool --totp -b xxxxx  # Configure the command line to obtain the one-time password
-      #!! CtrlExpectSendEncOtp1 77b4ce85d0...  # Or configure the encrypted command line encoded using `tssh --enc-secret`
-  ```
+- With `ControlMaster` multiplexing (also with `ControlPersist`, e.g. in older versions of the `Warp` terminal) `tssh` logs in by itself, so the options above apply as they are. The `Ctrl` prefixed `Automated Interaction` options of earlier versions are no longer needed.
 
 ### Custom Configuration
 
@@ -1049,21 +1028,26 @@ Host xxx
 
 - `UdpSessionName`: Customizes the session name. This only takes effect when `UdpSessionAttach` is set to `yes` or when logging in with the `--attach` argument. If a session with this name already exists on the server, it will attach directly; if not, a new session with this name will be created for automatic attachment in future logins.
 
-### UDP Multiplexing
+### Connection Multiplexing
 
-- In UDP mode, `tssh` itself acts as the `ControlMaster` (OpenSSH is not involved), so later logins reuse the established UDP connection without a new SSH login or a new `tsshd` process:
+- `tssh` is its own `ControlMaster`: with `-M` (or `ControlMaster yes|auto` and a `ControlPath` in `~/.ssh/config`) the first login keeps its connection open on a control socket, and later logins reuse it without a new SSH login. This works for TCP and for UDP mode, where the multiplexed sessions share one `tsshd` connection.
 
   ```sh
   tssh --udp -M -S ~/.ssh/ctl-%C xxx        # the master: logs in normally and listens on the control socket
-  tssh -S ~/.ssh/ctl-%C xxx                 # further sessions, commands, -L / -R / -D forwards reuse the UDP connection
-  tssh -O check -S ~/.ssh/ctl-%C xxx        # check | exit | stop are supported for tssh and OpenSSH masters
+  tssh -S ~/.ssh/ctl-%C xxx                 # further sessions, commands, -L / -R / -D forwards reuse the connection
+  ssh -S ~/.ssh/ctl-%C xxx                  # OpenSSH clients (ssh, scp, rsync, ...) can use the tssh master too
+  tssh -O check -S ~/.ssh/ctl-%C xxx        # check | exit | stop | forward | cancel
   ```
 
-  Or configure `ControlMaster auto` and `ControlPath` together with `UdpMode` in `~/.ssh/config`: the first `tssh xxx` becomes the master, the following ones are multiplexed automatically.
+- Clients attach to a `tssh` master the way OpenSSH does: the master runs the session on the client's terminal, so trzsz ( trz / tsz ) works in every multiplexed session and, in UDP mode, every session shows the connection lost notification. The master handles the escape sequences `~.` (terminate the session), `~?` and `~~` of these sessions, and serves X11 and agent forwarding requested by OpenSSH clients with its own display and agent.
 
-- When the shell of the master exits while multiplexed clients are still connected, the master keeps running until they exit (press `Ctrl+C` to force exit). `tssh --udp -M -N xxx` keeps a master running without a shell. `ControlPersist` is not supported in UDP mode yet.
+- Logins that need X11 forwarding, agent forwarding, `--upload-file`, waypipe, UDP port forwarding, `--attach` or `Automated Interaction` keep a channel of their own through the master instead (proxy mode).
 
-- Only `tssh` can connect to a UDP master (mux proxy mode). OpenSSH clients such as `ssh -S`, `scp` and `rsync` (mux passenger mode) are not supported yet. X11 forwarding, agent forwarding, UDP port forwarding and `-R` with port `0` are not supported through the control socket.
+- An OpenSSH master is used as well: in TCP mode with trzsz disabled ( `EnableTrzsz no` ) `tssh` hands its terminal to it like `ssh` does, otherwise it uses its own channel through the master so that trzsz keeps working. In UDP mode `tssh` always uses its own channel, to start `tsshd` on the server.
+
+- When the shell of the master exits while multiplexed clients are still connected, the master keeps running until they exit (press `Ctrl+C` to force exit). `tssh -M -N xxx` keeps a master running without a shell.
+
+- `ControlPersist yes|<time>` works like in OpenSSH, in TCP and in UDP mode: the first login starts the master in background ( it logs in on the terminal, so prompts work as usual ) and runs its session as a client of it. The master exits `<time>` after the last client left, or on `tssh -O exit` / `tssh -O stop`.
 
 ### UDP Port Forwarding
 
