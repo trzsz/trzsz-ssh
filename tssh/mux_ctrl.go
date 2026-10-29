@@ -27,9 +27,12 @@ SOFTWARE.
 package tssh
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -69,6 +72,12 @@ func resolveControlSocket(param *sshParam, ctrlPath string) (string, error) {
 	return resolveHomeDir(socket), nil
 }
 
+// isMuxConnClosed reports whether err means the master closed the control connection.
+func isMuxConnClosed(err error) bool {
+	return errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
+		errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.EPIPE)
+}
+
 // muxControlCommand sends `check`, `exit` or `stop` to the master listening on socket.
 // It speaks the OpenSSH mux protocol, so it works with both tssh and OpenSSH masters.
 func muxControlCommand(socket, ctlCmd string) int {
@@ -95,6 +104,10 @@ func muxControlCommand(socket, ctlCmd string) int {
 	_ = client.conn.SetDeadline(time.Now().Add(kMuxHandshakeTimeout))
 
 	replyType, body, err := client.request(request)
+	if err != nil && request == kMuxCTerminate && isMuxConnClosed(err) {
+		// like OpenSSH: the master may exit before its reply is read
+		replyType, err = kMuxSOk, nil
+	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Control socket %s: %v\r\n", socket, err)
 		return kExitCodeToolsError

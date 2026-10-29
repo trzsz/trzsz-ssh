@@ -125,7 +125,7 @@ func (c *muxClient) request(msgType uint32, fields ...any) (uint32, []byte, erro
 func (c *muxClient) readReply(rid uint32) (uint32, []byte, error) {
 	replyType, body, err := muxReadMessage(c.conn)
 	if err != nil {
-		return 0, nil, fmt.Errorf("read mux reply failed: %v", err)
+		return 0, nil, fmt.Errorf("read mux reply failed: %w", err)
 	}
 	gotRid, ok := muxReadUint32(&body)
 	if !ok || gotRid != rid {
