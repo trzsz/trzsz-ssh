@@ -27,9 +27,9 @@ SOFTWARE.
 package tssh
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -97,7 +97,7 @@ func startMuxPersistMaster(param *sshParam) (int, bool) {
 		return 0, false
 	}
 
-	code, err := spawnMuxPersistMaster()
+	code, err := spawnMuxPersistMaster(os.Args[1:])
 	if err != nil {
 		if code != 0 {
 			// the background master failed to log in and has reported why
@@ -119,7 +119,7 @@ func startMuxPersistMaster(param *sshParam) (int, bool) {
 
 // spawnMuxPersistMaster runs this program again as the background master and waits for its login.
 // On a failed login it returns the exit code of the background process.
-func spawnMuxPersistMaster() (int, error) {
+func spawnMuxPersistMaster(argv []string) (int, error) {
 	exe, err := os.Executable()
 	if err != nil {
 		return 0, err
@@ -130,7 +130,7 @@ func spawnMuxPersistMaster() (int, error) {
 	}
 	defer func() { _ = reader.Close() }()
 
-	cmd := exec.Command(exe, os.Args[1:]...)
+	cmd := exec.Command(exe, argv...)
 	cmd.Env = append(os.Environ(), kMuxPersistEnv+"=1")
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	cmd.ExtraFiles = []*os.File{writer}
@@ -140,10 +140,11 @@ func spawnMuxPersistMaster() (int, error) {
 		return 0, err
 	}
 
+	// read the ready line only: a subprocess of the login may still hold the pipe open
 	result := make(chan string, 1)
 	go func() {
-		buf, _ := io.ReadAll(reader)
-		result <- string(buf)
+		line, _ := bufio.NewReader(reader).ReadString('\n')
+		result <- line
 	}()
 
 	// Ctrl+C reaches the background master as well while it is logging in
@@ -178,6 +179,8 @@ func runMuxPersistMaster(param *sshParam) (int, error) {
 		return kExitCodeToolsError, fmt.Errorf("control master started without notify pipe")
 	}
 	defer func() { _ = notify.Close() }()
+	// processes started during the login, e.g. a ProxyCommand, must not inherit the pipe
+	syscall.CloseOnExec(int(notify.Fd()))
 
 	args := param.args
 	// the starting process checked the socket is free; the clients run the sessions
