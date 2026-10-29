@@ -30,6 +30,62 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestCollectForwardCfgs(t *testing.T) {
+	assert := assert.New(t)
+	oriEnableWarning, oriUserConfig := enableWarningLogging, userConfig
+	enableWarningLogging, userConfig = false, &tsshConfig{}
+	defer func() { enableWarningLogging, userConfig = oriEnableWarning, oriUserConfig }()
+
+	cmdDynamic, err := parseBindCfg("1080")
+	assert.Nil(err)
+	cmdLocal, err := parseForwardArg("8000:localhost:9000")
+	assert.Nil(err)
+	cmdRemote, err := parseForwardArg("udp://8001:localhost:9001")
+	assert.Nil(err)
+	args := &sshArgs{Destination: "myhost"}
+	args.DynamicForward.binds = []*bindCfg{cmdDynamic}
+	args.LocalForward.cfgs = []*forwardCfg{cmdLocal}
+	args.RemoteForward.cfgs = []*forwardCfg{cmdRemote}
+	args.Option.options = map[string][]string{
+		"dynamicforward": {"1081", "invalid:dynamic:forward"},
+		"localforward":   {"8002 localhost:9002", "invalid local forward"},
+		"remoteforward":  {"8003 localhost:9003", "invalid remote forward"},
+	}
+	param, err := getSshParam(args, false)
+	assert.Nil(err)
+
+	// command line only
+	dynamic, local, remote := collectForwardCfgs(param, true)
+	assert.Equal([]*bindCfg{cmdDynamic}, dynamic)
+	assert.Equal([]*forwardCfg{cmdLocal}, local)
+	assert.Equal([]*forwardCfg{cmdRemote}, remote)
+
+	// command line and config, invalid config entries are skipped
+	dynamic, local, remote = collectForwardCfgs(param, false)
+	cfgDynamic, err := parseBindCfg("1081")
+	assert.Nil(err)
+	cfgLocal, err := parseForwardCfg(param, false, "8002 localhost:9002")
+	assert.Nil(err)
+	cfgRemote, err := parseForwardCfg(param, false, "8003 localhost:9003")
+	assert.Nil(err)
+	assert.Equal([]*bindCfg{cmdDynamic, cfgDynamic}, dynamic)
+	assert.Equal([]*forwardCfg{cmdLocal, cfgLocal}, local)
+	assert.Equal([]*forwardCfg{cmdRemote, cfgRemote}, remote)
+	assert.True(remote[0].udp)
+	assert.False(remote[1].udp)
+
+	// the command line slices are not modified
+	assert.Equal([]*bindCfg{cmdDynamic}, args.DynamicForward.binds)
+	assert.Equal([]*forwardCfg{cmdLocal}, args.LocalForward.cfgs)
+	assert.Equal([]*forwardCfg{cmdRemote}, args.RemoteForward.cfgs)
+
+	// nothing configured
+	dynamic, local, remote = collectForwardCfgs(&sshParam{args: &sshArgs{}}, false)
+	assert.Nil(dynamic)
+	assert.Nil(local)
+	assert.Nil(remote)
+}
+
 func TestParseBindCfg(t *testing.T) {
 	assert := assert.New(t)
 	assertBindCfgNil := func(arg string, addr *string, port int) {

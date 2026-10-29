@@ -213,9 +213,8 @@ func TestMuxEndToEnd(t *testing.T) {
 	defer func() { _ = master.Close() }()
 	assert.Equal(t, "ran: master\n", runCommand(t, master, "master"))
 
-	m, socket := newTestMuxMaster(t, master)
 	terminated := make(chan struct{}, 1)
-	m.setTerminate(func() { terminated <- struct{}{} })
+	m, socket := newTestMuxMaster(t, master, func() { terminated <- struct{}{} })
 
 	// slaves attach through connectViaControl, the same code path as `tssh -S <socket>`
 	const slaveCount = 3

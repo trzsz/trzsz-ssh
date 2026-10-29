@@ -46,7 +46,7 @@ type muxMaster struct {
 	client    SshClient
 	param     *sshParam
 	sshConn   atomic.Pointer[sshConnection]
-	terminate atomic.Pointer[func()]
+	terminate func() // the action of a MUX_C_TERMINATE request, set before serving
 
 	connMu   sync.Mutex
 	connCond *sync.Cond
@@ -54,6 +54,10 @@ type muxMaster struct {
 
 	passengerSeq atomic.Uint32
 	passengers   map[uint32]*muxPassenger
+	stdioFwds    map[uint32]*muxStdioForward
+
+	// persistCh wakes persist when a client left, the socket stopped listening or the master closed
+	persistCh chan struct{}
 
 	fwdMu    sync.Mutex
 	forwards map[string][]net.Listener
@@ -76,6 +80,12 @@ var muxMasters []*muxMaster
 
 // startMuxMaster creates the control socket and starts serving mux clients.
 func startMuxMaster(param *sshParam, client SshClient, socket string) (*muxMaster, error) {
+	return startMuxMasterWithTerminate(param, client, socket, nil)
+}
+
+// startMuxMasterWithTerminate is startMuxMaster with the action of a MUX_C_TERMINATE request
+// replaced by terminate (nil exits the master process, tests pass a hook).
+func startMuxMasterWithTerminate(param *sshParam, client SshClient, socket string, terminate func()) (*muxMaster, error) {
 	listener, err := net.Listen("unix", socket)
 	if err != nil {
 		if len(socket) >= kMaxUnixSocketPath {
@@ -97,13 +107,18 @@ func startMuxMaster(param *sshParam, client SshClient, socket string) (*muxMaste
 		param:       param,
 		conns:       make(map[*muxProxyConn]struct{}),
 		passengers:  make(map[uint32]*muxPassenger),
+		stdioFwds:   make(map[uint32]*muxStdioForward),
 		forwards:    make(map[string][]net.Listener),
+		persistCh:   make(chan struct{}, 1),
 		done:        make(chan struct{}),
 		sockCleanup: newFileUnlinker(socket, listener),
+		terminate:   terminate,
 	}
 	m.connCond = sync.NewCond(&m.connMu)
 	m.listening.Store(true)
-	m.setTerminate(m.terminateProcess)
+	if m.terminate == nil {
+		m.terminate = m.terminateProcess
+	}
 
 	muxMastersMu.Lock()
 	muxMasters = append(muxMasters, m)
@@ -116,11 +131,6 @@ func startMuxMaster(param *sshParam, client SshClient, socket string) (*muxMaste
 	go m.watchWindowChanges()
 	debug("control master listening on [%s] for [%s]", socket, param.args.Destination)
 	return m, nil
-}
-
-// setTerminate sets the action of a MUX_C_TERMINATE request (tests replace the process exit).
-func (m *muxMaster) setTerminate(fn func()) {
-	m.terminate.Store(&fn)
 }
 
 // terminateProcess exits the master process after a MUX_C_TERMINATE request.
@@ -194,7 +204,7 @@ func (m *muxMaster) handleConn(conn net.Conn) {
 			_ = writer.writeMuxMessage(kMuxSOk, rid)
 			_ = conn.Close()
 			debug("control master received terminate request")
-			(*m.terminate.Load())()
+			m.terminate()
 			return
 		case kMuxCStopListening:
 			m.stopListening()
@@ -256,7 +266,7 @@ func (m *muxMaster) serveProxy(conn net.Conn) {
 func (m *muxMaster) removeConn(pc *muxProxyConn) {
 	m.connMu.Lock()
 	delete(m.conns, pc)
-	m.connCond.Broadcast()
+	m.notifyClientsChanged()
 	m.connMu.Unlock()
 }
 
@@ -269,15 +279,48 @@ func (m *muxMaster) addPassenger(p *muxPassenger) {
 func (m *muxMaster) removePassenger(p *muxPassenger) {
 	m.connMu.Lock()
 	delete(m.passengers, p.id)
-	m.connCond.Broadcast()
+	m.notifyClientsChanged()
 	m.connMu.Unlock()
 }
 
-// clientCount returns the number of connected proxy and passenger clients.
+func (m *muxMaster) addStdioForward(f *muxStdioForward) {
+	m.connMu.Lock()
+	m.stdioFwds[f.id] = f
+	m.connMu.Unlock()
+}
+
+func (m *muxMaster) removeStdioForward(f *muxStdioForward) {
+	m.connMu.Lock()
+	delete(m.stdioFwds, f.id)
+	m.notifyClientsChanged()
+	m.connMu.Unlock()
+}
+
+// notifyClientsChanged wakes waitClients and persist after a client left or the master closed.
+func (m *muxMaster) notifyClientsChanged() {
+	m.connCond.Broadcast()
+	m.wakePersist()
+}
+
+// wakePersist lets persist re-check whether the master may exit.
+func (m *muxMaster) wakePersist() {
+	select {
+	case m.persistCh <- struct{}{}:
+	default:
+	}
+}
+
+// clientCountLocked returns the number of connected proxy, passenger and stdio forward
+// clients; connMu must be held.
+func (m *muxMaster) clientCountLocked() int {
+	return len(m.conns) + len(m.passengers) + len(m.stdioFwds)
+}
+
+// clientCount returns the number of connected proxy, passenger and stdio forward clients.
 func (m *muxMaster) clientCount() int {
 	m.connMu.Lock()
 	defer m.connMu.Unlock()
-	return len(m.conns) + len(m.passengers)
+	return m.clientCountLocked()
 }
 
 // watchWindowChanges propagates terminal size changes to the passengers. A passenger
@@ -310,6 +353,7 @@ func (m *muxMaster) stopListening() {
 		return
 	}
 	_, _ = m.sockCleanup()
+	m.wakePersist()
 	debug("control master stopped listening on [%s]", m.socket)
 }
 
@@ -329,7 +373,11 @@ func (m *muxMaster) close() {
 	for _, p := range m.passengers {
 		passengers = append(passengers, p)
 	}
-	m.connCond.Broadcast()
+	stdioFwds := make([]*muxStdioForward, 0, len(m.stdioFwds))
+	for _, f := range m.stdioFwds {
+		stdioFwds = append(stdioFwds, f)
+	}
+	m.notifyClientsChanged()
 	m.connMu.Unlock()
 	for _, pc := range conns {
 		pc.close()
@@ -337,14 +385,17 @@ func (m *muxMaster) close() {
 	for _, p := range passengers {
 		p.close()
 	}
+	for _, f := range stdioFwds {
+		f.close()
+	}
 	m.closeForwards()
 }
 
-// waitClients blocks until no proxy client is connected or the master is closed.
+// waitClients blocks until no client is connected or the master is closed.
 func (m *muxMaster) waitClients() {
 	m.connMu.Lock()
 	defer m.connMu.Unlock()
-	for len(m.conns)+len(m.passengers) > 0 && !m.closed.Load() {
+	for m.clientCountLocked() > 0 && !m.closed.Load() {
 		m.connCond.Wait()
 	}
 }

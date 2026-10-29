@@ -372,6 +372,9 @@ func sshStart(args *sshArgs) (int, error) {
 		return kExitCodeLoginFailed, err
 	}
 
+	// init log level, the passenger and persist paths below do not go through sshConnectWithParam
+	_ = setupLogLevel(args)
+
 	// run as the background control master for ControlPersist
 	if isMuxPersistMaster() {
 		return runMuxPersistMaster(param)

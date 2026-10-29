@@ -160,19 +160,25 @@ func (c *sshUdpClient) notifyConnectionLost() {
 	notifyMuxPassengersConnLost(c)
 
 	if c.notifInterceptor == nil {
-		_, _ = os.Stderr.WriteString(ansi.HideCursor)
-		for c.isReconnectTimeout() && !c.sshConn.Load().exited.Load() {
-			fmt.Fprintf(os.Stderr, "\r\033[0;33m%s\033[0m\x1b[K", c.getConnLostStatus())
-			time.Sleep(time.Second)
-		}
-		if !c.isReconnectTimeout() && !c.sshConn.Load().exited.Load() {
-			fmt.Fprintf(os.Stderr, "\r\033[0;32m%s\033[0m\x1b[K\r\n", "Congratulations, you have successfully reconnected to the server.")
-		}
-		_, _ = os.Stderr.WriteString(ansi.ShowCursor)
+		writeConnLostStatus(os.Stderr, c, func() bool { return !c.sshConn.Load().exited.Load() })
 		return
 	}
 
 	showConnectionLostNotif(c)
+}
+
+// writeConnLostStatus shows the connection lost status of c on w every second until the
+// connection is back or alive reports false, then the reconnected message if it is back.
+func writeConnLostStatus(w io.Writer, c *sshUdpClient, alive func() bool) {
+	_, _ = io.WriteString(w, ansi.HideCursor)
+	for c.isReconnectTimeout() && alive() {
+		_, _ = fmt.Fprintf(w, "\r\033[0;33m%s\033[0m\x1b[K", c.getConnLostStatus())
+		time.Sleep(time.Second)
+	}
+	if !c.isReconnectTimeout() && alive() {
+		_, _ = fmt.Fprintf(w, "\r\033[0;32m%s\033[0m\x1b[K\r\n", "Congratulations, you have successfully reconnected to the server.")
+	}
+	_, _ = io.WriteString(w, ansi.ShowCursor)
 }
 
 var lastJumpUdpClient *sshUdpClient

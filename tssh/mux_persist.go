@@ -258,10 +258,11 @@ func (m *muxMaster) persist(sshConn *sshConnection, timeout time.Duration) {
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	defer signal.Stop(sigCh)
 
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
+	// the idle timer is (re)started each time the last client leaves
+	idleTimer := time.NewTimer(time.Hour)
+	idleTimer.Stop()
 
-	var idleSince time.Time
+	m.wakePersist() // check the initial state
 	for {
 		select {
 		case <-lost:
@@ -270,27 +271,26 @@ func (m *muxMaster) persist(sshConn *sshConnection, timeout time.Duration) {
 		case sig := <-sigCh:
 			debug("control master: exit on signal [%v]", sig)
 			return
-		case now := <-ticker.C:
+		case <-m.persistCh:
 			if m.closed.Load() {
 				return
 			}
 			if m.clientCount() > 0 {
-				idleSince = time.Time{}
 				continue
 			}
 			if !m.listening.Load() {
 				debug("control master: stopped listening and the last client left")
 				return
 			}
-			if timeout <= 0 {
+			if timeout > 0 {
+				idleTimer.Reset(timeout)
+			}
+		case <-idleTimer.C:
+			if m.clientCount() > 0 { // a client connected in the meantime
 				continue
 			}
-			if idleSince.IsZero() {
-				idleSince = now
-			} else if now.Sub(idleSince) >= timeout {
-				debug("control master: no client for %v, exiting", timeout)
-				return
-			}
+			debug("control master: no client for %v, exiting", timeout)
+			return
 		}
 	}
 }

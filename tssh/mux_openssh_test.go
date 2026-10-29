@@ -74,8 +74,9 @@ func runOpenSSH(t *testing.T, sshPath, socket string, stdin string, args ...stri
 	return stdout.String(), stderr.String(), code
 }
 
-// startTcpMuxMaster logs in to the loopback ssh server and serves a control socket for it.
-func startTcpMuxMaster(t *testing.T) (*testSshServer, *muxMaster, string) {
+// startTcpMuxMaster logs in to the loopback ssh server and serves a control socket for it,
+// terminate replaces the process exit of a `-O exit` request.
+func startTcpMuxMaster(t *testing.T, terminate func()) (*testSshServer, *muxMaster, string) {
 	t.Helper()
 	server := startTestSshServer(t)
 	tcpConn, err := net.DialTimeout("tcp", server.listener.Addr().String(), 5*time.Second)
@@ -85,13 +86,13 @@ func startTcpMuxMaster(t *testing.T) (*testSshServer, *muxMaster, string) {
 	require.NoError(t, err)
 	master := sshNewClient(sshConn, chans, reqs)
 	t.Cleanup(func() { _ = master.Close() })
-	m, socket := newTestMuxMaster(t, master)
+	m, socket := newTestMuxMaster(t, master, terminate)
 	return server, m, socket
 }
 
 func TestOpenSSHClientSessions(t *testing.T) {
 	sshPath := opensshPath(t)
-	server, m, socket := startTcpMuxMaster(t)
+	server, m, socket := startTcpMuxMaster(t, nil)
 
 	stdout, stderr, code := runOpenSSH(t, sshPath, socket, "", "dummy", "hostname")
 	assert.Equal(t, 0, code, stderr)
@@ -112,7 +113,8 @@ func TestOpenSSHClientSessions(t *testing.T) {
 
 func TestOpenSSHClientForwards(t *testing.T) {
 	sshPath := opensshPath(t)
-	_, m, socket := startTcpMuxMaster(t)
+	terminated := make(chan struct{}, 1)
+	_, _, socket := startTcpMuxMaster(t, func() { terminated <- struct{}{} })
 	echoAddr := startTestEchoServer(t)
 
 	// -W: stdio forwarding through the master
@@ -138,8 +140,6 @@ func TestOpenSSHClientForwards(t *testing.T) {
 	assert.Error(t, err, "forwarding must be closed after cancel")
 
 	// -O exit terminates the master
-	terminated := make(chan struct{}, 1)
-	m.setTerminate(func() { terminated <- struct{}{} })
 	_, stderr, code = runOpenSSH(t, sshPath, socket, "", "-O", "exit", "dummy")
 	assert.Equal(t, 0, code, stderr)
 	select {

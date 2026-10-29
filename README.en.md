@@ -602,7 +602,7 @@ trzsz-ssh ( tssh ) with [tsshd](https://github.com/trzsz/tsshd) also supports in
       #!! encQuestionAnswer1 756b17766f45bdc44c37f811db9990b0880318d5f00f6531b15e068ef1fde2666550
   ```
 
-- - With `ControlMaster` multiplexing (also with `ControlPersist`, e.g. in older versions of the `Warp` terminal) `tssh` logs in by itself, so the options above apply as they are. The `Ctrl` prefixed `Automated Interaction` options of earlier versions are no longer needed.
+- With `ControlMaster` multiplexing (also with `ControlPersist`, e.g. in older versions of the `Warp` terminal) `tssh` logs in by itself, so the options above apply as they are. The `Ctrl` prefixed `Automated Interaction` options of earlier versions are no longer needed.
 
 - Support remember `Passphrase` for private keys ( It's recommended to use `ssh-agent` ). Support configuring `Passphrase` together with `IdentityFile`. Support configuring `Passphrase` using private key filename instead of host alias. For example:
 

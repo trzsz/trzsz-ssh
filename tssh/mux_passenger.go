@@ -38,7 +38,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/charmbracelet/x/ansi"
 	"github.com/trzsz/trzsz-go/trzsz"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/term"
@@ -532,22 +531,36 @@ func notifyMuxPassengersConnLost(client *sshUdpClient) {
 		m.connMu.Unlock()
 		for _, p := range passengers {
 			if p.tty.Load() {
-				go p.showConnLostStatus(client)
+				go writeConnLostStatus(p.stderr, client, func() bool { return !p.closed.Load() })
 			}
 		}
 	}
 }
 
-func (p *muxPassenger) showConnLostStatus(client *sshUdpClient) {
-	_, _ = p.stderr.WriteString(ansi.HideCursor)
-	for client.isReconnectTimeout() && !p.closed.Load() {
-		_, _ = fmt.Fprintf(p.stderr, "\r\033[0;33m%s\033[0m\x1b[K", client.getConnLostStatus())
-		time.Sleep(time.Second)
-	}
-	if !client.isReconnectTimeout() && !p.closed.Load() {
-		_, _ = fmt.Fprintf(p.stderr, "\r\033[0;32m%s\033[0m\x1b[K\r\n", "Congratulations, you have successfully reconnected to the server.")
-	}
-	_, _ = p.stderr.WriteString(ansi.ShowCursor)
+// muxStdioForward is one stdio forwarding client (`ssh -W host:port`): the remote connection
+// is pumped on the file descriptors received from the client.
+type muxStdioForward struct {
+	master    *muxMaster
+	id        uint32
+	conn      *net.UnixConn
+	remote    net.Conn
+	stdin     *os.File
+	stdout    *os.File
+	closeOnce sync.Once
+}
+
+// close unregisters the client and releases the remote connection, the received files and
+// the control connection. A copy blocked on a received file ends with it (EOF or error).
+func (f *muxStdioForward) close() {
+	f.closeOnce.Do(func() {
+		f.master.removeStdioForward(f)
+		if f.remote != nil {
+			_ = f.remote.Close()
+		}
+		_ = f.stdin.Close()
+		_ = f.stdout.Close()
+		_ = f.conn.Close()
+	})
 }
 
 // handleStdioForward serves MUX_C_NEW_STDIO_FWD (`ssh -W host:port`) on conn.
@@ -571,24 +584,21 @@ func (m *muxMaster) handleStdioForward(conn *net.UnixConn, writer *muxPacketWrit
 		_ = writer.writeMuxMessage(kMuxSFailure, rid, err.Error())
 		return
 	}
-	defer func() {
-		for _, f := range files {
-			_ = f.Close()
-		}
-	}()
+	f := &muxStdioForward{master: m, id: m.nextPassengerID(), conn: conn, stdin: files[0], stdout: files[1]}
+	defer f.close()
 	_ = conn.SetDeadline(time.Time{})
 
 	addr := net.JoinHostPort(host, strconv.Itoa(int(port)))
-	remote, err := m.client.DialTimeout("tcp", addr, getConnectTimeout(m.param.args))
-	if err != nil {
+	if f.remote, err = m.client.DialTimeout("tcp", addr, getConnectTimeout(m.param.args)); err != nil {
 		_ = writer.writeMuxMessage(kMuxSFailure, rid, fmt.Sprintf("connect to %s failed: %v", addr, err))
 		return
 	}
-	if err := writer.writeMuxMessage(kMuxSSessionOpened, rid, m.nextPassengerID()); err != nil {
-		_ = remote.Close()
+	if err := writer.writeMuxMessage(kMuxSSessionOpened, rid, f.id); err != nil {
 		return
 	}
+	m.addStdioForward(f)
 
+	// the client sends nothing more; its disconnect ends the forwarding
 	done := make(chan struct{})
 	go func() {
 		buf := make([]byte, 64)
@@ -597,26 +607,25 @@ func (m *muxMaster) handleStdioForward(conn *net.UnixConn, writer *muxPacketWrit
 				break
 			}
 		}
-		_ = remote.Close()
+		f.close()
 		close(done)
 	}()
 
 	var wg sync.WaitGroup
 	wg.Go(func() {
-		_, _ = io.Copy(remote, files[0])
-		if cw, ok := remote.(interface{ CloseWrite() error }); ok {
+		_, _ = io.Copy(f.remote, f.stdin)
+		if cw, ok := f.remote.(interface{ CloseWrite() error }); ok {
 			_ = cw.CloseWrite()
 		}
 	})
 	wg.Go(func() {
-		_, _ = io.Copy(files[1], remote)
-		if cr, ok := remote.(interface{ CloseRead() error }); ok {
+		_, _ = io.Copy(f.stdout, f.remote)
+		if cr, ok := f.remote.(interface{ CloseRead() error }); ok {
 			_ = cr.CloseRead()
 		}
 	})
 	wg.Wait()
-	_ = remote.Close()
-	_ = conn.Close()
+	f.close()
 	<-done
 }
 

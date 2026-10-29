@@ -30,6 +30,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -118,7 +119,7 @@ func TestMuxFdRoundTrip(t *testing.T) {
 
 func TestMuxPassengerExecExitStatus(t *testing.T) {
 	backend := newFakeSshClient()
-	m, socket := newTestMuxMaster(t, backend)
+	m, socket := newTestMuxMaster(t, backend, nil)
 	m.param.args.Option = sshOption{options: map[string][]string{"sendenv": {"FOO_*"}}}
 
 	client, err := dialMuxMaster(socket, time.Second)
@@ -172,7 +173,7 @@ func TestMuxPassengerExecExitStatus(t *testing.T) {
 
 func TestMuxPassengerPtyAndWindowChange(t *testing.T) {
 	backend := newFakeSshClient()
-	m, socket := newTestMuxMaster(t, backend)
+	m, socket := newTestMuxMaster(t, backend, nil)
 
 	ptmx, tty, err := pty.Open()
 	require.NoError(t, err)
@@ -216,7 +217,7 @@ func TestMuxPassengerPtyAndWindowChange(t *testing.T) {
 
 func TestMuxPassengerTtyAllocFail(t *testing.T) {
 	backend := newFakeSshClient()
-	_, socket := newTestMuxMaster(t, backend)
+	_, socket := newTestMuxMaster(t, backend, nil)
 	client, err := dialMuxMaster(socket, time.Second)
 	require.NoError(t, err)
 	defer client.close()
@@ -238,7 +239,7 @@ func TestMuxPassengerTtyAllocFail(t *testing.T) {
 
 func TestMuxPassengerDisconnectClosesSession(t *testing.T) {
 	backend := newFakeSshClient()
-	m, socket := newTestMuxMaster(t, backend)
+	m, socket := newTestMuxMaster(t, backend, nil)
 	client, err := dialMuxMaster(socket, time.Second)
 	require.NoError(t, err)
 
@@ -270,7 +271,7 @@ func TestMuxPassengerStdioForward(t *testing.T) {
 		}()
 		return local, nil
 	}
-	_, socket := newTestMuxMaster(t, backend)
+	m, socket := newTestMuxMaster(t, backend, nil)
 	client, err := dialMuxMaster(socket, time.Second)
 	require.NoError(t, err)
 	defer client.close()
@@ -279,9 +280,43 @@ func TestMuxPassengerStdioForward(t *testing.T) {
 	_, err = client.stdioForward("10.0.0.1", 22, files.stdin, files.stdout)
 	require.NoError(t, err)
 	assert.Equal(t, "10.0.0.1:22", dialed)
+	// a running stdio forward is a connected client
+	waitFor(t, "one stdio forward client", func() bool { return m.clientCount() == 1 })
 	_, err = files.stdinW.Write([]byte("SSH-2.0-test"))
 	require.NoError(t, err)
 	assert.Equal(t, "SSH-2.0-test", readAllWithTimeout(t, files.stdoutR, 12))
+
+	client.close()
+	waitFor(t, "stdio forward client gone", func() bool { return m.clientCount() == 0 })
+}
+
+func TestMuxMasterCloseEndsStdioForward(t *testing.T) {
+	backend := newFakeSshClient()
+	backend.dialFn = func(network, addr string) (net.Conn, error) {
+		local, remote := net.Pipe()
+		go func() {
+			_, _ = io.Copy(io.Discard, remote)
+			_ = remote.Close()
+		}()
+		return local, nil
+	}
+	m, socket := newTestMuxMaster(t, backend, nil)
+	client, err := dialMuxMaster(socket, time.Second)
+	require.NoError(t, err)
+	defer client.close()
+
+	files := newPassengerFiles(t)
+	_, err = client.stdioForward("10.0.0.1", 22, files.stdin, files.stdout)
+	require.NoError(t, err)
+	waitFor(t, "one stdio forward client", func() bool { return m.clientCount() == 1 })
+
+	// closing the master tears the forwarding down: the client sees EOF
+	m.close()
+	assert.Equal(t, 0, m.clientCount())
+	buf := make([]byte, 1)
+	_ = client.conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	_, err = client.conn.Read(buf)
+	assert.ErrorIs(t, err, io.EOF)
 }
 
 func freeLocalPort(t *testing.T) int {
@@ -303,7 +338,7 @@ func TestMuxPassengerOpenAndCloseForward(t *testing.T) {
 		}()
 		return local, nil
 	}
-	_, socket := newTestMuxMaster(t, backend)
+	_, socket := newTestMuxMaster(t, backend, nil)
 	client, err := dialMuxMaster(socket, time.Second)
 	require.NoError(t, err)
 	defer client.close()
@@ -370,7 +405,7 @@ func TestMuxPassengerEligible(t *testing.T) {
 // TestRunAsMuxPassenger runs a login as passenger of a tssh master on this process's stdio.
 func TestRunAsMuxPassenger(t *testing.T) {
 	backend := newFakeSshClient()
-	m, socket := newTestMuxMaster(t, backend)
+	m, socket := newTestMuxMaster(t, backend, nil)
 
 	// replace the process stdio with pipes for the duration of the test
 	oriStdin, oriStdout, oriStderr := os.Stdin, os.Stdout, os.Stderr
@@ -459,7 +494,7 @@ func TestMuxEscapeReader(t *testing.T) {
 
 func TestMuxPassengerEscapeTerminatesSession(t *testing.T) {
 	backend := newFakeSshClient()
-	m, socket := newTestMuxMaster(t, backend)
+	m, socket := newTestMuxMaster(t, backend, nil)
 
 	ptmx, tty, err := pty.Open()
 	require.NoError(t, err)
@@ -495,8 +530,17 @@ func TestMuxPassengerEscapeTerminatesSession(t *testing.T) {
 
 func TestMuxPassengerAgentAndX11Requests(t *testing.T) {
 	backend := newFakeSshClient()
-	_, socket := newTestMuxMaster(t, backend)
-	t.Setenv("SSH_AUTH_SOCK", "/tmp/tssh-test-agent.sock")
+	m, socket := newTestMuxMaster(t, backend, nil)
+
+	// a listening agent socket of the master (short path, see newTestMuxMaster)
+	dir, err := os.MkdirTemp("", "tsshagent")
+	require.NoError(t, err)
+	defer func() { _ = os.RemoveAll(dir) }()
+	agentSocket := filepath.Join(dir, "agent")
+	agentListener, err := net.Listen("unix", agentSocket)
+	require.NoError(t, err)
+	defer func() { _ = agentListener.Close() }()
+	t.Setenv("SSH_AUTH_SOCK", agentSocket)
 	t.Setenv("DISPLAY", "")
 
 	client, err := dialMuxMaster(socket, time.Second)
@@ -517,6 +561,9 @@ func TestMuxPassengerAgentAndX11Requests(t *testing.T) {
 	// the agent of the master is forwarded; without DISPLAY there is no X11 forwarding, the session still runs
 	assert.Contains(t, requests, kAgentRequestName)
 	assert.NotContains(t, requests, kX11RequestName)
+	assert.True(t, m.agentForwarded)
+	assert.NotNil(t, backend.channel(kAgentChannelType), "agent channels must be handled on the master connection")
+	assert.Nil(t, backend.channel(kX11ChannelType))
 
 	fs.finish(0)
 	assert.Equal(t, 0, client.waitExit(sessionID, nil))

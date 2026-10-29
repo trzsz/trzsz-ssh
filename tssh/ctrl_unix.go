@@ -32,6 +32,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -100,6 +101,22 @@ func execControlCmd(args *sshArgs, dest string) int {
 	return 0
 }
 
+var ctrlExpectObsoleteOnce sync.Once
+
+// warnObsoleteCtrlExpect warns once per process if the host still has the `Ctrl` prefixed
+// automated interaction options of earlier versions, which fed the password prompt of the
+// OpenSSH master. tssh logs in to the control master itself now, so they are ignored.
+func warnObsoleteCtrlExpect(args *sshArgs) {
+	if getExOptionConfig(args, "CtrlExpectCount") == "" {
+		return
+	}
+	ctrlExpectObsoleteOnce.Do(func() {
+		warning("the Ctrl prefixed automated interaction options (CtrlExpectCount, CtrlExpectPattern1, ...) " +
+			"are obsolete and ignored: tssh logs in to the control master itself, " +
+			"so the plain ExpectCount / ExpectPattern options apply instead")
+	})
+}
+
 // connectViaControl implements ControlMaster / ControlPath. tssh itself is the control master
 // (see startMuxMaster); with ControlPersist the master runs in background (see startMuxPersistMaster).
 func connectViaControl(param *sshParam) SshClient {
@@ -107,6 +124,8 @@ func connectViaControl(param *sshParam) SshClient {
 	if ctrlPath == "" {
 		return nil
 	}
+
+	warnObsoleteCtrlExpect(param.args)
 
 	socket, err := resolveControlSocket(param, ctrlPath)
 	if err != nil {

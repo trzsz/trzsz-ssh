@@ -44,14 +44,20 @@ type sendEnvRule struct {
 
 type sendEnvRules []sendEnvRule
 
-// permit reports whether the SendEnv rules allow sending the environment variable name.
-func (rules sendEnvRules) permit(name string) bool {
-	for _, rule := range rules {
-		if rule.re.MatchString(name) {
-			return !rule.negate
+// match returns the first SendEnv rule matching the environment variable name, nil if none matches.
+func (rules sendEnvRules) match(name string) *sendEnvRule {
+	for i := range rules {
+		if rules[i].re.MatchString(name) {
+			return &rules[i]
 		}
 	}
-	return false
+	return nil
+}
+
+// permit reports whether the SendEnv rules allow sending the environment variable name.
+func (rules sendEnvRules) permit(name string) bool {
+	rule := rules.match(name)
+	return rule != nil && !rule.negate
 }
 
 func getSendEnvRules(args *sshArgs) (sendEnvRules, error) {
@@ -107,21 +113,20 @@ func getSendEnvs(args *sshArgs) ([]*sshEnv, error) {
 			name = strings.TrimSpace(env[:pos])
 		}
 
-		for _, rule := range rules {
-			if rule.re.MatchString(name) {
-				if rule.negate {
-					debug("ignored env: %s (matches rule: -%s)", name, rule.pattern)
-				} else {
-					debug("sending env: %s (matches rule: %s)", name, rule.pattern)
-					var value string
-					if pos >= 0 {
-						value = strings.TrimSpace(env[pos+1:])
-					}
-					envs = append(envs, &sshEnv{name, value})
-				}
-				break
-			}
+		rule := rules.match(name)
+		if rule == nil {
+			continue
 		}
+		if rule.negate {
+			debug("ignored env: %s (matches rule: -%s)", name, rule.pattern)
+			continue
+		}
+		debug("sending env: %s (matches rule: %s)", name, rule.pattern)
+		var value string
+		if pos >= 0 {
+			value = strings.TrimSpace(env[pos+1:])
+		}
+		envs = append(envs, &sshEnv{name, value})
 	}
 
 	return envs, nil

@@ -94,7 +94,7 @@ func waitClosed(t *testing.T, ch <-chan struct{}, what string, timeout time.Dura
 func TestMuxMasterPersistIdleTimeout(t *testing.T) {
 	client := &blockingWaitClient{newFakeSshClient(), make(chan struct{})}
 	defer close(client.done)
-	m, _ := newTestMuxMaster(t, client)
+	m, _ := newTestMuxMaster(t, client, nil)
 
 	// a connected client keeps the master alive beyond the timeout
 	pc := &muxProxyConn{}
@@ -102,36 +102,41 @@ func TestMuxMasterPersistIdleTimeout(t *testing.T) {
 	m.conns[pc] = struct{}{}
 	m.connMu.Unlock()
 
-	exited := runPersist(m, client, time.Second)
+	exited := runPersist(m, client, 200*time.Millisecond)
 	select {
 	case <-exited:
 		t.Fatal("master exited while a client was connected")
-	case <-time.After(2500 * time.Millisecond):
+	case <-time.After(500 * time.Millisecond):
 	}
 
-	// without clients it exits after the timeout
+	// the timeout starts when the last client leaves
 	m.removeConn(pc)
-	waitClosed(t, exited, "idle exit", 5*time.Second)
+	waitClosed(t, exited, "idle exit", 2*time.Second)
+
+	// a master nobody ever connected to exits after the timeout as well
+	m2, _ := newTestMuxMaster(t, client, nil)
+	waitClosed(t, runPersist(m2, client, 100*time.Millisecond), "idle exit without clients", 2*time.Second)
 }
 
 func TestMuxMasterPersistStopAndLost(t *testing.T) {
 	client := &blockingWaitClient{newFakeSshClient(), make(chan struct{})}
-	m, _ := newTestMuxMaster(t, client)
+	defer close(client.done)
+	m, _ := newTestMuxMaster(t, client, nil)
 
 	// no timeout: only `-O stop` with no client left ends it
 	exited := runPersist(m, client, 0)
 	select {
 	case <-exited:
 		t.Fatal("master without timeout exited")
-	case <-time.After(1500 * time.Millisecond):
+	case <-time.After(300 * time.Millisecond):
 	}
 	m.stopListening()
-	waitClosed(t, exited, "exit after stop", 3*time.Second)
+	waitClosed(t, exited, "exit after stop", 2*time.Second)
 
 	// the connection going away ends it at once
 	client2 := &blockingWaitClient{newFakeSshClient(), make(chan struct{})}
-	exited = runPersist(m, client2, 0)
+	m2, _ := newTestMuxMaster(t, client2, nil)
+	exited = runPersist(m2, client2, 0)
 	close(client2.done)
 	waitClosed(t, exited, "exit on connection lost", time.Second)
-	close(client.done)
 }

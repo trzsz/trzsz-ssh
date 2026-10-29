@@ -27,6 +27,7 @@ SOFTWARE.
 package tssh
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -44,7 +45,6 @@ import (
 // muxClient is a connection to a control master speaking the mux protocol.
 type muxClient struct {
 	conn       *net.UnixConn
-	masterPid  uint32
 	tsshMaster bool // the master advertised the tssh hello extension
 	nextRid    uint32
 }
@@ -119,6 +119,11 @@ func (c *muxClient) request(msgType uint32, fields ...any) (uint32, []byte, erro
 	if err := muxWriteMessage(c.conn, msgType, append([]any{rid}, fields...)...); err != nil {
 		return 0, nil, fmt.Errorf("write mux request failed: %v", err)
 	}
+	return c.readReply(rid)
+}
+
+// readReply reads the reply to the request rid and returns the reply type and body after the request id.
+func (c *muxClient) readReply(rid uint32) (uint32, []byte, error) {
 	replyType, body, err := muxReadMessage(c.conn)
 	if err != nil {
 		return 0, nil, fmt.Errorf("read mux reply failed: %v", err)
@@ -135,7 +140,7 @@ func muxReplyError(replyType uint32, body []byte) error {
 	switch replyType {
 	case kMuxSFailure, kMuxSPermissionDenied:
 		reason, _ := muxReadString(&body)
-		return fmt.Errorf("%s", reason)
+		return errors.New(reason)
 	default:
 		return fmt.Errorf("unexpected mux reply 0x%08x", replyType)
 	}
@@ -151,7 +156,6 @@ func (c *muxClient) aliveCheck() (uint32, error) {
 		return 0, muxReplyError(replyType, body)
 	}
 	pid, _ := muxReadUint32(&body)
-	c.masterPid = pid
 	return pid, nil
 }
 
@@ -187,20 +191,22 @@ func (c *muxClient) closeForward(req *muxForwardRequest) error {
 	return nil
 }
 
+// muxBool converts a flag to its mux wire representation.
+func muxBool(b bool) uint32 {
+	if b {
+		return 1
+	}
+	return 0
+}
+
 // newSession asks the master to run a session on the given files and returns the session id.
 func (c *muxClient) newSession(req *muxNewSessionRequest, stdin, stdout, stderr *os.File) (uint32, error) {
-	flag := func(b bool) uint32 {
-		if b {
-			return 1
-		}
-		return 0
-	}
-	fields := []any{c.rid(), "", flag(req.wantTTY), flag(req.wantX11), flag(req.wantAgent), flag(req.subsystem),
+	rid := c.rid()
+	fields := []any{rid, "", muxBool(req.wantTTY), muxBool(req.wantX11), muxBool(req.wantAgent), muxBool(req.subsystem),
 		req.escapeChar, req.term, req.command}
 	for _, env := range req.envs {
 		fields = append(fields, env)
 	}
-	rid := fields[0].(uint32)
 	if err := muxWriteMessage(c.conn, kMuxCNewSession, fields...); err != nil {
 		return 0, fmt.Errorf("write session request failed: %v", err)
 	}
@@ -226,14 +232,11 @@ func (c *muxClient) stdioForward(host string, port uint32, stdin, stdout *os.Fil
 	return c.readSessionOpened(rid)
 }
 
+// readSessionOpened reads the reply to a session request and returns the session id.
 func (c *muxClient) readSessionOpened(rid uint32) (uint32, error) {
-	replyType, body, err := muxReadMessage(c.conn)
+	replyType, body, err := c.readReply(rid)
 	if err != nil {
-		return 0, fmt.Errorf("read mux reply failed: %v", err)
-	}
-	gotRid, ok := muxReadUint32(&body)
-	if !ok || gotRid != rid {
-		return 0, fmt.Errorf("unexpected request id in mux reply")
+		return 0, err
 	}
 	if replyType != kMuxSSessionOpened {
 		return 0, muxReplyError(replyType, body)
@@ -289,20 +292,32 @@ func muxForwardRequestFromCfg(ftype uint32, bind *bindCfg, f *forwardCfg) *muxFo
 	return req
 }
 
+// muxForwardRequestFromForward converts a local or remote forwarding config to the mux wire representation.
+func muxForwardRequestFromForward(ftype uint32, f *forwardCfg) *muxForwardRequest {
+	return muxForwardRequestFromCfg(ftype, &bindCfg{addr: f.bindAddr, port: f.bindPort}, f)
+}
+
+// muxForwardRequests converts the -D / -L / -R forwardings of the command line, and of the config
+// unless cmdLineOnly is set, to mux forwarding requests (see collectForwardCfgs).
+func muxForwardRequests(param *sshParam, cmdLineOnly bool) []*muxForwardRequest {
+	dynamic, local, remote := collectForwardCfgs(param, cmdLineOnly)
+	var requests []*muxForwardRequest
+	for _, b := range dynamic {
+		requests = append(requests, muxForwardRequestFromCfg(kMuxFwdDynamic, b, nil))
+	}
+	for _, f := range local {
+		requests = append(requests, muxForwardRequestFromForward(kMuxFwdLocal, f))
+	}
+	for _, f := range remote {
+		requests = append(requests, muxForwardRequestFromForward(kMuxFwdRemote, f))
+	}
+	return requests
+}
+
 // muxForwardCommand implements `tssh -O forward` and `tssh -O cancel`: it opens or closes the
 // -L / -R / -D forwardings given on the command line in the running master.
 func muxForwardCommand(socket string, param *sshParam, cancel bool) int {
-	args := param.args
-	var requests []*muxForwardRequest
-	for _, b := range args.DynamicForward.binds {
-		requests = append(requests, muxForwardRequestFromCfg(kMuxFwdDynamic, b, nil))
-	}
-	for _, f := range args.LocalForward.cfgs {
-		requests = append(requests, muxForwardRequestFromCfg(kMuxFwdLocal, &bindCfg{addr: f.bindAddr, port: f.bindPort}, f))
-	}
-	for _, f := range args.RemoteForward.cfgs {
-		requests = append(requests, muxForwardRequestFromCfg(kMuxFwdRemote, &bindCfg{addr: f.bindAddr, port: f.bindPort}, f))
-	}
+	requests := muxForwardRequests(param, true)
 	if len(requests) == 0 {
 		fmt.Fprintf(os.Stderr, "No forwarding specified, use -L, -R or -D\r\n")
 		return kExitCodeToolsError
@@ -343,7 +358,7 @@ func muxPassengerEligible(args *sshArgs) bool {
 	if isX11ForwardEnabled(args) {
 		return false
 	}
-	if !args.NoForwardAgent && (args.ForwardAgent || strings.EqualFold(getOptionConfig(args, "ForwardAgent"), "yes")) {
+	if isAgentForwardEnabled(args) {
 		return false
 	}
 	if len(args.UploadFile.values) > 0 || args.Attach || strings.EqualFold(getExOptionConfig(args, "UdpSessionAttach"), "yes") {
@@ -393,42 +408,10 @@ func muxPassengerForwards(mc *muxClient, param *sshParam) {
 	if strings.EqualFold(getOptionConfig(args, "ClearAllForwardings"), "yes") {
 		return
 	}
-	open := func(req *muxForwardRequest) {
+	for _, req := range muxForwardRequests(param, false) {
 		if _, err := mc.openForward(req); err != nil {
 			warning("forwarding [%s:%d -> %s:%d] failed: %v", req.listenHost, req.listenPort, req.connectHost, req.connectPort, err)
 		}
-	}
-	for _, b := range args.DynamicForward.binds {
-		open(muxForwardRequestFromCfg(kMuxFwdDynamic, b, nil))
-	}
-	for _, s := range getAllExOptionConfig(args, "DynamicForward", false) {
-		if b, err := parseBindCfg(s); err == nil {
-			open(muxForwardRequestFromCfg(kMuxFwdDynamic, b, nil))
-		} else {
-			warning("parse dynamic forwarding failed: %v", err)
-		}
-	}
-	forwards := append([]*forwardCfg(nil), args.LocalForward.cfgs...)
-	for _, s := range getAllExOptionConfig(args, "LocalForward", false) {
-		if f, err := parseForwardCfg(param, false, s); err == nil {
-			forwards = append(forwards, f)
-		} else {
-			warning("parse local forwarding failed: %v", err)
-		}
-	}
-	for _, f := range forwards {
-		open(muxForwardRequestFromCfg(kMuxFwdLocal, &bindCfg{addr: f.bindAddr, port: f.bindPort}, f))
-	}
-	remotes := append([]*forwardCfg(nil), args.RemoteForward.cfgs...)
-	for _, s := range getAllExOptionConfig(args, "RemoteForward", false) {
-		if f, err := parseForwardCfg(param, false, s); err == nil {
-			remotes = append(remotes, f)
-		} else {
-			warning("parse remote forwarding failed: %v", err)
-		}
-	}
-	for _, f := range remotes {
-		open(muxForwardRequestFromCfg(kMuxFwdRemote, &bindCfg{addr: f.bindAddr, port: f.bindPort}, f))
 	}
 }
 

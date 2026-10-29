@@ -25,6 +25,7 @@ SOFTWARE.
 package tssh
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -119,9 +120,13 @@ func forwardAgentRequest(channel ssh.Channel, addr string) {
 	forwardChannel(channel, conn)
 }
 
+// isAgentForwardEnabled reports whether agent forwarding is requested by the command line or the config.
+func isAgentForwardEnabled(args *sshArgs) bool {
+	return !args.NoForwardAgent && (args.ForwardAgent || strings.EqualFold(getOptionConfig(args, "ForwardAgent"), "yes"))
+}
+
 func sshAgentForward(sshConn *sshConnection) {
-	args := sshConn.param.args
-	if args.NoForwardAgent || !args.ForwardAgent && !strings.EqualFold(getOptionConfig(args, "ForwardAgent"), "yes") {
+	if !isAgentForwardEnabled(sshConn.param.args) {
 		return
 	}
 	addr, err := getAgentAddr(sshConn.param)
@@ -134,8 +139,12 @@ func sshAgentForward(sshConn *sshConnection) {
 		return
 	}
 	if err := forwardToRemote(sshConn.client, addr); err != nil {
-		warning("forward to agent [%s] failed: %v", addr, err)
-		return
+		if !errors.Is(err, errAgentAlreadyForwarded) {
+			warning("forward to agent [%s] failed: %v", addr, err)
+			return
+		}
+		// the control master has installed the handler for a passenger already
+		debug("agent forwarding handler already installed")
 	}
 	ok, err := sshConn.session.SendRequest(kAgentRequestName, true, nil)
 	if err != nil {

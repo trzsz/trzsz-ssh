@@ -400,13 +400,6 @@ type sshSessionWrapper struct {
 	code   int
 }
 
-func (s *sshSessionWrapper) Run(cmd string) error {
-	if err := s.Start(cmd); err != nil {
-		return err
-	}
-	return s.Wait()
-}
-
 func (s *sshSessionWrapper) RequestPty(term string, height, width int, termmodes ssh.TerminalModes) error {
 	s.height, s.width = height, width
 	return s.Session.RequestPty(term, height, width, termmodes)
