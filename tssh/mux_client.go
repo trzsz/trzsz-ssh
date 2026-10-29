@@ -38,9 +38,8 @@ import (
 	"time"
 )
 
-// This file implements the client side of the OpenSSH multiplexing "passenger mode":
-// the client asks the master to run a session on its own stdin, stdout and stderr,
-// which it hands over through the control socket.
+// Client side of the mux passenger mode: the client passes its stdin, stdout and
+// stderr to the master over the control socket and the master runs the session on them.
 
 // muxClient is a connection to a control master speaking the mux protocol.
 type muxClient struct {
@@ -113,7 +112,7 @@ func (c *muxClient) hello() error {
 	return nil
 }
 
-// request sends one mux request and returns the reply type and body after the request id.
+// request sends one mux request and returns the reply type and the body following the request id.
 func (c *muxClient) request(msgType uint32, fields ...any) (uint32, []byte, error) {
 	rid := c.rid()
 	if err := muxWriteMessage(c.conn, msgType, append([]any{rid}, fields...)...); err != nil {
@@ -122,7 +121,7 @@ func (c *muxClient) request(msgType uint32, fields ...any) (uint32, []byte, erro
 	return c.readReply(rid)
 }
 
-// readReply reads the reply to the request rid and returns the reply type and body after the request id.
+// readReply reads the reply for rid and returns its type and the body following the request id.
 func (c *muxClient) readReply(rid uint32) (uint32, []byte, error) {
 	replyType, body, err := muxReadMessage(c.conn)
 	if err != nil {
@@ -245,9 +244,9 @@ func (c *muxClient) readSessionOpened(rid uint32) (uint32, error) {
 	return sessionID, nil
 }
 
-// waitExit waits for the session to end and returns its exit status. ttyFail reports
-// that the master could not allocate a pty and the session runs without one.
-// The master closing the connection without an exit message yields status 255, like OpenSSH.
+// waitExit waits for the session to end and returns its exit status. onTtyFail is called
+// if the master could not allocate a pty. A connection closed without an exit message
+// yields 255, like OpenSSH.
 func (c *muxClient) waitExit(sessionID uint32, onTtyFail func()) int {
 	for {
 		msgType, body, err := muxReadMessage(c.conn)
@@ -349,8 +348,8 @@ func muxForwardCommand(socket string, param *sshParam, cancel bool) int {
 	return code
 }
 
-// muxPassengerEligible reports whether this login can be served as a passenger of a tssh master.
-// Features that need the ssh channel layer or the session output in this process keep using proxy mode.
+// muxPassengerEligible reports whether this login can run as a passenger of a tssh master.
+// Logins that need their own ssh channels or the session output in this process use proxy mode.
 func muxPassengerEligible(args *sshArgs) bool {
 	if getExpectCount(args, "") > 0 {
 		return false
@@ -384,8 +383,9 @@ func muxPassengerEligible(args *sshArgs) bool {
 }
 
 // muxOpenSSHPassengerEligible reports whether this login can hand its terminal to an OpenSSH master.
-// OpenSSH knows nothing about tsshd, so UDP mode needs proxy mode. The session is then run by the
-// OpenSSH master on the terminal directly, which leaves no place for trzsz, so it needs proxy mode too.
+// UDP mode needs proxy mode to start tsshd, which OpenSSH knows nothing about. With trzsz enabled
+// it needs proxy mode too: an OpenSSH master runs the session on the terminal itself, so tssh
+// could not filter it.
 func muxOpenSSHPassengerEligible(param *sshParam) bool {
 	if param.udpMode != kUdpModeNo {
 		return false
@@ -393,7 +393,7 @@ func muxOpenSSHPassengerEligible(param *sshParam) bool {
 	return !getTrzszSettings(param.args).enabled()
 }
 
-// muxPassengerEscapeChar returns the escape char for the master, which handles it on the terminal.
+// muxPassengerEscapeChar returns the escape char the master handles on the terminal, or none.
 func muxPassengerEscapeChar(args *sshArgs) uint32 {
 	escapeChar, escapeTime := getEscapeConfig(args)
 	if escapeTime <= 0 {
@@ -465,10 +465,9 @@ func waitMuxMasterClosed(mc *muxClient) {
 	}
 }
 
-// runAsMuxPassenger attaches to a running control master in passenger mode: the master runs
-// the session on this process's terminal. It returns false when this login has to take the
-// normal path (no usable master, or a feature that needs proxy mode, see muxPassengerEligible
-// and muxOpenSSHPassengerEligible).
+// runAsMuxPassenger attaches to a running control master as a passenger: the master runs the
+// session on this process's terminal. Returns false if there is no usable master or the login
+// needs proxy mode (see muxPassengerEligible and muxOpenSSHPassengerEligible).
 func runAsMuxPassenger(param *sshParam) (int, bool) {
 	args := param.args
 	ctrlPath := resolveControlPath(param)

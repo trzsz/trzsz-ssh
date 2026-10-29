@@ -784,7 +784,7 @@ func sshLogin(param *sshParam, proxy *proxyJump, requiredUDP udpModeType) (SshCl
 	return udpClient, nil
 }
 
-// startNativeControlMaster makes this process the control master if connectViaControl decided so.
+// startNativeControlMaster makes this process the control master if connectViaControl chose it.
 func startNativeControlMaster(param *sshParam, client SshClient) {
 	if param.muxMasterPath == "" {
 		return

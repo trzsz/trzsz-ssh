@@ -40,9 +40,8 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// This file implements ControlPersist the way OpenSSH does: the first login starts the
-// control master in the background and then runs its own session as a client of it, so
-// the master outlives the session that created it.
+// ControlPersist as in OpenSSH: the first login starts the control master in the background
+// and runs its own session as a client of it, so the master outlives that session.
 
 // kMuxPersistEnv marks the background master process; the result of its login is reported
 // to the starting process through the pipe on file descriptor 3.
@@ -72,9 +71,9 @@ func isMuxPersistMaster() bool {
 	return os.Getenv(kMuxPersistEnv) != ""
 }
 
-// startMuxPersistMaster starts a background control master for ControlPersist and attaches to
-// it. The master logs in on this terminal, so password prompts and host key confirmations work
-// as usual. It returns false when no background master is used and the normal login follows.
+// startMuxPersistMaster starts a background control master for ControlPersist and attaches
+// to it. The master logs in on this terminal, so prompts work as usual. Returns false if no
+// background master is used; the normal login follows.
 func startMuxPersistMaster(param *sshParam) (int, bool) {
 	args := param.args
 	persist, _ := getControlPersist(args)
@@ -170,8 +169,8 @@ func spawnMuxPersistMaster() (int, error) {
 	return kExitCodeLoginFailed, fmt.Errorf("background control master exited: %v", err)
 }
 
-// runMuxPersistMaster is the main of the background master: it logs in, starts listening on
-// the control socket, detaches from the terminal and serves the clients until it may exit.
+// runMuxPersistMaster runs the background master: log in, listen on the control socket,
+// detach from the terminal and serve clients until it can exit.
 func runMuxPersistMaster(param *sshParam) (int, error) {
 	notify := os.NewFile(3, "mux-persist")
 	_ = os.Unsetenv(kMuxPersistEnv)
@@ -181,7 +180,7 @@ func runMuxPersistMaster(param *sshParam) (int, error) {
 	defer func() { _ = notify.Close() }()
 
 	args := param.args
-	// the starting process made sure the socket is free; the session is run by the clients
+	// the starting process checked the socket is free; the clients run the sessions
 	args.ControlMaster = true
 	args.NoCommand = true
 	_, timeout := getControlPersist(args)
@@ -226,7 +225,7 @@ func findMuxMaster(socket string) *muxMaster {
 }
 
 // detachFromTerminal starts a new session without controlling terminal and points the
-// standard file descriptors to /dev/null, so the master survives the terminal.
+// standard file descriptors to /dev/null, so the master survives the terminal closing.
 func detachFromTerminal() error {
 	if _, err := syscall.Setsid(); err != nil {
 		return err

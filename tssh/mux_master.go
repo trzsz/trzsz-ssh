@@ -83,8 +83,8 @@ func startMuxMaster(param *sshParam, client SshClient, socket string) (*muxMaste
 	return startMuxMasterWithTerminate(param, client, socket, nil)
 }
 
-// startMuxMasterWithTerminate is startMuxMaster with the action of a MUX_C_TERMINATE request
-// replaced by terminate (nil exits the master process, tests pass a hook).
+// startMuxMasterWithTerminate is startMuxMaster with a custom MUX_C_TERMINATE action;
+// nil exits the process. Tests pass a hook.
 func startMuxMasterWithTerminate(param *sshParam, client SshClient, socket string, terminate func()) (*muxMaster, error) {
 	listener, err := net.Listen("unix", socket)
 	if err != nil {
@@ -156,7 +156,7 @@ func (m *muxMaster) terminateProcess() {
 	_ = m.client.Close()
 }
 
-// setMuxMastersConnection lets the masters of this process exit through the ssh connection.
+// setMuxMastersConnection gives the masters of this process the ssh connection to exit through.
 func setMuxMastersConnection(sshConn *sshConnection) {
 	muxMastersMu.Lock()
 	defer muxMastersMu.Unlock()
@@ -302,7 +302,7 @@ func (m *muxMaster) notifyClientsChanged() {
 	m.wakePersist()
 }
 
-// wakePersist lets persist re-check whether the master may exit.
+// wakePersist makes persist re-check whether the master can exit.
 func (m *muxMaster) wakePersist() {
 	select {
 	case m.persistCh <- struct{}{}:

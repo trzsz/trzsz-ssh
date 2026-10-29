@@ -518,7 +518,7 @@ func TestMuxPassengerEscapeTerminatesSession(t *testing.T) {
 
 	_, err = ptmx.Write([]byte("\r~."))
 	require.NoError(t, err)
-	// no exit message: the session was terminated, like OpenSSH the client exits with 255
+	// no exit message after ~. so the client exits with 255, like OpenSSH
 	assert.Equal(t, 255, client.waitExit(sessionID, nil))
 	waitFor(t, "passenger gone", func() bool { return m.clientCount() == 0 })
 	waitFor(t, "backend session closed", func() bool {

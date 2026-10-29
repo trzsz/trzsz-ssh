@@ -167,8 +167,8 @@ func (c *sshUdpClient) notifyConnectionLost() {
 	showConnectionLostNotif(c)
 }
 
-// writeConnLostStatus shows the connection lost status of c on w every second until the
-// connection is back or alive reports false, then the reconnected message if it is back.
+// writeConnLostStatus writes the connection lost status of c to w once a second until the
+// connection is back or alive returns false, then the reconnected message.
 func writeConnLostStatus(w io.Writer, c *sshUdpClient, alive func() bool) {
 	_, _ = io.WriteString(w, ansi.HideCursor)
 	for c.isReconnectTimeout() && alive() {

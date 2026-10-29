@@ -330,10 +330,9 @@ func remoteForward(sshConn *sshConnection, f *forwardCfg, gateway bool, timeout 
 	}
 }
 
-// collectForwardCfgs collects the -D / -L / -R forwardings of the command line, and of the
-// DynamicForward / LocalForward / RemoteForward config entries unless cmdLineOnly is set.
-// Config entries that fail to parse are reported as warnings and skipped. The config
-// entries UdpLocalForward and UdpRemoteForward are left to sshPortForward.
+// collectForwardCfgs returns the -D / -L / -R forwardings of the command line and, unless
+// cmdLineOnly, of the DynamicForward / LocalForward / RemoteForward config. Unparsable config
+// entries are warned about and skipped. UdpLocalForward and UdpRemoteForward stay in sshPortForward.
 func collectForwardCfgs(param *sshParam, cmdLineOnly bool) (dynamic []*bindCfg, local, remote []*forwardCfg) {
 	args := param.args
 	dynamic = append(dynamic, args.DynamicForward.binds...)

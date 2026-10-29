@@ -43,10 +43,9 @@ import (
 	"golang.org/x/term"
 )
 
-// This file implements the master side of the OpenSSH multiplexing "passenger mode":
-// the client hands its stdin, stdout and stderr file descriptors to the master over the
-// control socket and the master runs the remote session on them. This is the mode used by
-// the OpenSSH client (ssh -S, scp, rsync, ...) when a control socket is configured.
+// Master side of the mux passenger mode: the client passes its stdin, stdout and stderr
+// over the control socket and the master runs the remote session on them. The OpenSSH
+// client (ssh -S, scp, rsync) uses this mode.
 
 // muxNewSessionRequest is the body of MUX_C_NEW_SESSION.
 type muxNewSessionRequest struct {
@@ -208,7 +207,7 @@ func (p *muxPassenger) open(req *muxNewSessionRequest) error {
 		return fmt.Errorf("stderr pipe failed: %v", err)
 	}
 
-	// like the OpenSSH master, the agent and the display of the master serve the passengers
+	// the master's agent and display serve the passengers, as with an OpenSSH master
 	if req.wantAgent {
 		p.master.requestAgentForward(p.id, session)
 	}
@@ -434,9 +433,9 @@ func (m *muxMaster) requestAgentForward(id uint32, session SshSession) {
 	}
 }
 
-// muxEscapeReader handles the escape sequences of a passenger's terminal like OpenSSH: right
-// after a newline, the escape char followed by '.' terminates the session, followed by '?'
-// lists the sequences, and followed by itself sends the escape char once.
+// muxEscapeReader handles the OpenSSH escape sequences on a passenger's terminal. Right after
+// a newline, escape + '.' terminates the session, escape + '?' prints the help, and the escape
+// char typed twice sends it once.
 type muxEscapeReader struct {
 	reader       io.Reader
 	escapeChar   byte
@@ -513,8 +512,8 @@ func (r *muxEscapeReader) writeHelp() {
 		"(Note that escapes are only recognized immediately after newline.)\r\n", esc, esc, esc, esc, esc)
 }
 
-// notifyMuxPassengersConnLost shows the connection lost status on the terminal of every passenger
-// of the masters using client, until the connection is back or the passenger is gone.
+// notifyMuxPassengersConnLost shows the connection lost status on the terminal of every
+// passenger of client's masters until the connection is back or the passenger is gone.
 func notifyMuxPassengersConnLost(client *sshUdpClient) {
 	muxMastersMu.Lock()
 	masters := append([]*muxMaster(nil), muxMasters...)
@@ -549,8 +548,8 @@ type muxStdioForward struct {
 	closeOnce sync.Once
 }
 
-// close unregisters the client and releases the remote connection, the received files and
-// the control connection. A copy blocked on a received file ends with it (EOF or error).
+// close unregisters the client and closes the remote connection, the received files and
+// the control connection. A copy blocked on a received file ends when the file is closed.
 func (f *muxStdioForward) close() {
 	f.closeOnce.Do(func() {
 		f.master.removeStdioForward(f)

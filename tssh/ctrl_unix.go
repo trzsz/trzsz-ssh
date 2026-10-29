@@ -41,8 +41,8 @@ import (
 const kOpenSSH = "ssh"
 
 // execControlCmd handles a multiplexing control command (`tssh -O <ctl_cmd>`).
-// The commands are spoken in the mux protocol and work with both tssh and OpenSSH masters;
-// only `proxy` is passed to OpenSSH, with its exit code propagated.
+// The commands use the mux protocol and work with tssh and OpenSSH masters; only `proxy`
+// is passed to OpenSSH and its exit code propagated.
 func execControlCmd(args *sshArgs, dest string) int {
 	switch ctlCmd := strings.ToLower(args.ControlCmd); ctlCmd {
 	case "check", "exit", "stop", "forward", "cancel":
@@ -103,17 +103,15 @@ func execControlCmd(args *sshArgs, dest string) int {
 
 var ctrlExpectObsoleteOnce sync.Once
 
-// warnObsoleteCtrlExpect warns once per process if the host still has the `Ctrl` prefixed
-// automated interaction options of earlier versions, which fed the password prompt of the
-// OpenSSH master. tssh logs in to the control master itself now, so they are ignored.
+// warnObsoleteCtrlExpect warns once if the host still has the `Ctrl` prefixed expect options.
+// They fed the password prompt of the OpenSSH master, which tssh no longer starts.
 func warnObsoleteCtrlExpect(args *sshArgs) {
 	if getExOptionConfig(args, "CtrlExpectCount") == "" {
 		return
 	}
 	ctrlExpectObsoleteOnce.Do(func() {
-		warning("the Ctrl prefixed automated interaction options (CtrlExpectCount, CtrlExpectPattern1, ...) " +
-			"are obsolete and ignored: tssh logs in to the control master itself, " +
-			"so the plain ExpectCount / ExpectPattern options apply instead")
+		warning("the Ctrl prefixed automated interaction options (CtrlExpectCount, ...) are obsolete and ignored, " +
+			"tssh is its own control master now; use the ExpectCount / ExpectPattern options instead")
 	})
 }
 
