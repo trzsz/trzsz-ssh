@@ -601,14 +601,7 @@ trzsz-ssh ( tssh ) 与 [tsshd](https://github.com/trzsz/tsshd) 一起，适用�
       #!! encQuestionAnswer1 756b17766f45bdc44c37f811db9990b0880318d5f00f6531b15e068ef1fde2666550
   ```
 
-- 如果启用了 `ControlMaster` 多路复用，或者是在旧版本 `Warp` 终端，需要使用前面 `自动交互` 的方式实现记住密码的效果。配置方式请参考前面 `自动交互`，加上 `Ctrl` 前缀即可，如：
-
-  ```
-  Host ctrl
-      #!! CtrlExpectCount 1  # 配置自动交互的次数，一般只要输入一次密码
-      #!! CtrlExpectPattern1 *assword    # 配置密码提示语的匹配表达式
-      #!! CtrlExpectSendPass1 d7983b...  # 配置 tssh --enc-secret 编码后的密码
-  ```
+- 启用 `ControlMaster` 多路复用时（包括 `ControlPersist`，如旧版本 `Warp` 终端），`tssh` 自己完成登录，上面的配置直接生效，不再需要之前版本中带 `Ctrl` 前缀的 `自动交互` 配置。
 
 - 支持记住私钥的`Passphrase`（ 推荐使用 `ssh-agent` ）。支持与 `IdentityFile` 一起配置, 支持使用私钥文件名代替 Host 别名设置通用密钥的 `Passphrase`。举例：
 
@@ -736,21 +729,7 @@ trzsz-ssh ( tssh ) 与 [tsshd](https://github.com/trzsz/tsshd) 一起，适用�
       #!! OtpCommand2 python C:\your_python_code.py %q
   ```
 
-- 如果启用了 `ControlMaster` 多路复用，或者是在旧版本 `Warp` 终端，请参考前面 `自动交互` 加 `Ctrl` 前缀来实现。
-
-  ```
-  Host ctrl_totp
-      #!! CtrlExpectCount 1  # 配置自动交互的次数
-      #!! CtrlExpectPattern1 code:  # 配置密码提示语的匹配表达式（这里以 2FA 验证码举例）
-      #!! CtrlExpectSendTotp1 xxxxx  # 配置 totp 的 secret（明文），一般可通过扫二维码获得
-      #!! CtrlExpectSendEncTotp1 622ada31cf...  # 或者配置 tssh --enc-secret 得到的密文串
-
-  Host ctrl_otp
-      #!! CtrlExpectCount 1  # 配置自动交互的次数
-      #!! CtrlExpectPattern1 token:  # 配置密码提示语的匹配表达式（这里以动态密码举例）
-      #!! CtrlExpectSendOtp1 oathtool --totp -b xxxxx  # 配置获取动态密码的命令（明文）
-      #!! CtrlExpectSendEncOtp1 77b4ce85d0...  # 或者配置 tssh --enc-secret 得到的密文串
-  ```
+- 启用 `ControlMaster` 多路复用时（包括 `ControlPersist`，如旧版本 `Warp` 终端），`tssh` 自己完成登录，上面的配置直接生效，不再需要之前版本中带 `Ctrl` 前缀的 `自动交互` 配置。
 
 ### 个性配置
 
@@ -1046,21 +1025,26 @@ Host xxx
 
 - `UdpSessionName`: 自定义会话名称。仅在 `UdpSessionAttach` 配置为 `yes` 或通过 `--attach` 参数登录时生效。若服务器端已存在该名称的会话，将直接附加；若不存在，则以此名称创建新会话，供后续登录时自动附加。
 
-### UDP 多路复用
+### 连接多路复用
 
-- 在 UDP 模式下，`tssh` 本身充当 `ControlMaster`（不涉及 OpenSSH），因此后续登录会复用已建立的 UDP 连接，无需重新进行 SSH 登录或启动新的 `tsshd` 进程：
+- `tssh` 自身就是 `ControlMaster`：使用 `-M`（或在 `~/.ssh/config` 中配置 `ControlMaster yes|auto` 和 `ControlPath`）后，第一次登录会把连接保持在控制套接字上，之后的登录复用该连接，无需重新 SSH 登录。TCP 模式和 UDP 模式都支持，UDP 模式下所有复用的会话共享同一个 `tsshd` 连接。
 
   ```sh
-  tssh --udp -M -S ~/.ssh/ctl-%C xxx        # 主连接：正常登录并监听控制套接字
-  tssh -S ~/.ssh/ctl-%C xxx                 # 后续会话、命令、-L / -R / -D 端口转发均可复用此 UDP 连接
-  tssh -O check -S ~/.ssh/ctl-%C xxx        # 支持对 tssh 和 OpenSSH 主连接执行 check、exit、stop
+  tssh --udp -M -S ~/.ssh/ctl-%C xxx        # master：正常登录并监听控制套接字
+  tssh -S ~/.ssh/ctl-%C xxx                 # 后续的会话、命令、-L / -R / -D 端口转发都复用该连接
+  ssh -S ~/.ssh/ctl-%C xxx                  # OpenSSH 客户端（ssh、scp、rsync 等）也可以使用 tssh 的 master
+  tssh -O check -S ~/.ssh/ctl-%C xxx        # 支持 check | exit | stop | forward | cancel
   ```
 
-  或者在 `~/.ssh/config` 中将 `ControlMaster auto`、`ControlPath` 与 `UdpMode` 配合配置：第一次执行 `tssh xxx` 会自动成为主连接，后续连接将自动进行多路复用。
+- 客户端以 OpenSSH 的方式连接 `tssh` 的 master：由 master 在客户端的终端上运行会话，因此每个复用的会话都支持 trzsz ( trz / tsz )，UDP 模式下每个会话都会显示连接丢失的提示。master 会处理这些会话的转义序列 `~.`（终止会话）、`~?` 和 `~~`，并用自己的 display 和 agent 为 OpenSSH 客户端提供 X11 转发和 agent 转发。
 
-- 当多路复用客户端仍处于连接状态而主连接的 shell 退出时，主连接将继续运行，直到所有客户端退出（按 `Ctrl+C` 可强制退出）。`tssh --udp -M -N xxx` 可保持主连接在没有 shell 的情况下运行。目前 UDP 模式下尚不支持 `ControlPersist`。
+- 需要 X11 转发、agent 转发、`--upload-file`、waypipe、UDP 端口转发、`--attach` 或 `自动交互` 的登录，则通过 master 使用独立的通道（代理模式）。
 
-- 目前仅支持 `tssh` 连接到 UDP 主连接（多路复用代理模式）。暂不支持诸如 `ssh -S`、`scp` 和 `rsync` 等 OpenSSH 客户端（多路复用乘客模式）。通过控制套接字暂不支持 X11 转发、Agent 转发、UDP 端口转发以及端口为 `0` 的 `-R` 转发。
+- 也可以使用 OpenSSH 的 master：TCP 模式下如果关闭了 trzsz（ `EnableTrzsz no` ），`tssh` 会像 `ssh` 一样把终端交给它，否则通过 master 使用独立的通道，以保证 trzsz 可用。UDP 模式下 `tssh` 总是使用独立的通道，以便在服务器上启动 `tsshd`。
+
+- 如果 master 的 shell 退出时仍有复用的客户端在连接，master 会继续运行直到它们退出（按 `Ctrl+C` 可强制退出）。`tssh -M -N xxx` 可以只运行 master 而不打开 shell。
+
+- 与 OpenSSH 一样支持 `ControlPersist yes|<时间>`（TCP 和 UDP 模式均可）：第一次登录会在后台启动 master（登录过程仍在当前终端进行，各种提示照常工作），自己的会话则作为它的客户端运行。最后一个客户端退出 `<时间>` 后，或执行 `tssh -O exit` / `tssh -O stop` 时，master 退出。
 
 ### UDP 端口转发
 

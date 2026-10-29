@@ -366,8 +366,29 @@ func TsshMain(argv []string) int {
 }
 
 func sshStart(args *sshArgs) (int, error) {
+	// init ssh param
+	param, err := getSshParam(args, false)
+	if err != nil {
+		return kExitCodeLoginFailed, err
+	}
+
+	// run as the background control master for ControlPersist
+	if isMuxPersistMaster() {
+		return runMuxPersistMaster(param)
+	}
+
+	// attach to a running tssh control master if possible
+	if code, ok := runAsMuxPassenger(param); ok {
+		return code, nil
+	}
+
+	// start a background control master for ControlPersist and attach to it
+	if code, ok := startMuxPersistMaster(param); ok {
+		return code, nil
+	}
+
 	// ssh login
-	sshConn, err := sshConnect(args)
+	sshConn, err := sshConnectWithParam(param)
 	if err != nil {
 		return kExitCodeLoginFailed, err
 	}

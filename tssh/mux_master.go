@@ -31,6 +31,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/signal"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -43,14 +44,26 @@ type muxMaster struct {
 	socket    string
 	listener  net.Listener
 	client    SshClient
-	terminate func()
+	param     *sshParam
+	sshConn   atomic.Pointer[sshConnection]
+	terminate atomic.Pointer[func()]
 
 	connMu   sync.Mutex
 	connCond *sync.Cond
 	conns    map[*muxProxyConn]struct{}
 
+	passengerSeq atomic.Uint32
+	passengers   map[uint32]*muxPassenger
+
+	fwdMu    sync.Mutex
+	forwards map[string][]net.Listener
+
+	agentOnce      sync.Once
+	agentForwarded bool
+
 	listening atomic.Bool
 	closed    atomic.Bool
+	done      chan struct{}
 
 	sockCleanup func() (bool, error)
 }
@@ -81,12 +94,16 @@ func startMuxMaster(param *sshParam, client SshClient, socket string) (*muxMaste
 		socket:      socket,
 		listener:    listener,
 		client:      client,
+		param:       param,
 		conns:       make(map[*muxProxyConn]struct{}),
+		passengers:  make(map[uint32]*muxPassenger),
+		forwards:    make(map[string][]net.Listener),
+		done:        make(chan struct{}),
 		sockCleanup: newFileUnlinker(socket, listener),
 	}
 	m.connCond = sync.NewCond(&m.connMu)
 	m.listening.Store(true)
-	m.terminate = func() { terminateMuxMaster(client) }
+	m.setTerminate(m.terminateProcess)
 
 	muxMastersMu.Lock()
 	muxMasters = append(muxMasters, m)
@@ -96,39 +113,45 @@ func startMuxMaster(param *sshParam, client SshClient, socket string) (*muxMaste
 	addOnExitFunc(func() { _, _ = m.sockCleanup() })
 
 	go m.serve()
+	go m.watchWindowChanges()
 	debug("control master listening on [%s] for [%s]", socket, param.args.Destination)
 	return m, nil
 }
 
-// terminateMuxMaster exits the master process after a MUX_C_TERMINATE request.
-func terminateMuxMaster(client SshClient) {
+// setTerminate sets the action of a MUX_C_TERMINATE request (tests replace the process exit).
+func (m *muxMaster) setTerminate(fn func()) {
+	m.terminate.Store(&fn)
+}
+
+// terminateProcess exits the master process after a MUX_C_TERMINATE request.
+func (m *muxMaster) terminateProcess() {
 	// When any hop exits, the entire link becomes unusable, meaning all hops must exit together.
 	// In UDP mode, we must explicitly force the last-hop UDP connection to exit;
 	// otherwise, it may continuously attempt to reconnect.
 
-	if lastJumpUdpClient == nil {
-		// Currently, the tssh control master only supports UDP mode, so lastJumpUdpClient
-		// should never be nil. This branch acts as a safeguard.
-		warning("should not reach here, possible bug, lastJumpUdpClient=%v", lastJumpUdpClient)
-		_ = client.Close()
-		return
-	}
-
 	// Wait up to 10 seconds for sshConn to be initialized
 	for range 1000 {
-		if lastJumpUdpClient.sshConn.Load() != nil {
+		if m.sshConn.Load() != nil {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	if sshConn := lastJumpUdpClient.sshConn.Load(); sshConn != nil {
+	if sshConn := m.sshConn.Load(); sshConn != nil {
 		sshConn.forceExit(kExitCodeMasterExit, "control master terminated by control command")
-	} else {
-		// sshConn must be set after login completes; it should not be nil here
-		warning("should not reach here, possible bug, lastJumpUdpClient.sshConn=%v", lastJumpUdpClient.sshConn.Load())
-		_ = client.Close()
 		return
+	}
+	warning("should not reach here, possible bug, control master has no ssh connection")
+	wantExit.Store(true)
+	_ = m.client.Close()
+}
+
+// setMuxMastersConnection lets the masters of this process exit through the ssh connection.
+func setMuxMastersConnection(sshConn *sshConnection) {
+	muxMastersMu.Lock()
+	defer muxMastersMu.Unlock()
+	for _, m := range muxMasters {
+		m.sshConn.Store(sshConn)
 	}
 }
 
@@ -171,7 +194,7 @@ func (m *muxMaster) handleConn(conn net.Conn) {
 			_ = writer.writeMuxMessage(kMuxSOk, rid)
 			_ = conn.Close()
 			debug("control master received terminate request")
-			m.terminate()
+			(*m.terminate.Load())()
 			return
 		case kMuxCStopListening:
 			m.stopListening()
@@ -184,10 +207,26 @@ func (m *muxMaster) handleConn(conn net.Conn) {
 			_ = conn.SetDeadline(time.Time{})
 			m.serveProxy(conn)
 			return
-		case kMuxCNewSession, kMuxCNewStdioFwd, kMuxCOpenFwd, kMuxCCloseFwd:
-			// passenger mode (fd passing) is not implemented; only tssh clients (proxy mode) are supported
-			err = writer.writeMuxMessage(kMuxSFailure, rid,
-				"tssh udp control master only supports proxy mode clients, please use tssh instead of ssh")
+		case kMuxCNewSession:
+			unixConn, ok := conn.(*net.UnixConn)
+			if !ok {
+				err = writer.writeMuxMessage(kMuxSFailure, rid, "passenger mode requires a unix socket")
+				break
+			}
+			m.handleNewSession(unixConn, writer, rid, body)
+			return
+		case kMuxCNewStdioFwd:
+			unixConn, ok := conn.(*net.UnixConn)
+			if !ok {
+				err = writer.writeMuxMessage(kMuxSFailure, rid, "stdio forwarding requires a unix socket")
+				break
+			}
+			m.handleStdioForward(unixConn, writer, rid, body)
+			return
+		case kMuxCOpenFwd:
+			err = m.handleOpenForward(writer, rid, body)
+		case kMuxCCloseFwd:
+			err = m.handleCloseForward(writer, rid, body)
 		default:
 			err = writer.writeMuxMessage(kMuxSFailure, rid, fmt.Sprintf("unsupported mux request type 0x%08x", msgType))
 		}
@@ -221,10 +260,48 @@ func (m *muxMaster) removeConn(pc *muxProxyConn) {
 	m.connMu.Unlock()
 }
 
+func (m *muxMaster) addPassenger(p *muxPassenger) {
+	m.connMu.Lock()
+	m.passengers[p.id] = p
+	m.connMu.Unlock()
+}
+
+func (m *muxMaster) removePassenger(p *muxPassenger) {
+	m.connMu.Lock()
+	delete(m.passengers, p.id)
+	m.connCond.Broadcast()
+	m.connMu.Unlock()
+}
+
+// clientCount returns the number of connected proxy and passenger clients.
 func (m *muxMaster) clientCount() int {
 	m.connMu.Lock()
 	defer m.connMu.Unlock()
-	return len(m.conns)
+	return len(m.conns) + len(m.passengers)
+}
+
+// watchWindowChanges propagates terminal size changes to the passengers. A passenger
+// client relays its SIGWINCH to the master process, so the sizes are re-read on every signal.
+func (m *muxMaster) watchWindowChanges() {
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, syscall.SIGWINCH)
+	defer signal.Stop(ch)
+	for {
+		select {
+		case <-ch:
+		case <-m.done:
+			return
+		}
+		m.connMu.Lock()
+		passengers := make([]*muxPassenger, 0, len(m.passengers))
+		for _, p := range m.passengers {
+			passengers = append(passengers, p)
+		}
+		m.connMu.Unlock()
+		for _, p := range passengers {
+			p.checkWindowChange()
+		}
+	}
 }
 
 // stopListening closes the control socket; already connected clients keep running.
@@ -242,23 +319,32 @@ func (m *muxMaster) close() {
 		return
 	}
 	m.stopListening()
+	close(m.done)
 	m.connMu.Lock()
 	conns := make([]*muxProxyConn, 0, len(m.conns))
 	for pc := range m.conns {
 		conns = append(conns, pc)
+	}
+	passengers := make([]*muxPassenger, 0, len(m.passengers))
+	for _, p := range m.passengers {
+		passengers = append(passengers, p)
 	}
 	m.connCond.Broadcast()
 	m.connMu.Unlock()
 	for _, pc := range conns {
 		pc.close()
 	}
+	for _, p := range passengers {
+		p.close()
+	}
+	m.closeForwards()
 }
 
 // waitClients blocks until no proxy client is connected or the master is closed.
 func (m *muxMaster) waitClients() {
 	m.connMu.Lock()
 	defer m.connMu.Unlock()
-	for len(m.conns) > 0 && !m.closed.Load() {
+	for len(m.conns)+len(m.passengers) > 0 && !m.closed.Load() {
 		m.connCond.Wait()
 	}
 }

@@ -27,319 +27,24 @@ SOFTWARE.
 package tssh
 
 import (
-	"bufio"
-	"context"
 	"errors"
-	"fmt"
-	"io"
 	"net"
 	"os"
 	"os/exec"
-	"os/signal"
-	"strconv"
 	"strings"
-	"sync/atomic"
-	"syscall"
 	"time"
 
-	"github.com/charmbracelet/x/ansi"
-	"github.com/creack/pty"
 	"golang.org/x/crypto/ssh"
 )
 
 const kOpenSSH = "ssh"
 
-type controlMaster struct {
-	path    string
-	args    []string
-	cmd     *exec.Cmd
-	ptmx    *os.File
-	stdout  io.ReadCloser
-	stderr  io.ReadCloser
-	exited  atomic.Bool
-	success atomic.Bool
-}
-
-func (c *controlMaster) handleStderr() {
-	go func() {
-		defer func() { _ = c.stderr.Close() }()
-		var output []string
-		scanner := bufio.NewScanner(c.stderr)
-		for scanner.Scan() {
-			out := scanner.Text()
-			if c.success.Load() {
-				continue
-			}
-			if strings.HasPrefix(out, "debug") {
-				fmt.Fprintf(os.Stderr, "%s\r\n", out)
-			} else {
-				output = append(output, out)
-			}
-		}
-		if !c.success.Load() {
-			for _, out := range output {
-				warning("%s", out)
-			}
-		}
-	}()
-}
-
-func (c *controlMaster) handleStdout() <-chan error {
-	doneCh := make(chan error, 1)
-	go func() {
-		defer func() { _ = c.stdout.Close() }()
-		defer close(doneCh)
-		buf := make([]byte, 1000)
-		for {
-			n, err := c.stdout.Read(buf)
-			if err != nil || n <= 0 {
-				doneCh <- fmt.Errorf("read stdout failed: %v", err)
-				return
-			}
-			out := strings.TrimSpace(ansi.Strip(string(buf[:n])))
-			if out == "" {
-				continue
-			}
-			if out == "ok" {
-				doneCh <- nil
-			} else {
-				doneCh <- fmt.Errorf("control master stdout invalid: %v", strconv.QuoteToASCII(string(buf[:n])))
-			}
-			return
-		}
-	}()
-	return doneCh
-}
-
-func (c *controlMaster) fillPassword(param *sshParam, expectCount int) (cancel context.CancelFunc) {
-	var ctx context.Context
-	expectTimeout := getExpectTimeout(param.args, "Ctrl")
-	if expectTimeout > 0 {
-		ctx, cancel = context.WithTimeout(context.Background(), time.Duration(expectTimeout)*time.Second)
-	} else {
-		ctx, cancel = context.WithCancel(context.Background())
-	}
-
-	expect := &sshExpect{
-		param: param,
-		ctx:   ctx,
-		pre:   "Ctrl",
-		out:   make(chan []byte, 100),
-	}
-	go expect.wrapOutput(c.ptmx, nil, expect.out)
-	go func() {
-		expect.execInteractions(c.ptmx, expectCount)
-		if ctx.Err() == context.DeadlineExceeded {
-			warning("expect timeout after %d seconds", expectTimeout)
-		}
-	}()
-	return
-}
-
-func (c *controlMaster) checkExit() <-chan struct{} {
-	exitCh := make(chan struct{}, 1)
-	go func() {
-		defer close(exitCh)
-		_ = c.cmd.Wait()
-		c.exited.Store(true)
-		if c.ptmx != nil {
-			_ = c.ptmx.Close()
-		}
-		exitCh <- struct{}{}
-	}()
-	return exitCh
-}
-
-func (c *controlMaster) start(param *sshParam) error {
-	var err error
-	c.cmd = exec.Command(c.path, c.args...)
-	expectCount := getExpectCount(param.args, "Ctrl")
-	if expectCount > 0 {
-		c.cmd.SysProcAttr = &syscall.SysProcAttr{
-			Setsid:  true,
-			Setctty: true,
-		}
-		pty, tty, err := pty.Open()
-		if err != nil {
-			return fmt.Errorf("open pty failed: %v", err)
-		}
-		defer func() { _ = tty.Close() }()
-		c.cmd.Stdin = tty
-		c.ptmx = pty
-		cancel := c.fillPassword(param, expectCount)
-		defer cancel()
-	}
-
-	stdoutReader, stdoutWriter, err := os.Pipe()
-	if err != nil {
-		return fmt.Errorf("stdout pipe failed: %v", err)
-	}
-	defer func() { _ = stdoutWriter.Close() }() // Close the parent's write end to allow EOF.
-	c.stdout, c.cmd.Stdout = stdoutReader, stdoutWriter
-
-	stderrReader, stderrWriter, err := os.Pipe()
-	if err != nil {
-		_ = stdoutReader.Close()
-		return fmt.Errorf("stderr pipe failed: %v", err)
-	}
-	defer func() { _ = stderrWriter.Close() }() // Close the parent's write end to allow EOF.
-	c.stderr, c.cmd.Stderr = stderrReader, stderrWriter
-
-	if err := c.cmd.Start(); err != nil {
-		_ = stdoutReader.Close()
-		_ = stderrReader.Close()
-		return fmt.Errorf("control master start failed: %v", err)
-	}
-
-	intCh := make(chan os.Signal, 1)
-	signal.Notify(intCh, os.Interrupt)
-	defer func() { signal.Stop(intCh); close(intCh) }()
-
-	c.handleStderr()
-	exitCh := c.checkExit()
-	doneCh := c.handleStdout()
-
-	defer func() {
-		if !c.exited.Load() {
-			addOnExitFunc(func() { c.quit(exitCh) })
-		}
-	}()
-
-	for {
-		select {
-		case err := <-doneCh:
-			if err != nil {
-				return err
-			}
-			c.success.Store(true)
-			return nil
-		case <-exitCh:
-			return fmt.Errorf("control master process exited")
-		case <-intCh:
-			c.quit(exitCh)
-			return fmt.Errorf("user interrupt control master")
-		}
-	}
-}
-
-func (c *controlMaster) quit(exitCh <-chan struct{}) {
-	if c.exited.Load() {
-		return
-	}
-	_ = c.cmd.Process.Signal(syscall.SIGINT)
-	timer := time.AfterFunc(500*time.Millisecond, func() {
-		_ = c.cmd.Process.Kill()
-	})
-	select {
-	case <-time.After(time.Second):
-	case <-exitCh:
-	}
-	timer.Stop()
-}
-
-func startControlMaster(param *sshParam, sshPath string) error {
-	cmdArgs := []string{"-T", "-oRemoteCommand=none",
-		"-oConnectTimeout=" + strconv.Itoa(int(getConnectTimeout(param.args)/time.Second))}
-
-	args := param.args
-	if args.Debug {
-		cmdArgs = append(cmdArgs, "-v")
-	}
-	if args.IPv4Only {
-		cmdArgs = append(cmdArgs, "-4")
-	}
-	if args.IPv6Only {
-		cmdArgs = append(cmdArgs, "-6")
-	}
-	if args.Gateway {
-		cmdArgs = append(cmdArgs, "-g")
-	}
-
-	if args.NoForwardAgent {
-		cmdArgs = append(cmdArgs, "-a")
-	} else if args.ForwardAgent {
-		cmdArgs = append(cmdArgs, "-A")
-	}
-	if args.NoX11Forward {
-		cmdArgs = append(cmdArgs, "-x")
-	} else {
-		if args.X11Forward {
-			cmdArgs = append(cmdArgs, "-X")
-		}
-		if args.X11Trusted {
-			cmdArgs = append(cmdArgs, "-Y")
-		}
-	}
-	if args.ControlMaster {
-		cmdArgs = append(cmdArgs, "-M")
-	}
-
-	if args.LoginName != "" {
-		cmdArgs = append(cmdArgs, "-l", args.LoginName)
-	}
-	if args.Port != 0 {
-		cmdArgs = append(cmdArgs, "-p", strconv.Itoa(args.Port))
-	}
-	if args.CipherSpec != "" {
-		cmdArgs = append(cmdArgs, "-c", args.CipherSpec)
-	}
-	if args.ConfigFile != "" {
-		cmdArgs = append(cmdArgs, "-F", args.ConfigFile)
-	}
-	if args.ProxyJump != "" {
-		cmdArgs = append(cmdArgs, "-J", args.ProxyJump)
-	}
-	if args.ControlPath != "" {
-		cmdArgs = append(cmdArgs, "-S", args.ControlPath)
-	}
-
-	for _, identity := range args.Identity.values {
-		cmdArgs = append(cmdArgs, "-i", identity)
-	}
-	for _, b := range args.DynamicForward.binds {
-		cmdArgs = append(cmdArgs, "-D", b.argument)
-	}
-	for _, f := range args.LocalForward.cfgs {
-		cmdArgs = append(cmdArgs, "-L", f.argument)
-	}
-	for _, f := range args.RemoteForward.cfgs {
-		cmdArgs = append(cmdArgs, "-R", f.argument)
-	}
-
-	for key, values := range args.Option.options {
-		switch key {
-		case "remotecommand":
-			continue
-		default:
-			for _, value := range values {
-				cmdArgs = append(cmdArgs, fmt.Sprintf("-o%s=%s", key, value))
-			}
-		}
-	}
-
-	cmdArgs = append(cmdArgs, args.originalDest)
-
-	// 10 seconds is enough for tssh to connect
-	cmdArgs = append(cmdArgs, "echo ok; sleep 10")
-
-	if enableDebugLogging {
-		debug("control master: %s %s", sshPath, strings.Join(cmdArgs, " "))
-	}
-
-	ctrlMaster := &controlMaster{path: sshPath, args: cmdArgs}
-	if err := ctrlMaster.start(param); err != nil {
-		return err
-	}
-	debug("start control master success")
-	return nil
-}
-
 // execControlCmd handles a multiplexing control command (`tssh -O <ctl_cmd>`).
-// `check`, `exit` and `stop` are handled by tssh itself and work with both tssh and
-// OpenSSH masters; other commands are passed to OpenSSH and its exit code is propagated.
+// The commands are spoken in the mux protocol and work with both tssh and OpenSSH masters;
+// only `proxy` is passed to OpenSSH, with its exit code propagated.
 func execControlCmd(args *sshArgs, dest string) int {
-	switch strings.ToLower(args.ControlCmd) {
-	case "check", "exit", "stop":
+	switch ctlCmd := strings.ToLower(args.ControlCmd); ctlCmd {
+	case "check", "exit", "stop", "forward", "cancel":
 		args.Destination = dest
 		param, err := getSshParam(args, false)
 		if err != nil {
@@ -356,7 +61,10 @@ func execControlCmd(args *sshArgs, dest string) int {
 			warning("resolve control socket failed: %v", err)
 			return kExitCodeToolsError
 		}
-		return muxControlCommand(socket, args.ControlCmd)
+		if ctlCmd == "forward" || ctlCmd == "cancel" {
+			return muxForwardCommand(socket, param, ctlCmd == "cancel")
+		}
+		return muxControlCommand(socket, ctlCmd)
 	}
 
 	cmdArgs, err := replaceOrAppendDest(os.Args[1:], args.Destination, dest)
@@ -392,6 +100,8 @@ func execControlCmd(args *sshArgs, dest string) int {
 	return 0
 }
 
+// connectViaControl implements ControlMaster / ControlPath. tssh itself is the control master
+// (see startMuxMaster); with ControlPersist the master runs in background (see startMuxPersistMaster).
 func connectViaControl(param *sshParam) SshClient {
 	ctrlPath := resolveControlPath(param)
 	if ctrlPath == "" {
@@ -404,38 +114,26 @@ func connectViaControl(param *sshParam) SshClient {
 		return nil
 	}
 
-	udp := param.udpMode != kUdpModeNo
 	master, auto := getControlMasterMode(param.args)
+	if param.muxPersisted {
+		// the background master for this login is already listening on the socket
+		master, auto = false, false
+	}
 
 	if master {
 		if isFileExist(socket) {
 			warning("control socket [%s] already exists, disabling multiplexing", socket)
 			return nil
 		}
-		// In UDP mode, tssh itself acts as the control master.
-		if udp {
-			param.muxMasterPath = socket
-			return nil
-		}
-	}
-
-	// In non-UDP mode, start an OpenSSH subprocess as the control master.
-	if !udp && (auto || master) {
-		sshPath, _, _, err := getOpenSSH()
-		if err != nil {
-			warning("can't find openssh program: %v", err)
-			return nil
-		}
-		if err := startControlMaster(param, sshPath); err != nil {
-			warning("start control master failed: %v", err)
-		}
+		param.muxMasterPath = socket
+		return nil
 	}
 
 	debug("login to [%s] via control path: %s", param.args.Destination, socket)
 	conn, err := net.DialTimeout("unix", socket, time.Second)
 	if err != nil {
-		// In UDP auto mode, fall back to becoming the master if no usable master exists.
-		if udp && auto {
+		// In auto mode, fall back to becoming the master if no usable master exists.
+		if auto {
 			if removeStaleMuxSocket(socket) || !isFileExist(socket) {
 				param.muxMasterPath = socket
 			} else {
@@ -457,7 +155,7 @@ func connectViaControl(param *sshParam) SshClient {
 	client := sshNewClient(ncc, chans, reqs)
 	debug("login to [%s] via control path [%s] success", param.args.Destination, socket)
 
-	if udp && isUdpMuxMaster(client) {
+	if param.udpMode != kUdpModeNo && isUdpMuxMaster(client) {
 		debug("control socket [%s] is a tssh UDP master", socket)
 		param.udpTransport = true
 	}

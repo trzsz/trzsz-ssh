@@ -42,8 +42,20 @@ type sendEnvRule struct {
 	re      *regexp.Regexp
 }
 
-func getSendEnvs(args *sshArgs) ([]*sshEnv, error) {
-	var rules []sendEnvRule
+type sendEnvRules []sendEnvRule
+
+// permit reports whether the SendEnv rules allow sending the environment variable name.
+func (rules sendEnvRules) permit(name string) bool {
+	for _, rule := range rules {
+		if rule.re.MatchString(name) {
+			return !rule.negate
+		}
+	}
+	return false
+}
+
+func getSendEnvRules(args *sshArgs) (sendEnvRules, error) {
+	var rules sendEnvRules
 	for _, env := range getAllOptionConfigSplits(args, "SendEnv") {
 		if len(env) == 0 {
 			continue
@@ -73,7 +85,14 @@ func getSendEnvs(args *sshArgs) ([]*sshEnv, error) {
 		rule.re = re
 		rules = append(rules, rule)
 	}
+	return rules, nil
+}
 
+func getSendEnvs(args *sshArgs) ([]*sshEnv, error) {
+	rules, err := getSendEnvRules(args)
+	if err != nil {
+		return nil, err
+	}
 	if len(rules) == 0 {
 		return nil, nil
 	}

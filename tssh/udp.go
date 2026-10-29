@@ -157,6 +157,7 @@ func (c *sshUdpClient) notifyConnectionLost() {
 	if !c.isReconnectTimeout() {
 		return
 	}
+	notifyMuxPassengersConnLost(c)
 
 	if c.notifInterceptor == nil {
 		_, _ = os.Stderr.WriteString(ansi.HideCursor)

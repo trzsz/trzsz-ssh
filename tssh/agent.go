@@ -39,6 +39,8 @@ var (
 	agentClient agent.ExtendedAgent
 )
 
+var errAgentAlreadyForwarded = fmt.Errorf("agent: already have handler for %s", kAgentChannelType)
+
 func getAgentAddr(param *sshParam) (string, error) {
 	if addr := getOptionConfig(param.args, "IdentityAgent"); addr != "" {
 		if strings.EqualFold(addr, "none") {
@@ -85,7 +87,7 @@ func getAgentClient(param *sshParam) agent.ExtendedAgent {
 func forwardToRemote(client SshClient, addr string) error {
 	channels := client.HandleChannelOpen(kAgentChannelType)
 	if channels == nil {
-		return fmt.Errorf("agent: already have handler for %s", kAgentChannelType)
+		return errAgentAlreadyForwarded
 	}
 	conn, err := dialAgent(addr)
 	if err != nil {
