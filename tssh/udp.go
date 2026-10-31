@@ -296,6 +296,9 @@ func udpLogin(param *sshParam, tcpClient SshClient) (SshClient, error) {
 		debug("udp proxy command: %s", proxyCmd)
 	}
 
+	tsshdAddr := joinHostPort(param.host, strconv.Itoa(serverInfo.Port))
+	ipv4, ipv6 := getUdpAddressFamily(param, serverInfo, tsshdAddr, proxyClient == nil && proxyCmd == "")
+
 	// udp config
 	if globalUdpAliveTimeout == 0 {
 		warning("global udp alive timeout for [%s] has not been initialized yet", args.Destination)
@@ -308,12 +311,6 @@ func udpLogin(param *sshParam, tcpClient SshClient) (SshClient, error) {
 	intervalTime := min(globalUdpAliveTimeout/10, min(heartbeatTimeout, reconnectTimeout)/3)
 	debug("udp keep alive interval time [%v] for [%s]", intervalTime, args.Destination)
 
-	ipv4, ipv6 := param.ipv4, param.ipv6
-	if ipv4 == ipv6 { // (ipv4 && ipv6) || (!ipv4 && !ipv6)
-		// If the IP version is ambiguous from the current SSH connection (e.g., via ControlPath), fall back to user settings.
-		_, ipv4, ipv6 = getNetworkAddressFamily(args)
-	}
-
 	// new udp client
 	udpClient := &sshUdpClient{
 		proxyClient:      proxyClient,
@@ -324,7 +321,6 @@ func udpLogin(param *sshParam, tcpClient SshClient) (SshClient, error) {
 		sshDestName:      args.Destination,
 		attachMode:       attachMode,
 	}
-	tsshdAddr := joinHostPort(param.host, strconv.Itoa(serverInfo.Port))
 	clientOpts := &tsshd.UdpClientOptions{
 		EnableDebugging:      enableDebugLogging,
 		EnableWarning:        enableWarningLogging,
@@ -381,6 +377,76 @@ func udpLogin(param *sshParam, tcpClient SshClient) (SshClient, error) {
 	go udpClient.udpKeepAlive()
 
 	return udpClient, nil
+}
+
+// udpPreflight checks that a local socket of the network can reach addr.
+// Connecting a UDP socket sends nothing but fails fast without a route,
+// e.g. udp4 on an IPv6-only (NAT64) client.
+var udpPreflight = func(network, addr string) error {
+	udpAddr, err := net.ResolveUDPAddr(network, addr)
+	if err != nil {
+		return err
+	}
+	conn, err := net.DialUDP(network, nil, udpAddr)
+	if err != nil {
+		return err
+	}
+	return conn.Close()
+}
+
+// getUdpAddressFamily picks the UDP address family: an explicit user choice,
+// then the tsshd listener's family (ControlPath hides the SSH family and attach
+// can reuse a daemon bound to another family), then the SSH TCP family.
+// For direct dials, the listener's family is checked locally first and falls
+// back to the SSH TCP family when unusable (e.g. an IPv6-only NAT64 client
+// reaching an IPv4-only server). Proxy dials happen elsewhere, so skip the check.
+func getUdpAddressFamily(param *sshParam, info *tsshd.ServerInfo, tsshdAddr string, direct bool) (ipv4, ipv6 bool) {
+	var source string
+	var preflightErr error
+	defer func() {
+		family := "any"
+		if ipv4 {
+			family = "inet"
+		} else if ipv6 {
+			family = "inet6"
+		}
+		if preflightErr != nil {
+			debug("udp [%s] address family %s from %s (tsshd listener %s unusable: %v)",
+				param.args.Destination, family, source, info.AddressFamily, preflightErr)
+		} else {
+			debug("udp [%s] address family %s from %s", param.args.Destination, family, source)
+		}
+	}()
+
+	_, user4, user6 := getNetworkAddressFamily(param.args)
+	server4, server6 := info.AddressFamily == "inet", info.AddressFamily == "inet6"
+	if user4 != user6 {
+		source = "user"
+		if (user4 && server6) || (user6 && server4) {
+			source = "user, differs from tsshd listener " + info.AddressFamily
+		}
+		return user4, user6
+	}
+	if server4 || server6 {
+		if direct && param.ipv4 != param.ipv6 && param.ipv4 != server4 {
+			network := "udp4"
+			if server6 {
+				network = "udp6"
+			}
+			if preflightErr = udpPreflight(network, tsshdAddr); preflightErr != nil {
+				source = "ssh tcp"
+				return param.ipv4, param.ipv6
+			}
+		}
+		source = "tsshd"
+		return server4, server6
+	}
+	if param.ipv4 != param.ipv6 {
+		source = "ssh tcp"
+		return param.ipv4, param.ipv6
+	}
+	source = "unrestricted"
+	return false, false
 }
 
 func startTsshdServer(args *sshArgs, tcpClient SshClient, tsshdCmd string) (*tsshd.ServerInfo, error) {
