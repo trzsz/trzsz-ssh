@@ -32,7 +32,10 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -115,11 +118,15 @@ func (s *testSshServer) handleConn(conn net.Conn, config *ssh.ServerConfig) {
 			go ssh.DiscardRequests(requests)
 			go func() {
 				_, _ = io.Copy(channel, target)
+				_ = channel.CloseWrite()
+				_ = target.Close()
 				_ = channel.Close()
 			}()
 			go func() {
 				_, _ = io.Copy(target, channel)
-				_ = target.Close()
+				if tcpConn, ok := target.(*net.TCPConn); ok {
+					_ = tcpConn.CloseWrite() // half close so the echo reply can still be read
+				}
 			}()
 		default:
 			_ = newChannel.Reject(ssh.UnknownChannelType, "unknown channel type")
@@ -139,8 +146,13 @@ func (s *testSshServer) handleSession(channel ssh.Channel, requests <-chan *ssh.
 				return
 			}
 			_ = req.Reply(true, nil)
-			_, _ = fmt.Fprintf(channel, "ran: %s\n", payload.Command)
-			_, _ = channel.SendRequest("exit-status", false, ssh.Marshal(&sshExitStatusPayload{Status: 0}))
+			status := 0
+			if code, err := strconv.Atoi(strings.TrimPrefix(payload.Command, "exit ")); err == nil {
+				status = code // "exit N" ends the command with status N and no output
+			} else {
+				_, _ = fmt.Fprintf(channel, "ran: %s\n", payload.Command)
+			}
+			_, _ = channel.SendRequest("exit-status", false, ssh.Marshal(&sshExitStatusPayload{Status: uint32(status)}))
 			return
 		case "pty-req", "env":
 			_ = req.Reply(true, nil)
@@ -201,9 +213,8 @@ func TestMuxEndToEnd(t *testing.T) {
 	defer func() { _ = master.Close() }()
 	assert.Equal(t, "ran: master\n", runCommand(t, master, "master"))
 
-	m, socket := newTestMuxMaster(t, master)
 	terminated := make(chan struct{}, 1)
-	m.terminate = func() { terminated <- struct{}{} }
+	m, socket := newTestMuxMaster(t, master, func() { terminated <- struct{}{} })
 
 	// slaves attach through connectViaControl, the same code path as `tssh -S <socket>`
 	const slaveCount = 3
@@ -260,4 +271,65 @@ func TestMuxEndToEnd(t *testing.T) {
 	}
 	waitFor(t, "slaves disconnected", func() bool { return m.clientCount() == 0 })
 	assert.Equal(t, int32(1), server.handshakes.Load())
+}
+
+// TestConnectViaControlUdpMaster covers the decisions connectViaControl makes in udp mode
+// before any client exists: become the master, refuse an existing socket, or fall back.
+func TestConnectViaControlUdpMaster(t *testing.T) {
+	oriUserConfig := userConfig
+	userConfig = &tsshConfig{}
+	defer func() { userConfig = oriUserConfig }()
+	dir, err := os.MkdirTemp("", "tsshmux")
+	require.NoError(t, err)
+	defer func() { _ = os.RemoveAll(dir) }()
+	socket := filepath.Join(dir, "ctl")
+
+	newParam := func(masterFlag bool, controlMaster string) *sshParam {
+		args := &sshArgs{Destination: "e2e-target", ControlPath: socket, ControlMaster: masterFlag,
+			Option: sshOption{options: map[string][]string{"controlmaster": {controlMaster}}}}
+		return &sshParam{args: args, host: "127.0.0.1", port: "22", user: "e2e", udpMode: kUdpModeYes}
+	}
+	createStaleSocket := func() {
+		listener, err := net.Listen("unix", socket)
+		require.NoError(t, err)
+		listener.(*net.UnixListener).SetUnlinkOnClose(false)
+		require.NoError(t, listener.Close())
+		require.True(t, isFileExist(socket))
+	}
+
+	// -M without a socket: this process becomes the master after the udp login
+	param := newParam(true, "")
+	assert.Nil(t, connectViaControl(param))
+	assert.Equal(t, socket, param.muxMasterPath)
+	assert.False(t, param.controlClient)
+
+	// -M with an existing socket: multiplexing is disabled
+	createStaleSocket()
+	param = newParam(true, "")
+	assert.Nil(t, connectViaControl(param))
+	assert.Empty(t, param.muxMasterPath)
+	require.NoError(t, os.Remove(socket))
+
+	// auto without a socket: become the master
+	param = newParam(false, "auto")
+	assert.Nil(t, connectViaControl(param))
+	assert.Equal(t, socket, param.muxMasterPath)
+
+	// auto with a stale socket: remove it and become the master
+	createStaleSocket()
+	param = newParam(false, "auto")
+	assert.Nil(t, connectViaControl(param))
+	assert.Equal(t, socket, param.muxMasterPath)
+	assert.False(t, isFileExist(socket))
+
+	// no master requested and no socket: plain login without multiplexing
+	param = newParam(false, "no")
+	assert.Nil(t, connectViaControl(param))
+	assert.Empty(t, param.muxMasterPath)
+
+	// a background master was started for ControlPersist: never become the master again
+	param = newParam(true, "")
+	param.muxPersisted = true
+	assert.Nil(t, connectViaControl(param))
+	assert.Empty(t, param.muxMasterPath)
 }

@@ -52,8 +52,25 @@ const (
 	kMuxSOk               uint32 = 0x80000001
 	kMuxSPermissionDenied uint32 = 0x80000002
 	kMuxSFailure          uint32 = 0x80000003
+	kMuxSExitMessage      uint32 = 0x80000004
 	kMuxSAlive            uint32 = 0x80000005
+	kMuxSSessionOpened    uint32 = 0x80000006
+	kMuxSRemotePort       uint32 = 0x80000007
+	kMuxSTtyAllocFail     uint32 = 0x80000008
 	kMuxSProxy            uint32 = 0x8000000f
+
+	kMuxFwdLocal   uint32 = 1
+	kMuxFwdRemote  uint32 = 2
+	kMuxFwdDynamic uint32 = 3
+
+	// kMuxFwdUnixPort marks a unix socket path in the port field of MUX_C_OPEN_FWD ((u32)-2).
+	kMuxFwdUnixPort uint32 = 0xfffffffe
+
+	// kMuxEscapeCharNone is the escape char value meaning "none" in MUX_C_NEW_SESSION.
+	kMuxEscapeCharNone uint32 = 0xffffffff
+
+	// kMuxHelloExtTssh is the hello extension a tssh master adds so tssh clients can recognize it.
+	kMuxHelloExtTssh = "tssh@trzsz.github.io"
 
 	// kMuxHandshakeTimeout bounds the mux handshake and control commands.
 	kMuxHandshakeTimeout = 10 * time.Second

@@ -26,12 +26,14 @@ package tssh
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -44,9 +46,32 @@ type x11Request struct {
 	ScreenNumber     uint32
 }
 
+// x11Forwarder serves the X11 forwarding of the sessions of one client.
+type x11Forwarder struct {
+	display           string
+	hostname          string
+	displayNumber     uint32
+	screenNumber      uint32
+	trusted           bool
+	timeout           uint32
+	forwardX11Timeout string
+	xauthData         *xauthInfo
+}
+
+var errX11ForwardDenied = errors.New("X11 forwarding request denied by the server")
+
+var (
+	x11ForwardersMu sync.Mutex
+	x11Forwarders   = make(map[SshClient]*x11Forwarder)
+)
+
+func isX11ForwardEnabled(args *sshArgs) bool {
+	return !args.NoX11Forward && (args.X11Forward || args.X11Trusted || strings.EqualFold(getOptionConfig(args, "ForwardX11"), "yes"))
+}
+
 func sshX11Forward(sshConn *sshConnection) {
 	args := sshConn.param.args
-	if args.NoX11Forward || !args.X11Forward && !args.X11Trusted && !strings.EqualFold(getOptionConfig(args, "ForwardX11"), "yes") {
+	if !isX11ForwardEnabled(args) {
 		return
 	}
 
@@ -55,15 +80,71 @@ func sshX11Forward(sshConn *sshConnection) {
 		return
 	}
 
+	if err := requestX11Forward(sshConn.param, sshConn.client, sshConn.session); err != nil {
+		if errors.Is(err, errX11ForwardDenied) {
+			warning("The X11 forwarding request was denied. Check [X11Forwarding, X11DisplayOffset, DisableForwarding] in [/etc/ssh/sshd_config] on the server.")
+		} else {
+			warning("%v", err)
+		}
+		return
+	}
+
+	if !sshConn.param.udpTransport {
+		debug("request ssh X11 forwarding success")
+	}
+}
+
+// requestX11Forward requests X11 forwarding for the session; the X11 channels of the client are
+// served by one forwarder, so all sessions of the client share its fake cookie.
+func requestX11Forward(param *sshParam, client SshClient, session SshSession) error {
+	forwarder, err := getX11Forwarder(param, client)
+	if err != nil {
+		return err
+	}
+
+	payload := x11Request{
+		SingleConnection: false,
+		AuthProtocol:     forwarder.xauthData.xauthProto,
+		AuthCookie:       fmt.Sprintf("%x", forwarder.xauthData.fakeCookie),
+		ScreenNumber:     forwarder.screenNumber,
+	}
+	ok, err := session.SendRequest(kX11RequestName, true, ssh.Marshal(payload))
+	if err != nil {
+		return fmt.Errorf("X11 forwarding request failed: %v", err)
+	}
+	if !ok {
+		return errX11ForwardDenied
+	}
+	return nil
+}
+
+func getX11Forwarder(param *sshParam, client SshClient) (*x11Forwarder, error) {
+	x11ForwardersMu.Lock()
+	defer x11ForwardersMu.Unlock()
+	if forwarder, ok := x11Forwarders[client]; ok {
+		return forwarder, nil
+	}
+	forwarder, err := newX11Forwarder(param.args)
+	if err != nil {
+		return nil, err
+	}
+	channels := client.HandleChannelOpen(kX11ChannelType)
+	if channels == nil {
+		return nil, fmt.Errorf("already have handler for %s", kX11ChannelType)
+	}
+	go forwarder.serve(channels)
+	x11Forwarders[client] = forwarder
+	return forwarder, nil
+}
+
+func newX11Forwarder(args *sshArgs) (*x11Forwarder, error) {
 	display := os.Getenv("DISPLAY")
 	if display == "" {
-		warning("X11 forwarding is not working due to environment variable DISPLAY is not set")
-		return
+		return nil, fmt.Errorf("X11 forwarding is not working due to environment variable DISPLAY is not set")
 	}
 	hostname, displayNumber, screenNumber, err := resolveDisplayEnv(display)
 	if err != nil {
-		warning("X11 forwarding is not working due to: %v", err)
-		return
+		return nil, fmt.Errorf("X11 forwarding is not working due to: %v", err)
 	}
 
 	trusted := func() bool {
@@ -98,61 +179,45 @@ func sshX11Forward(sshConn *sshConnection) {
 		}
 	}
 
-	xauthData, err := getXauthInfo(sshConn.param.args, display, trusted, timeout)
+	xauthData, err := getXauthInfo(args, display, trusted, timeout)
 	if err != nil {
-		warning("X11 forwarding is not working due to xauth failed: %v", err)
-		return
+		return nil, fmt.Errorf("X11 forwarding is not working due to xauth failed: %v", err)
 	}
 	if enableDebugLogging {
 		n := min(3, len(xauthData.fakeCookie)/2)
 		debug("xauth fake cookie: %x%s", xauthData.fakeCookie[:n], strings.Repeat("*", (len(xauthData.fakeCookie)-n)*2))
 	}
 
-	payload := x11Request{
-		SingleConnection: false,
-		AuthProtocol:     xauthData.xauthProto,
-		AuthCookie:       fmt.Sprintf("%x", xauthData.fakeCookie),
-		ScreenNumber:     screenNumber,
-	}
-	ok, err := sshConn.session.SendRequest(kX11RequestName, true, ssh.Marshal(payload))
-	if err != nil {
-		warning("X11 forwarding request failed: %v", err)
-		return
-	}
-	if !ok {
-		warning("The X11 forwarding request was denied. Check [X11Forwarding, X11DisplayOffset, DisableForwarding] in [/etc/ssh/sshd_config] on the server.")
-		return
-	}
+	return &x11Forwarder{
+		display:           display,
+		hostname:          hostname,
+		displayNumber:     displayNumber,
+		screenNumber:      screenNumber,
+		trusted:           trusted,
+		timeout:           timeout,
+		forwardX11Timeout: forwardX11Timeout,
+		xauthData:         xauthData,
+	}, nil
+}
 
-	channels := sshConn.client.HandleChannelOpen(kX11ChannelType)
-	if channels == nil {
-		warning("already have handler for %s", kX11ChannelType)
-		return
-	}
-
-	if !sshConn.param.udpTransport {
-		debug("request ssh X11 forwarding success")
-	}
-
-	go func() {
-		x11Timeout := time.Now().Add(time.Duration(timeout) * time.Second)
-		for ch := range channels {
-			channel, reqs, err := ch.Accept()
-			if err != nil {
-				warning("X11 forwarding accept failed: %v", err)
-				continue
-			}
-			go ssh.DiscardRequests(reqs)
-			go func() {
-				defer func() { _ = channel.Close() }()
-				if !trusted && timeout > 0 && time.Now().After(x11Timeout) {
-					delayWarning(time.Second, "Rejected X11 connection after ForwardX11Timeout [%s] (%d seconds) expired", forwardX11Timeout, timeout)
-					return
-				}
-				serveX11(display, hostname, displayNumber, channel, xauthData)
-			}()
+func (f *x11Forwarder) serve(channels <-chan ssh.NewChannel) {
+	x11Timeout := time.Now().Add(time.Duration(f.timeout) * time.Second)
+	for ch := range channels {
+		channel, reqs, err := ch.Accept()
+		if err != nil {
+			warning("X11 forwarding accept failed: %v", err)
+			continue
 		}
-	}()
+		go ssh.DiscardRequests(reqs)
+		go func() {
+			defer func() { _ = channel.Close() }()
+			if !f.trusted && f.timeout > 0 && time.Now().After(x11Timeout) {
+				delayWarning(time.Second, "Rejected X11 connection after ForwardX11Timeout [%s] (%d seconds) expired", f.forwardX11Timeout, f.timeout)
+				return
+			}
+			serveX11(f.display, f.hostname, f.displayNumber, channel, f.xauthData)
+		}()
+	}
 }
 
 func resolveDisplayEnv(display string) (string, uint32, uint32, error) {

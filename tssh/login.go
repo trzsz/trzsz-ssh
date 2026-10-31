@@ -69,8 +69,10 @@ type sshParam struct {
 	controlClient bool
 	// udpTransport indicates whether the remote connection uses UDP, either directly or through a UDP master.
 	udpTransport bool
-	// muxMasterPath is the control socket to listen on as a native UDP control master.
+	// muxMasterPath is the control socket to listen on as a native control master.
 	muxMasterPath string
+	// muxPersisted indicates that a background master was just started for ControlPersist.
+	muxPersisted bool
 }
 
 func (p *sshParam) setNetworkAddressFamily(conn net.Conn) {
@@ -764,6 +766,7 @@ func sshLogin(param *sshParam, proxy *proxyJump, requiredUDP udpModeType) (SshCl
 	// return the TCP client without performing another UDP login,
 	// unless this proxy's next hop requires UDP.
 	if param.udpMode == kUdpModeNo || (param.controlClient && param.udpTransport && !param.asUdpProxy) {
+		startNativeControlMaster(param, tcpClient)
 		return tcpClient, nil
 	}
 
@@ -777,14 +780,18 @@ func sshLogin(param *sshParam, proxy *proxyJump, requiredUDP udpModeType) (SshCl
 	if err != nil {
 		return nil, err
 	}
-
-	// start the native control master for udp mode
-	if param.muxMasterPath != "" {
-		if _, err := startMuxMaster(param, udpClient, param.muxMasterPath); err != nil {
-			warning("start control master failed: %v", err)
-		}
-	}
+	startNativeControlMaster(param, udpClient)
 	return udpClient, nil
+}
+
+// startNativeControlMaster makes this process the control master if connectViaControl chose it.
+func startNativeControlMaster(param *sshParam, client SshClient) {
+	if param.muxMasterPath == "" {
+		return
+	}
+	if _, err := startMuxMaster(param, client, param.muxMasterPath); err != nil {
+		warning("start control master failed: %v", err)
+	}
 }
 
 func keepAlive(sshConn *sshConnection) {
@@ -886,11 +893,15 @@ func keepAlive(sshConn *sshConnection) {
 }
 
 func sshConnect(args *sshArgs) (*sshConnection, error) {
-	// init ssh param
 	param, err := getSshParam(args, false)
 	if err != nil {
 		return nil, err
 	}
+	return sshConnectWithParam(param)
+}
+
+func sshConnectWithParam(param *sshParam) (*sshConnection, error) {
+	args := param.args
 
 	// init log level
 	_ = setupLogLevel(args)
@@ -925,6 +936,7 @@ func sshConnect(args *sshArgs) (*sshConnection, error) {
 	if lastJumpUdpClient != nil {
 		lastJumpUdpClient.sshConn.Store(sshConn)
 	}
+	setMuxMastersConnection(sshConn)
 
 	// tcp keep alive
 	if !param.controlClient && !param.udpTransport {

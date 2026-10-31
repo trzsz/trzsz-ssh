@@ -44,6 +44,20 @@ func startMuxMaster(_ *sshParam, _ SshClient, _ string) (*muxMaster, error) {
 
 func waitMuxMasterClients(_ *sshConnection) {}
 
+func setMuxMastersConnection(_ *sshConnection) {}
+
+func notifyMuxPassengersConnLost(_ *sshUdpClient) {}
+
+func runAsMuxPassenger(_ *sshParam) (int, bool) { return 0, false }
+
+func isMuxPersistMaster() bool { return false }
+
+func runMuxPersistMaster(_ *sshParam) (int, error) {
+	return kExitCodeToolsError, fmt.Errorf("ControlPersist is not supported on Windows")
+}
+
+func startMuxPersistMaster(_ *sshParam) (int, bool) { return 0, false }
+
 func connectViaControl(param *sshParam) SshClient {
 	ctrlPath := param.args.ControlPath
 	if ctrlPath == "" {

@@ -1,3 +1,5 @@
+//go:build !windows
+
 /*
 MIT License
 
@@ -25,11 +27,12 @@ SOFTWARE.
 package tssh
 
 import (
+	"errors"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -69,45 +72,15 @@ func resolveControlSocket(param *sshParam, ctrlPath string) (string, error) {
 	return resolveHomeDir(socket), nil
 }
 
-// muxClientHello performs the client side of the mux HELLO exchange.
-func muxClientHello(rw io.ReadWriter) error {
-	if err := muxWriteMessage(rw, kMuxMsgHello, kMuxProtocolVersion); err != nil {
-		return fmt.Errorf("write mux hello failed: %v", err)
-	}
-	msgType, body, err := muxReadMessage(rw)
-	if err != nil {
-		return fmt.Errorf("read mux hello failed: %v", err)
-	}
-	if msgType != kMuxMsgHello {
-		return fmt.Errorf("expected mux hello, got 0x%08x", msgType)
-	}
-	version, ok := muxReadUint32(&body)
-	if !ok {
-		return fmt.Errorf("mux hello missing protocol version")
-	}
-	if version != kMuxProtocolVersion {
-		return fmt.Errorf("unsupported mux protocol version %d", version)
-	}
-	return nil
+// isMuxConnClosed reports whether err means the master closed the control connection.
+func isMuxConnClosed(err error) bool {
+	return errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
+		errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.EPIPE)
 }
 
 // muxControlCommand sends `check`, `exit` or `stop` to the master listening on socket.
 // It speaks the OpenSSH mux protocol, so it works with both tssh and OpenSSH masters.
 func muxControlCommand(socket, ctlCmd string) int {
-	conn, err := net.DialTimeout("unix", socket, time.Second)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Control socket connect(%s): %v\r\n", socket, err)
-		return kExitCodeToolsError
-	}
-	defer func() { _ = conn.Close() }()
-	_ = conn.SetDeadline(time.Now().Add(kMuxHandshakeTimeout))
-
-	if err := muxClientHello(conn); err != nil {
-		fmt.Fprintf(os.Stderr, "Control socket %s: %v\r\n", socket, err)
-		return kExitCodeToolsError
-	}
-
-	const rid uint32 = 1
 	var request, expect uint32
 	var okMessage string
 	switch strings.ToLower(ctlCmd) {
@@ -122,34 +95,32 @@ func muxControlCommand(socket, ctlCmd string) int {
 		return kExitCodeToolsError
 	}
 
-	if err := muxWriteMessage(conn, request, rid); err != nil {
-		fmt.Fprintf(os.Stderr, "Control socket %s: write failed: %v\r\n", socket, err)
-		return kExitCodeToolsError
-	}
-	msgType, body, err := muxReadMessage(conn)
+	client, err := dialMuxMaster(socket, time.Second)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Control socket %s: read failed: %v\r\n", socket, err)
+		fmt.Fprintf(os.Stderr, "Control socket connect(%s): %v\r\n", socket, err)
 		return kExitCodeToolsError
 	}
-	if gotRid, ok := muxReadUint32(&body); !ok || gotRid != rid {
-		fmt.Fprintf(os.Stderr, "Control socket %s: unexpected request id in reply\r\n", socket)
+	defer client.close()
+	_ = client.conn.SetDeadline(time.Now().Add(kMuxHandshakeTimeout))
+
+	replyType, body, err := client.request(request)
+	if err != nil && request == kMuxCTerminate && isMuxConnClosed(err) {
+		// like OpenSSH: the master may exit before its reply is read
+		replyType, err = kMuxSOk, nil
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Control socket %s: %v\r\n", socket, err)
 		return kExitCodeToolsError
 	}
-	switch msgType {
-	case expect:
-		if msgType == kMuxSAlive {
-			pid, _ := muxReadUint32(&body)
-			fmt.Fprintf(os.Stderr, "Master running (pid=%d)\r\n", pid)
-		} else {
-			fmt.Fprintf(os.Stderr, "%s\r\n", okMessage)
-		}
-		return 0
-	case kMuxSPermissionDenied, kMuxSFailure:
-		reason, _ := muxReadString(&body)
-		fmt.Fprintf(os.Stderr, "Control request failed: %s\r\n", reason)
-		return kExitCodeToolsError
-	default:
-		fmt.Fprintf(os.Stderr, "Control socket %s: unexpected reply 0x%08x\r\n", socket, msgType)
+	if replyType != expect {
+		fmt.Fprintf(os.Stderr, "Control request failed: %v\r\n", muxReplyError(replyType, body))
 		return kExitCodeToolsError
 	}
+	if replyType == kMuxSAlive {
+		pid, _ := muxReadUint32(&body)
+		fmt.Fprintf(os.Stderr, "Master running (pid=%d)\r\n", pid)
+	} else {
+		fmt.Fprintf(os.Stderr, "%s\r\n", okMessage)
+	}
+	return 0
 }

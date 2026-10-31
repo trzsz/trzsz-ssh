@@ -25,6 +25,7 @@ SOFTWARE.
 package tssh
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -38,6 +39,8 @@ var (
 	agentOnce   sync.Once
 	agentClient agent.ExtendedAgent
 )
+
+var errAgentAlreadyForwarded = fmt.Errorf("agent: already have handler for %s", kAgentChannelType)
 
 func getAgentAddr(param *sshParam) (string, error) {
 	if addr := getOptionConfig(param.args, "IdentityAgent"); addr != "" {
@@ -85,7 +88,7 @@ func getAgentClient(param *sshParam) agent.ExtendedAgent {
 func forwardToRemote(client SshClient, addr string) error {
 	channels := client.HandleChannelOpen(kAgentChannelType)
 	if channels == nil {
-		return fmt.Errorf("agent: already have handler for %s", kAgentChannelType)
+		return errAgentAlreadyForwarded
 	}
 	conn, err := dialAgent(addr)
 	if err != nil {
@@ -117,9 +120,13 @@ func forwardAgentRequest(channel ssh.Channel, addr string) {
 	forwardChannel(channel, conn)
 }
 
+// isAgentForwardEnabled reports whether agent forwarding is requested by the command line or the config.
+func isAgentForwardEnabled(args *sshArgs) bool {
+	return !args.NoForwardAgent && (args.ForwardAgent || strings.EqualFold(getOptionConfig(args, "ForwardAgent"), "yes"))
+}
+
 func sshAgentForward(sshConn *sshConnection) {
-	args := sshConn.param.args
-	if args.NoForwardAgent || !args.ForwardAgent && !strings.EqualFold(getOptionConfig(args, "ForwardAgent"), "yes") {
+	if !isAgentForwardEnabled(sshConn.param.args) {
 		return
 	}
 	addr, err := getAgentAddr(sshConn.param)
@@ -132,8 +139,12 @@ func sshAgentForward(sshConn *sshConnection) {
 		return
 	}
 	if err := forwardToRemote(sshConn.client, addr); err != nil {
-		warning("forward to agent [%s] failed: %v", addr, err)
-		return
+		if !errors.Is(err, errAgentAlreadyForwarded) {
+			warning("forward to agent [%s] failed: %v", addr, err)
+			return
+		}
+		// the control master has installed the handler for a passenger already
+		debug("agent forwarding handler already installed")
 	}
 	ok, err := sshConn.session.SendRequest(kAgentRequestName, true, nil)
 	if err != nil {
