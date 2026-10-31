@@ -343,6 +343,7 @@ func udpLogin(param *sshParam, tcpClient SshClient) (SshClient, error) {
 		DiscardCallback:      handleTmuxDiscardedInput,
 		ProxyCommand:         proxyCmd,
 		ShouldPauseReconnect: shouldPauseReconnect,
+		Compression:          getExOptionConfig(args, "UdpCompression"),
 	}
 
 	if param.proxy != nil {

@@ -1018,6 +1018,7 @@ Host xxx
     #!! UdpMTU 1400
     #!! UdpSessionAttach no
     #!! UdpSessionName xxx
+    #!! UdpCompression zstd
 ```
 
 - `UdpMode`: `no` (默认为`no`: tssh 工作在 TCP 模式), `yes` (默认协议: `QUIC`), `QUIC` ([QUIC](https://github.com/quic-go/quic-go) 协议：速度更快), `KCP` ([KCP](https://github.com/xtaci/kcp-go) 协议：延迟更低).
@@ -1045,6 +1046,8 @@ Host xxx
 - `UdpSessionAttach`: 默认为 `no`。配置为 `yes` 时，允许附加到服务器上已存在的会话；同时，本次登录的会话也会运行在可附加模式下，支持后续在其他设备或网络下重新登录时附加。
 
 - `UdpSessionName`: 自定义会话名称。仅在 `UdpSessionAttach` 配置为 `yes` 或通过 `--attach` 参数登录时生效。若服务器端已存在该名称的会话，将直接附加；若不存在，则以此名称创建新会话，供后续登录时自动附加。
+
+- `UdpCompression`：设置为 `zstd` 时，启用 UDP 会话输出的 Zstandard 压缩。服务端支持时默认使用 `zstd`。设置为 `none` 可禁用压缩。
 
 ### UDP 多路复用
 
