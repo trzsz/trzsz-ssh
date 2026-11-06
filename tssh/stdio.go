@@ -147,19 +147,19 @@ func forwardOutput(reader io.Reader, writer io.WriteCloser, win, tty bool) {
 func wrapStdIO(serverIn io.WriteCloser, serverOut, serverErr io.Reader, escapeChar byte, escapeTime time.Duration, sshConn *sshConnection) {
 	win := runtime.GOOS == "windows"
 	if serverIn != nil {
-		go forwardInput(os.Stdin, serverIn, win, escapeChar, escapeTime, sshConn)
+		go forwardInput(os.Stdin, serverIn, win && isTerminalFd(os.Stdin.Fd()), escapeChar, escapeTime, sshConn)
 	}
 
 	if serverOut != nil {
 		outputWaitGroup.Go(func() {
-			forwardOutput(serverOut, os.Stdout, win, sshConn.tty)
+			forwardOutput(serverOut, os.Stdout, win && isTerminalFd(os.Stdout.Fd()), sshConn.tty)
 			debug("ssh session stdout forward completed")
 		})
 	}
 	if serverErr != nil {
 		outputWaitGroup.Go(func() {
 			beginTime := time.Now()
-			forwardOutput(serverErr, os.Stderr, win, sshConn.tty)
+			forwardOutput(serverErr, os.Stderr, win && isTerminalFd(os.Stderr.Fd()), sshConn.tty)
 			if enableDebugLogging {
 				debug("ssh session stderr forward completed")
 				if tmuxDebugPaneID == "" && time.Since(beginTime) < 3*time.Second {
