@@ -118,22 +118,56 @@ func jumpHostOf(spec string) string {
 }
 
 func expandTokens(str string, param *sshParam, tokens string) (string, error) {
+	return expandTokensWithCaptures(str, param, tokens, nil)
+}
+
+func expandTokensWithCaptures(str string, param *sshParam, tokens string, captures map[string]string) (string, error) {
 	if !strings.ContainsRune(str, '%') {
 		return str, nil
 	}
 	var buf strings.Builder
-	state := byte(0)
-	for _, c := range str {
-		if state == 0 {
-			switch c {
-			case '%':
-				state = '%'
-			default:
-				buf.WriteRune(c)
-			}
+	runes := []rune(str)
+	for i := 0; i < len(runes); i++ {
+		c := runes[i]
+		if c != '%' {
+			buf.WriteRune(c)
 			continue
 		}
-		state = 0
+		i++
+		if i >= len(runes) {
+			return "", fmt.Errorf("[%s] ends with %% is invalid", str)
+		}
+		c = runes[i]
+		if captures != nil {
+			if c >= '1' && c <= '9' {
+				value, ok := captures[string(c)]
+				if !ok {
+					return "", fmt.Errorf("capture [%%%c] in [%s] is not found", c, str)
+				}
+				buf.WriteString(value)
+				continue
+			}
+			if c == '{' {
+				j := i + 1
+				for j < len(runes) && runes[j] != '}' {
+					j++
+				}
+				if j >= len(runes) {
+					return "", fmt.Errorf("capture [%%{%s}] in [%s] is not closed", string(runes[i+1:]), str)
+				}
+				name := string(runes[i+1 : j])
+				if name == "" {
+					return "", fmt.Errorf("capture name [%%{}] in [%s] is empty", str)
+				}
+				value, ok := captures[name]
+				if !ok {
+					return "", fmt.Errorf("capture [%%{%s}] in [%s] is not found", name, str)
+				}
+				buf.WriteString(value)
+				i = j
+				continue
+			}
+		}
 		if !strings.ContainsRune(tokens, c) {
 			return "", fmt.Errorf("token [%%%c] in [%s] is not supported", c, str)
 		}
@@ -201,9 +235,6 @@ func expandTokens(str string, param *sshParam, tokens string) (string, error) {
 		default:
 			return "", fmt.Errorf("token [%%%c] in [%s] is not supported yet", c, str)
 		}
-	}
-	if state != 0 {
-		return "", fmt.Errorf("[%s] ends with %% is invalid", str)
 	}
 	return buf.String(), nil
 }
