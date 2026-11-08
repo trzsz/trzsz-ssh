@@ -55,7 +55,7 @@ func TestWrapStdIOPreservesRedirectedBytes(t *testing.T) {
 	os.Stdin, os.Stdout, os.Stderr = files[0], files[1], files[2]
 
 	serverIn, writer := io.Pipe()
-	defer serverIn.Close()
+	defer func() { _ = serverIn.Close() }()
 	conn := &sshConnection{param: &sshParam{args: &sshArgs{}}}
 	wrapStdIO(writer, bytes.NewReader(payload), bytes.NewReader(payload), 0, 0, conn)
 	input, err := io.ReadAll(serverIn)
@@ -89,7 +89,7 @@ func TestForwardWindowsConsoleNewlines(t *testing.T) {
 			}
 			conn := &sshConnection{tty: tty, param: &sshParam{args: &sshArgs{}}}
 			reader, writer := io.Pipe()
-			defer reader.Close()
+			defer func() { _ = reader.Close() }()
 			go forwardInput(bytes.NewReader(inputPayload), writer, true, 0, 0, conn)
 			input, err := io.ReadAll(reader)
 			require.NoError(t, err)
@@ -97,7 +97,7 @@ func TestForwardWindowsConsoleNewlines(t *testing.T) {
 
 			file, err := os.CreateTemp(t.TempDir(), "stdout")
 			require.NoError(t, err)
-			defer file.Close()
+			defer func() { _ = file.Close() }()
 			forwardOutput(bytes.NewReader(outputPayload), file, true, tty)
 			_, err = file.Seek(0, io.SeekStart)
 			require.NoError(t, err)

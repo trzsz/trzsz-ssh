@@ -62,9 +62,7 @@ func TestParseUdpReconnectExitKey(t *testing.T) {
 		{"  ^X  ", 0x18},
 	}
 
-	enableWarning := enableWarningLogging
-	enableWarningLogging = false
-	defer func() { enableWarningLogging = enableWarning }()
+	defer disableWarningForTest()()
 
 	for _, tt := range tests {
 		if gotKey := parseUdpReconnectExitKey(tt.input); gotKey != tt.wantKey {

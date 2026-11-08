@@ -25,6 +25,7 @@ SOFTWARE.
 package tssh
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -257,6 +258,7 @@ type sshConnection struct {
 	waitWarn  sync.WaitGroup
 	startEOF  bool
 	exitCode  atomic.Pointer[int]
+	terminal  *terminalController
 }
 
 func (c *sshConnection) Close() {
@@ -415,7 +417,9 @@ func (s *sshSessionWrapper) RedrawScreen(discardPreviousOutput bool) error {
 		return fmt.Errorf("invalid terminal size: width=%d height=%d", s.width, s.height)
 	}
 	height, width := s.height, s.width
-	_ = s.WindowChange(height, width+1)
+	if err := s.WindowChange(height, width+1); err != nil {
+		return err
+	}
 	time.Sleep(10 * time.Millisecond) // fix redraw issue in `screen`
 	return s.WindowChange(height, width)
 }
@@ -475,7 +479,7 @@ func (c *sshClientWrapper) Listen(network, addr string) (net.Listener, error) {
 }
 
 func (c *sshClientWrapper) ListenUDP(network, addr string) (PacketListener, error) {
-	return nil, fmt.Errorf("ListenUDP requires UDP mode")
+	return nil, errors.New("ListenUDP requires UDP mode")
 }
 
 func (c *sshClientWrapper) HandleChannelOpen(channelType string) <-chan ssh.NewChannel {
@@ -487,7 +491,7 @@ func (c *sshClientWrapper) SendRequest(name string, wantReply bool, payload []by
 }
 
 func (c *sshClientWrapper) DialUDP(network, addr string, timeout time.Duration) (PacketConn, error) {
-	return nil, fmt.Errorf("DialUDP requires UDP mode")
+	return nil, errors.New("DialUDP requires UDP mode")
 }
 
 func sshNewClient(c ssh.Conn, chans <-chan ssh.NewChannel, reqs <-chan *ssh.Request) SshClient {

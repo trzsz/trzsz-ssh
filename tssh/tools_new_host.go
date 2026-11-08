@@ -25,6 +25,7 @@ SOFTWARE.
 package tssh
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -50,7 +51,7 @@ func (n *newHostTool) promptConfigPath() {
 	n.configPath = promptTextInput("ConfigPath", userConfig.configPath, getText("newhost/config"),
 		&inputValidator{func(path string) error {
 			if path == "" {
-				return fmt.Errorf("empty ssh config path")
+				return errors.New("empty ssh config path")
 			}
 			stat, err := os.Stat(path)
 			if os.IsNotExist(err) {
@@ -63,7 +64,7 @@ func (n *newHostTool) promptConfigPath() {
 			} else if err != nil {
 				return fmt.Errorf("stat config path failed: %v", err)
 			} else if stat.IsDir() {
-				return fmt.Errorf("config path is a directory")
+				return errors.New("config path is a directory")
 			}
 			file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0600)
 			if err != nil {
@@ -82,7 +83,7 @@ func (n *newHostTool) promptHostAlias() {
 	n.hostAlias = promptTextInput("HostAlias", "", getText("newhost/alias"),
 		&inputValidator{func(alias string) error {
 			if alias == "" {
-				return fmt.Errorf("empty host alias")
+				return errors.New("empty host alias")
 			}
 			for _, r := range alias {
 				if unicode.IsSpace(r) {
@@ -107,7 +108,7 @@ func (n *newHostTool) promptHostName() {
 	n.hostName = promptTextInput("HostName/IP", "", getText("newhost/host"),
 		&inputValidator{func(name string) error {
 			if name == "" {
-				return fmt.Errorf("empty host name")
+				return errors.New("empty host name")
 			}
 			if _, err := lookupHostWithTimeout(name, 5*time.Second); err != nil {
 				return fmt.Errorf("lookup host failed: %v", err)
@@ -120,7 +121,7 @@ func (n *newHostTool) promptHostPort() {
 	port, _ := strconv.ParseUint(promptTextInput("HostPort", "22", getText("newhost/port"),
 		&inputValidator{func(port string) error {
 			if port == "" {
-				return fmt.Errorf("empty host port")
+				return errors.New("empty host port")
 			}
 			if _, err := strconv.ParseUint(port, 10, 16); err != nil {
 				return fmt.Errorf("invalid host port: %v", err)
@@ -139,7 +140,7 @@ func (n *newHostTool) promptUserName() {
 	n.userName = promptTextInput("UserName", "", getText("newhost/user"),
 		&inputValidator{func(name string) error {
 			if name == "" {
-				return fmt.Errorf("empty user name")
+				return errors.New("empty user name")
 			}
 			return nil
 		}})

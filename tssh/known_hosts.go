@@ -246,7 +246,7 @@ func addHostKey(args *sshArgs, path, host string, key ssh.PublicKey, ask bool, d
 
 	if sshLoginSuccess.Load() {
 		warning("The public key of the remote server has changed after login")
-		return fmt.Errorf("host key changed")
+		return errors.New("host key changed")
 	}
 
 	// writing only during the login process with the user's permission
@@ -278,7 +278,7 @@ func addHostKey(args *sshArgs, path, host string, key ssh.PublicKey, ask bool, d
 			if strings.EqualFold(input, "yes") {
 				break
 			} else if strings.EqualFold(input, "no") {
-				return fmt.Errorf("host key not trusted")
+				return errors.New("host key not trusted")
 			}
 			_, _ = os.Stderr.WriteString("Please type 'yes', 'no' or the fingerprint: ")
 		}

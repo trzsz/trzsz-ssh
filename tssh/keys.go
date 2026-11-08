@@ -210,7 +210,7 @@ func (s *skSigner) SignWithAlgorithm(rand io.Reader, data []byte, algorithm stri
 			}
 			code := binary.BigEndian.Uint32(resp.Rest)
 			if code == 60 { // SSH_ERR_DEVICE_NOT_FOUND = -60
-				return nil, fmt.Errorf("device not found")
+				return nil, errors.New("device not found")
 			}
 			if code == 43 { // SSH_ERR_KEY_WRONG_PASSPHRASE = -43
 				continue
@@ -231,7 +231,7 @@ func (s *skSigner) SignWithAlgorithm(rand io.Reader, data []byte, algorithm stri
 		}
 	}
 
-	return nil, fmt.Errorf("PIN incorrect")
+	return nil, errors.New("PIN incorrect")
 }
 
 func (s *skSigner) runWithPrompt(cmd *exec.Cmd) error {
@@ -270,7 +270,7 @@ func (s *skSigner) runWithPrompt(cmd *exec.Cmd) error {
 		case sig := <-sigChan:
 			_ = cmd.Process.Kill()
 			if sig == os.Interrupt || sig.String() == "interrupt" {
-				return fmt.Errorf("interrupted by user")
+				return errors.New("interrupted by user")
 			}
 			return fmt.Errorf("terminated by signal: %v", sig)
 		case err := <-doneChan:
@@ -491,7 +491,7 @@ func passphraseProtectedOpenSSHKey(passphrase []byte) openSSHDecryptFunc {
 			ctr.XORKeyStream(privKeyBlock, privKeyBlock)
 		case "aes256-cbc":
 			if len(privKeyBlock)%c.BlockSize() != 0 {
-				return nil, fmt.Errorf("ssh: invalid encrypted private key length, not a multiple of the block size")
+				return nil, errors.New("ssh: invalid encrypted private key length, not a multiple of the block size")
 			}
 			cbc := cipher.NewCBCDecrypter(c, iv)
 			cbc.CryptBlocks(privKeyBlock, privKeyBlock)

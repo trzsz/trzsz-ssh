@@ -65,6 +65,7 @@ func forwardInput(reader io.Reader, writer io.WriteCloser, win bool, escapeChar 
 		return
 	}
 
+	var foregroundEIO bool
 	var enterPressedFlag bool
 	var enterPressedTime time.Time
 
@@ -72,6 +73,7 @@ func forwardInput(reader io.Reader, writer io.WriteCloser, win bool, escapeChar 
 	for {
 		n, err := reader.Read(buffer)
 		if n > 0 {
+			foregroundEIO = false
 			if enableDebugLogging {
 				if ch := stdinInputChan.Load(); ch != nil {
 					*ch <- append([]byte(nil), buffer[:n]...)
@@ -113,6 +115,35 @@ func forwardInput(reader io.Reader, writer io.WriteCloser, win bool, escapeChar 
 			return
 		}
 		if err != nil {
+			if sshConn.terminal != nil && isBackgroundReadError(err) {
+				debug("stdin read failed with EIO; checking foreground state: %v", err)
+
+				waited, waitErr := sshConn.terminal.waitUntilForeground()
+				if waitErr != nil {
+					warning("wait for foreground failed: %v", waitErr)
+					return
+				}
+
+				if !waited {
+					// The process was already in the foreground when checked.
+					// Allow one retry in case the background read error raced
+					// with the transition back to the foreground.
+					if foregroundEIO {
+						warning("stdin read failed with EIO while in foreground: %v", err)
+						return
+					}
+
+					foregroundEIO = true
+					debug("stdin read failed with EIO while already in foreground; retrying once")
+				} else {
+					// The process was confirmed to be in the background, or
+					// recovery required waiting for the foreground monitor.
+					foregroundEIO = false
+					debug("process returned to foreground after waiting")
+				}
+
+				continue
+			}
 			return
 		}
 	}

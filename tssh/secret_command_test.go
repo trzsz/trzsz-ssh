@@ -42,9 +42,9 @@ func TestExecSecretCommand(t *testing.T) {
 	}
 
 	assert := assert.New(t)
-	oriEnableWarning, oriUserConfig := enableWarningLogging, userConfig
-	enableWarningLogging, userConfig = false, &tsshConfig{}
-	defer func() { enableWarningLogging, userConfig = oriEnableWarning, oriUserConfig }()
+
+	defer disableWarningForTest()()
+	defer setUserConfigForTest(&tsshConfig{})()
 
 	param, err := getSshParam(&sshArgs{Destination: "myhost"}, false)
 	require.NoError(t, err)
@@ -69,9 +69,9 @@ func TestExecSecretCommandTokens(t *testing.T) {
 	}
 
 	assert := assert.New(t)
-	oriEnableWarning, oriUserConfig := enableWarningLogging, userConfig
-	enableWarningLogging, userConfig = false, &tsshConfig{}
-	defer func() { enableWarningLogging, userConfig = oriEnableWarning, oriUserConfig }()
+
+	defer disableWarningForTest()()
+	defer setUserConfigForTest(&tsshConfig{})()
 
 	param, err := getSshParam(&sshArgs{Destination: "myhost"}, false)
 	require.NoError(t, err)
@@ -89,9 +89,9 @@ func TestGetSecretConfigWithCommand(t *testing.T) {
 	}
 
 	assert := assert.New(t)
-	oriEnableWarning, oriUserConfig := enableWarningLogging, userConfig
-	enableWarningLogging, userConfig = false, &tsshConfig{}
-	defer func() { enableWarningLogging, userConfig = oriEnableWarning, oriUserConfig }()
+
+	defer disableWarningForTest()()
+	defer setUserConfigForTest(&tsshConfig{})()
 
 	config, err := ssh_config.DecodeBytes([]byte(`
 Host cmdhost

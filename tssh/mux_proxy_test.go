@@ -160,17 +160,17 @@ func (c *fakeSshClient) listener(key string) *fakeListener {
 }
 
 func (c *fakeSshClient) ListenUDP(network, addr string) (PacketListener, error) {
-	return nil, fmt.Errorf("ListenUDP not supported")
+	return nil, errors.New("ListenUDP not supported")
 }
 
 func (c *fakeSshClient) HandleChannelOpen(channelType string) <-chan ssh.NewChannel { return nil }
 
 func (c *fakeSshClient) SendRequest(name string, wantReply bool, payload []byte) (bool, []byte, error) {
-	return false, nil, fmt.Errorf("global request not supported")
+	return false, nil, errors.New("global request not supported")
 }
 
 func (c *fakeSshClient) DialUDP(network, addr string, timeout time.Duration) (PacketConn, error) {
-	return nil, fmt.Errorf("DialUDP not supported")
+	return nil, errors.New("DialUDP not supported")
 }
 
 // fakeSshSession mimics the ordering rules of tsshd.SshUdpSession.

@@ -31,6 +31,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -131,7 +132,7 @@ func lookupDnsSrv(name string) (string, string, error) {
 		return "", "", err
 	}
 	if len(addrs) == 0 {
-		return "", "", fmt.Errorf("no srv record")
+		return "", "", errors.New("no srv record")
 	}
 	host := strings.TrimRight(addrs[0].Target, ".")
 	port := addrs[0].Port
@@ -298,7 +299,7 @@ func lookupSSHFP(host string) ([]sshfpRecord, func() bool, error) {
 func queryDNSSEC(host string, rrType uint16) (*dns.Msg, error) {
 	servers := dnsServers()
 	if len(servers) == 0 {
-		return nil, fmt.Errorf("no dns server available for DNSSEC lookup")
+		return nil, errors.New("no dns server available for DNSSEC lookup")
 	}
 
 	name := dns.Fqdn(host)
@@ -374,7 +375,7 @@ func queryDNSSECServer(server dnsServer, request []byte, id uint16, name string,
 		if len(response.Question) != 1 ||
 			response.Question[0].Qtype != rrType || response.Question[0].Qclass != dns.ClassINET ||
 			!strings.EqualFold(response.Question[0].Name, name) {
-			return nil, fmt.Errorf("dns response question mismatch")
+			return nil, errors.New("dns response question mismatch")
 		}
 		return &response, nil
 	}
@@ -524,11 +525,11 @@ func rrsigRecords(resources []dns.RR, owner string, covered uint16) []*dns.RRSIG
 
 func verifyRRSet(records []dns.RR, sig *dns.RRSIG, keys []*dns.DNSKEY) error {
 	if len(records) == 0 {
-		return fmt.Errorf("empty RRset")
+		return errors.New("empty RRset")
 	}
 	now := uint32(dnssecNow().Unix())
 	if now < sig.Inception || now > sig.Expiration {
-		return fmt.Errorf("RRSIG validity period check failed")
+		return errors.New("RRSIG validity period check failed")
 	}
 	for _, key := range keys {
 		if key.Algorithm != sig.Algorithm || key.KeyTag() != sig.KeyTag || !strings.EqualFold(key.Hdr.Name, sig.SignerName) {
@@ -538,7 +539,7 @@ func verifyRRSet(records []dns.RR, sig *dns.RRSIG, keys []*dns.DNSKEY) error {
 			return nil
 		}
 	}
-	return fmt.Errorf("no DNSKEY verified RRSIG")
+	return errors.New("no DNSKEY verified RRSIG")
 }
 
 func dnskeyMatchesAnyDS(key *dns.DNSKEY, records []*dns.DS) bool {
@@ -573,7 +574,7 @@ func writeDNSMessage(conn net.Conn, network string, request []byte) error {
 		return err
 	}
 	if len(request) > 65535 {
-		return fmt.Errorf("dns query too large")
+		return errors.New("dns query too large")
 	}
 	msg := make([]byte, len(request)+2)
 	binary.BigEndian.PutUint16(msg[:2], uint16(len(request)))
@@ -600,7 +601,7 @@ func readDNSMessage(conn net.Conn, network string) ([]byte, error) {
 	}
 	n := binary.BigEndian.Uint16(length[:])
 	if n == 0 {
-		return nil, fmt.Errorf("empty dns response")
+		return nil, errors.New("empty dns response")
 	}
 	buf := make([]byte, n)
 	if _, err := io.ReadFull(conn, buf); err != nil {

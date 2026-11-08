@@ -27,6 +27,7 @@ package tssh
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -484,7 +485,7 @@ func isRunningInRemoteSsh() bool {
 
 func convertSshTime(str string) (uint32, error) {
 	if str == "" {
-		return 0, fmt.Errorf("empty time string")
+		return 0, errors.New("empty time string")
 	}
 
 	var total uint32
@@ -526,11 +527,11 @@ func convertSshTime(str string) (uint32, error) {
 
 		// check overflow
 		if val != 0 && multiplier > math.MaxUint32/val {
-			return 0, fmt.Errorf("time value overflow")
+			return 0, errors.New("time value overflow")
 		}
 		val *= multiplier
 		if total > math.MaxUint32-val {
-			return 0, fmt.Errorf("total seconds overflow")
+			return 0, errors.New("total seconds overflow")
 		}
 		total += val
 	}
@@ -617,7 +618,7 @@ func findOpenSSH() (string, int, int, error) {
 		}
 	}
 
-	return "", 0, 0, fmt.Errorf("no usable ssh found in PATH")
+	return "", 0, 0, errors.New("no usable ssh found in PATH")
 }
 
 func lookupHostWithTimeout(host string, timeout time.Duration) ([]string, error) {

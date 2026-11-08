@@ -149,11 +149,9 @@ func TestNewKnownHostsDBKeepsNonParseErrorsFatal(t *testing.T) {
 }
 
 func TestHostKeyCallbackCreatesMissingUserKnownHostsFile(t *testing.T) {
-	oldUserConfig, oldUserHomeDir, oldEnableWarning := userConfig, userHomeDir, enableWarningLogging
-	defer func() {
-		userConfig, userHomeDir, enableWarningLogging = oldUserConfig, oldUserHomeDir, oldEnableWarning
-	}()
-	userConfig, userHomeDir, enableWarningLogging = &tsshConfig{}, t.TempDir(), false
+	defer disableWarningForTest()()
+	defer setUserHomeDirForTest(t.TempDir())()
+	defer setUserConfigForTest(&tsshConfig{})()
 
 	knownHostsPath := filepath.Join(userHomeDir, ".ssh", "known_hosts")
 	args := &sshArgs{

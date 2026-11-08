@@ -33,11 +33,7 @@ import (
 )
 
 func TestSetupAlgorithmsConfig(t *testing.T) {
-
-	if userConfig == nil {
-		userConfig = &tsshConfig{}
-		defer func() { userConfig = nil }()
-	}
+	defer setUserConfigForTest(&tsshConfig{})()
 
 	// 1. Get the underlying default values of ssh.ClientConfig
 	// Doing this dynamically ensures tests won't break if Go updates default algorithms.

@@ -28,6 +28,7 @@ import (
 	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -242,7 +243,7 @@ func withDNSSECTestLookup(t *testing.T, responses map[string]*dns.Msg, anchors [
 		if response := responses[testLookupKey(name, rrtype)]; response != nil {
 			return response, nil
 		}
-		return nil, fmt.Errorf("missing test DNS response")
+		return nil, errors.New("missing test DNS response")
 	}
 	if anchors != nil {
 		dnssecRootTrustAnchors = anchors

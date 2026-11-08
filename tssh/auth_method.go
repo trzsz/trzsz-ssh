@@ -28,6 +28,7 @@ import (
 	"bytes"
 	"crypto/x509"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -108,7 +109,7 @@ func (s *sshBaseSigner) initSigner() error {
 		}
 		return nil
 	}
-	return fmt.Errorf("passphrase incorrect")
+	return errors.New("passphrase incorrect")
 }
 
 func (s *sshBaseSigner) Sign(rand io.Reader, data []byte) (*ssh.Signature, error) {

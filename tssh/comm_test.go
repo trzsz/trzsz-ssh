@@ -30,6 +30,24 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func disableWarningForTest() func() {
+	oriEnableWarning := enableWarningLogging
+	enableWarningLogging = false
+	return func() { enableWarningLogging = oriEnableWarning }
+}
+
+func setUserConfigForTest(cfg *tsshConfig) func() {
+	oriUserConfig := userConfig
+	userConfig = cfg
+	return func() { userConfig = oriUserConfig }
+}
+
+func setUserHomeDirForTest(home string) func() {
+	oldUserHomeDir := userHomeDir
+	userHomeDir = home
+	return func() { userHomeDir = oldUserHomeDir }
+}
+
 func TestConvertSshTime(t *testing.T) {
 	assert := assert.New(t)
 	assertTimeEqual := func(time string, expected uint32) {

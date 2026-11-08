@@ -28,6 +28,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -78,7 +79,7 @@ func getXauthInfo(args *sshArgs, display string, trusted bool, timeout uint32) (
 func genListXauthInfo(args *sshArgs, display string, trusted bool, timeout uint32) (*xauthInfo, error) {
 	xauthPath := getXauthPath(args)
 	if xauthPath == "" {
-		return nil, fmt.Errorf("no xauth program")
+		return nil, errors.New("no xauth program")
 	}
 
 	if strings.HasPrefix(display, "/") {

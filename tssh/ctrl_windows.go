@@ -25,7 +25,7 @@ SOFTWARE.
 package tssh
 
 import (
-	"fmt"
+	"errors"
 	"strings"
 )
 
@@ -39,7 +39,7 @@ func execControlCmd(_ *sshArgs, _ string) int {
 type muxMaster struct{}
 
 func startMuxMaster(_ *sshParam, _ SshClient, _ string) (*muxMaster, error) {
-	return nil, fmt.Errorf("ControlMaster is not supported on Windows")
+	return nil, errors.New("ControlMaster is not supported on Windows")
 }
 
 func waitMuxMasterClients(_ *sshConnection) {}

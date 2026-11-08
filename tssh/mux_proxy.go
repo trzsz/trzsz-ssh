@@ -64,7 +64,7 @@ func muxServerHello(rw io.ReadWriter) error {
 	}
 	version, ok := muxReadUint32(&body)
 	if !ok {
-		return fmt.Errorf("mux hello missing protocol version")
+		return errors.New("mux hello missing protocol version")
 	}
 	if version != kMuxProtocolVersion {
 		return fmt.Errorf("unsupported mux protocol version %d", version)
@@ -91,7 +91,7 @@ func muxAcceptProxyHandshake(rw io.ReadWriter) error {
 	}
 	rid, ok := muxReadUint32(&body)
 	if !ok {
-		return fmt.Errorf("mux proxy request missing request id")
+		return errors.New("mux proxy request missing request id")
 	}
 	if err := muxWriteMessage(rw, kMuxSProxy, rid); err != nil {
 		return fmt.Errorf("write mux proxy response failed: %w", err)
@@ -124,7 +124,7 @@ func (w *muxWindow) add(n uint32) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if uint64(w.avail)+uint64(n) > math.MaxUint32 {
-		return fmt.Errorf("channel window overflow")
+		return errors.New("channel window overflow")
 	}
 	w.avail += n
 	w.cond.Broadcast()
@@ -390,7 +390,7 @@ func (c *muxProxyConn) removeChannel(id uint32) {
 
 func (c *muxProxyConn) handlePacket(pkt []byte) error {
 	if len(pkt) == 0 {
-		return fmt.Errorf("empty ssh packet")
+		return errors.New("empty ssh packet")
 	}
 	switch pkt[0] {
 	case kSshMsgGlobalRequest:
@@ -782,7 +782,7 @@ func (ch *muxChannel) handlePacket(pkt []byte) error {
 			return fmt.Errorf("parse window adjust failed: %v", err)
 		}
 		if ch.remoteWin == nil {
-			return fmt.Errorf("window adjust before channel open confirmation")
+			return errors.New("window adjust before channel open confirmation")
 		}
 		return ch.remoteWin.add(msg.AdditionalBytes)
 	case kSshMsgChannelData:

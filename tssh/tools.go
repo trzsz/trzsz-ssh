@@ -25,6 +25,7 @@ SOFTWARE.
 package tssh
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -308,7 +309,7 @@ func promptBoolInput(promptLabel, helpMessage string, defaultValue bool) bool {
 			case "", "y", "yes", "n", "no", "y/n":
 				return nil
 			default:
-				return fmt.Errorf("invalid input")
+				return errors.New("invalid input")
 			}
 		}})
 	switch strings.ToLower(input) {

@@ -25,6 +25,7 @@ SOFTWARE.
 package tssh
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -83,7 +84,7 @@ func muxClientHello(rw io.ReadWriter) error {
 	}
 	version, ok := muxReadUint32(&body)
 	if !ok {
-		return fmt.Errorf("mux hello missing protocol version")
+		return errors.New("mux hello missing protocol version")
 	}
 	if version != kMuxProtocolVersion {
 		return fmt.Errorf("unsupported mux protocol version %d", version)

@@ -26,6 +26,7 @@ package tssh
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -125,7 +126,7 @@ func muxReadMessage(r io.Reader) (uint32, []byte, error) {
 	}
 	msgType, ok := muxReadUint32(&body)
 	if !ok {
-		return 0, nil, fmt.Errorf("mux message too short")
+		return 0, nil, errors.New("mux message too short")
 	}
 	return msgType, body, nil
 }
@@ -180,7 +181,7 @@ func muxReadSshPacket(r io.Reader) ([]byte, error) {
 		return nil, err
 	}
 	if len(body) < 1 {
-		return nil, fmt.Errorf("ssh packet missing padding length")
+		return nil, errors.New("ssh packet missing padding length")
 	}
 	if body[0] != 0 {
 		return nil, fmt.Errorf("ssh packet has unexpected padding length %d", body[0])

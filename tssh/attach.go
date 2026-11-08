@@ -349,7 +349,7 @@ func attachToSession(tcpClient SshClient, tsshdPath, sessionName string) (*strin
 		return nil, err
 	}
 	if len(listOutput) == 0 {
-		return nil, fmt.Errorf("tsshd list output is empty")
+		return nil, errors.New("tsshd list output is empty")
 	}
 	if bytes.HasPrefix(listOutput, []byte("\a{\"")) {
 		return nil, errAttachTsshdTooOld
@@ -383,7 +383,7 @@ func attachToSession(tcpClient SshClient, tsshdPath, sessionName string) (*strin
 	}
 
 	if !isTerminal {
-		return nil, fmt.Errorf("not a terminal")
+		return nil, errors.New("not a terminal")
 	}
 
 	model := &attachModel{

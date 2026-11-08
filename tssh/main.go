@@ -325,7 +325,7 @@ func TsshMain(argv []string) int {
 	// check dest before startup
 	if err != nil || dest == "" {
 		if err == nil {
-			err = fmt.Errorf("missing destination host")
+			err = errors.New("missing destination host")
 		}
 		return kExitCodeNoDestHost
 	}
@@ -470,13 +470,25 @@ func sshStart(args *sshArgs) (int, error) {
 	execExpectInteractions(sshConn)
 
 	// make stdin raw
-	if isTerminal && sshConn.tty {
-		state, err := makeStdinRaw()
+	if isTerminal {
+		sshConn.terminal, err = newTerminalController(sshConn.tty)
 		if err != nil {
 			return kExitCodeStdinFailed, err
 		}
-		addOnExitFunc(func() { resetStdin(state) })
-		defer resetStdin(state)
+
+		if sshConn.terminal != nil {
+			addOnExitFunc(sshConn.terminal.Close)
+			defer sshConn.terminal.Close()
+
+			if sshConn.tty {
+				sshConn.terminal.setOnForeground(func() {
+					debug("redrawing screen upon returning to foreground")
+					if err := sshConn.session.RedrawScreen(false); err != nil {
+						debug("redraw screen failed: %v", err)
+					}
+				})
+			}
+		}
 	}
 
 	// setup trzsz filter if necessary

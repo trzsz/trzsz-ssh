@@ -30,6 +30,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -350,4 +351,55 @@ func splitCommandLine(command string) ([]string, error) {
 }
 
 func suspendProcess() {
+}
+
+type terminalController struct {
+	state     *stdinState
+	closeOnce sync.Once
+}
+
+func newTerminalController(raw bool) (*terminalController, error) {
+	if !isTerminal {
+		return nil, nil
+	}
+
+	t := &terminalController{}
+
+	if raw {
+		state, err := makeStdinRaw()
+		if err != nil {
+			return nil, err
+		}
+		t.state = state
+	}
+
+	return t, nil
+}
+
+func (*terminalController) setOnForeground(func()) {
+}
+
+func (t *terminalController) Close() {
+	if t == nil {
+		return
+	}
+
+	t.closeOnce.Do(func() {
+		if t.state != nil {
+			resetStdin(t.state)
+			t.state = nil
+		}
+	})
+}
+
+func (*terminalController) waitUntilForeground() (bool, error) {
+	return false, nil
+}
+
+func isBackgroundReadError(error) bool {
+	return false
+}
+
+func waitUntilForeground() error {
+	return nil
 }

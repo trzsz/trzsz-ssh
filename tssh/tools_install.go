@@ -30,6 +30,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -277,14 +278,14 @@ func (h *binaryHelper) extractBinary(gzr io.Reader, version, svrOS, arch string)
 	}
 	if h.trzsz {
 		if trz.Len() == 0 {
-			return fmt.Errorf("can't find trz binary in the package")
+			return errors.New("can't find trz binary in the package")
 		}
 		if tsz.Len() == 0 {
-			return fmt.Errorf("can't find tsz binary in the package")
+			return errors.New("can't find tsz binary in the package")
 		}
 	} else {
 		if tsshd.Len() == 0 {
-			return fmt.Errorf("can't find tsshd binary in the package")
+			return errors.New("can't find tsshd binary in the package")
 		}
 	}
 	h.trz = trz.Bytes()

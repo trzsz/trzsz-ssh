@@ -214,10 +214,10 @@ func (c *controlMaster) start(param *sshParam) error {
 			c.success.Store(true)
 			return nil
 		case <-exitCh:
-			return fmt.Errorf("control master process exited")
+			return errors.New("control master process exited")
 		case <-intCh:
 			c.quit(exitCh)
-			return fmt.Errorf("user interrupt control master")
+			return errors.New("user interrupt control master")
 		}
 	}
 }

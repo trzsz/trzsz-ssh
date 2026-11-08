@@ -11,7 +11,7 @@ jobs:
         with:
           go-version: "1.26"
       - name: make test
-        run: make test
+        run: make test GO_TEST='go test -race'
   go-test-on-macos:
     runs-on: macos-latest
     steps:
@@ -22,7 +22,7 @@ jobs:
         with:
           go-version: "1.26"
       - name: make test
-        run: make test
+        run: make test GO_TEST='go test -race'
   go-test-on-windows:
     runs-on: windows-latest
     steps:
@@ -33,7 +33,7 @@ jobs:
         with:
           go-version: "1.26"
       - name: make test
-        run: make test
+        run: make test GO_TEST='go test -race'
   test-win7-patch:
     runs-on: ubuntu-latest
     steps:
@@ -41,8 +41,8 @@ jobs:
         uses: actions/checkout@v6
       - name: Set up Go
         run: |
-          wget -q https://github.com/thongtech/go-legacy-win7/releases/download/v1.26.8-1/go-legacy-win7-1.26.8-1.linux_amd64.tar.gz -O /tmp/go.tar.gz
-          tar -C $HOME -xzf /tmp/go.tar.gz
+          wget -q https://github.com/thongtech/go-legacy-win7/releases/download/v1.26.10-1/go-legacy-win7-1.26.10-1.linux_amd64.tar.gz -O /tmp/go.tar.gz
+          tar -C "$HOME" -xzf /tmp/go.tar.gz
       - name: Build trzsz-ssh
         run: |
           export GOROOT=$HOME/go-legacy-win7
@@ -50,6 +50,6 @@ jobs:
           export PATH=$GOROOT/bin:$GOPATH/bin:$PATH
           which go
           go version
-          make test
+          CGO_ENABLED=1 make test GO_TEST='go test -race'
           GOOS=windows GOARCH=386 go build -o tssh_win7_i386/ ./cmd/tssh/
           GOOS=windows GOARCH=amd64 go build -o tssh_win7_x86_64/ ./cmd/tssh/

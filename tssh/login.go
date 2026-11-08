@@ -26,6 +26,7 @@ package tssh
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -439,7 +440,7 @@ func parseRemoteCommand(param *sshParam) (string, error) {
 	args := param.args
 	command := args.Option.get("RemoteCommand")
 	if args.Command != "" && command != "" && !strings.EqualFold(command, "none") {
-		return "", fmt.Errorf("cannot execute command-line and remote command")
+		return "", errors.New("cannot execute command-line and remote command")
 	}
 
 	if args.Command != "" {
@@ -471,7 +472,7 @@ func parseCmdAndTTY(param *sshParam) (cmd string, tty bool, err error) {
 
 	args := param.args
 	if args.DisableTTY && args.ForceTTY {
-		err = fmt.Errorf("cannot specify -t with -T")
+		err = errors.New("cannot specify -t with -T")
 		return
 	}
 	if args.DisableTTY {

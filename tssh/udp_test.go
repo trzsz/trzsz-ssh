@@ -31,9 +31,7 @@ import (
 )
 
 func TestParseTsshdPortRanges(t *testing.T) {
-	enableWarning := enableWarningLogging
-	enableWarningLogging = false
-	defer func() { enableWarningLogging = enableWarning }()
+	defer disableWarningForTest()()
 
 	assert := assert.New(t)
 	assert.Equal([][2]uint16{{22, 22}}, parseTsshdPortRanges("22"))

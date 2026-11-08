@@ -25,6 +25,7 @@ SOFTWARE.
 package tssh
 
 import (
+	"errors"
 	"fmt"
 
 	"charm.land/lipgloss/v2"
@@ -40,7 +41,7 @@ func execEncodeSecret() (int, bool) {
 	secret := promptPassword("Password or secret to be encoded", "",
 		&inputValidator{func(secret string) error {
 			if secret == "" {
-				return fmt.Errorf("empty password or secret")
+				return errors.New("empty password or secret")
 			}
 			return nil
 		}})

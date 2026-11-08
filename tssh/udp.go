@@ -444,7 +444,7 @@ func startTsshdServer(args *sshArgs, tcpClient SshClient, tsshdCmd string) (*tss
 		if err != nil {
 			return nil, fmt.Errorf("read stdout output failed: %v", err)
 		}
-		return nil, fmt.Errorf("stdout and stderr are both empty")
+		return nil, errors.New("stdout and stderr are both empty")
 	}
 
 	pos := strings.LastIndexByte(output, '\a')
