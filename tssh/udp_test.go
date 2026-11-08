@@ -25,9 +25,12 @@ SOFTWARE.
 package tssh
 
 import (
+	"net"
+	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/trzsz/tsshd/tsshd"
 )
 
 func TestParseTsshdPortRanges(t *testing.T) {
@@ -60,4 +63,80 @@ func TestParseTsshdPortRanges(t *testing.T) {
 	assert.Equal([][2]uint16(nil), parseTsshdPortRanges("10 - 0"))
 	assert.Equal([][2]uint16(nil), parseTsshdPortRanges("10 - - 11"))
 	assert.Equal([][2]uint16{{10, 11}}, parseTsshdPortRanges("10 - 11 -"))
+}
+
+func TestUdpAddressFamily(t *testing.T) {
+	oldPreflight := udpPreflight
+	defer func() { udpPreflight = oldPreflight }()
+
+	for _, tc := range []struct {
+		name, advertised, config string
+		flag4, flag6, ssh4, ssh6 bool
+		proxied, unreachable     bool
+		want4, want6, preflight  bool
+	}{
+		{name: "ControlPathIPv6", advertised: "inet6", want6: true},
+		{name: "ControlPathIPv4", advertised: "inet", want4: true},
+		{name: "AttachOverIPv4", advertised: "inet6", ssh4: true, want6: true, preflight: true},
+		{name: "AttachOverIPv6", advertised: "inet", ssh6: true, want4: true, preflight: true},
+		{name: "SameFamilyNoPreflight", advertised: "inet", ssh4: true, want4: true},
+		{name: "NAT64FallsBackToSSH", advertised: "inet", ssh6: true, unreachable: true, want6: true, preflight: true},
+		{name: "UnreachableNoFallback", advertised: "inet6", unreachable: true, want6: true},
+		{name: "ProxySkipsPreflight", advertised: "inet", ssh6: true, proxied: true, unreachable: true, want4: true},
+		{name: "OldServerInferred", ssh6: true, want6: true},
+		{name: "OldServerUnknown"},
+		{name: "OldServerAmbiguous", ssh4: true, ssh6: true},
+		{name: "FutureUnknownFamily", advertised: "future", ssh4: true, want4: true},
+		{name: "ExplicitOverridesSSH", flag4: true, ssh6: true, want4: true},
+		{name: "ExplicitMatches", flag6: true, advertised: "inet6", ssh4: true, want6: true},
+		{name: "ExplicitWins4", flag4: true, advertised: "inet6", want4: true},
+		{name: "ExplicitWins6NAT64", flag6: true, advertised: "inet", ssh6: true, want6: true},
+		{name: "ConfigInet", config: "inet", ssh6: true, want4: true},
+		{name: "ConfigInet6", config: "INET6", ssh4: true, want6: true},
+		{name: "ConfigWins", config: "inet6", advertised: "inet", want6: true},
+		{name: "ConfigAny", config: "any", advertised: "inet6", want6: true},
+		{name: "FlagOverridesConfig", flag4: true, config: "inet6", advertised: "inet", want4: true},
+		{name: "BothFlagsUnrestricted", flag4: true, flag6: true, advertised: "inet6", want6: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.config == "" {
+				tc.config = "any"
+			}
+			var preflighted string
+			udpPreflight = func(network, addr string) error {
+				preflighted = network + " " + addr
+				if tc.unreachable {
+					return syscall.ENETUNREACH
+				}
+				return nil
+			}
+			args := &sshArgs{IPv4Only: tc.flag4, IPv6Only: tc.flag6,
+				Option: sshOption{options: map[string][]string{"addressfamily": {tc.config}}}}
+			param := &sshParam{args: args, ipv4: tc.ssh4, ipv6: tc.ssh6}
+			info := &tsshd.ServerInfo{AddressFamily: tc.advertised}
+			ipv4, ipv6 := getUdpAddressFamily(param, info, "host.example:1234", !tc.proxied)
+			assert.Equal(t, tc.want4, ipv4)
+			assert.Equal(t, tc.want6, ipv6)
+			if tc.preflight {
+				network := "udp4"
+				if tc.advertised == "inet6" {
+					network = "udp6"
+				}
+				assert.Equal(t, network+" host.example:1234", preflighted)
+			} else {
+				assert.Empty(t, preflighted)
+			}
+		})
+	}
+}
+
+func TestUdpPreflight(t *testing.T) {
+	listener, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		t.Skipf("IPv4 loopback unavailable: %v", err)
+	}
+	defer listener.Close()
+	addr := listener.LocalAddr().String()
+	assert.NoError(t, udpPreflight("udp4", addr))
+	assert.Error(t, udpPreflight("udp6", addr))
 }
