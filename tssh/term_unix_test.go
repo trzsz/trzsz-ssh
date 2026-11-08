@@ -788,10 +788,62 @@ func TestTerminalControllerWaitFailsAfterRepeatedForegroundErrors(t *testing.T) 
 	select {
 	case err := <-result:
 		if err == nil {
-			t.Fatal("expected foreground check error")
+			t.Fatal("expected an error after repeated foreground check failures")
 		}
-	case <-time.After(time.Second):
+	case <-time.After(3 * time.Second):
 		t.Fatal("waitUntilForeground did not return after repeated foreground check failures")
+	}
+
+	if got := calls.Load(); got < kMaxTerminalFailures {
+		t.Fatalf("foreground check called %d times; want at least %d", got, kMaxTerminalFailures)
+	}
+}
+
+func TestTerminalControllerWaitFailsAfterRepeatedRawErrors(t *testing.T) {
+	defer disableWarningForTest()()
+
+	var (
+		foreground atomic.Bool
+		rawCalls   atomic.Int32
+	)
+
+	c := newTestTerminalController(
+		t,
+		true,
+		2*time.Millisecond,
+		func() (bool, error) {
+			return foreground.Load(), nil
+		},
+		func() (*stdinState, error) {
+			rawCalls.Add(1)
+			return nil, errors.New("reapply raw mode failed")
+		},
+		nil,
+	)
+	defer c.Close()
+
+	// The controller initially starts in the background.
+	// Simulate returning to the foreground.
+	foreground.Store(true)
+
+	result := make(chan error, 1)
+
+	go func() {
+		_, err := c.waitUntilForeground()
+		result <- err
+	}()
+
+	select {
+	case err := <-result:
+		if err == nil {
+			t.Fatal("expected an error after repeated raw mode reapplication failures")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("waitUntilForeground did not return after repeated raw mode reapplication failures")
+	}
+
+	if got := rawCalls.Load(); got < kMaxTerminalFailures {
+		t.Fatalf("raw mode reapplication attempted %d times; want at least %d", got, kMaxTerminalFailures)
 	}
 }
 

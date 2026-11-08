@@ -46,6 +46,8 @@ import (
 
 var isRunningOnOldWindows atomic.Bool
 
+const kMaxTerminalFailures = 100
+
 type stdinState struct {
 	fd    int
 	state *term.State
@@ -168,10 +170,12 @@ type terminalController struct {
 	foregroundCh chan struct{}
 	closed       bool
 
-	// foregroundErr records a terminal foreground detection failure.
+	// foregroundErr records the error that caused foreground recovery to stop.
 	foregroundErr error
-	// fgCheckFails counts consecutive failed monitor checks.
+	// fgCheckFails counts consecutive failed foreground monitor checks.
 	fgCheckFails int
+	// rawModeFails counts consecutive failed monitor attempts to reapply raw mode.
+	rawModeFails int
 
 	contCh    chan os.Signal
 	wakeCh    chan struct{}
@@ -316,6 +320,7 @@ func (t *terminalController) enterRawLocked() error {
 	}
 
 	t.rawActive = true
+	t.rawModeFails = 0
 	return nil
 }
 
@@ -526,7 +531,7 @@ func (t *terminalController) run() {
 				stopMonitor()
 			} else {
 				// The process is still in the background, or the foreground
-				// check/raw mode restoration failed. Keep monitoring so the
+				// check/raw mode reapplication failed. Keep monitoring so the
 				// process can recover when it actually returns to the foreground.
 				startMonitor()
 			}
@@ -569,8 +574,8 @@ func (t *terminalController) run() {
 				// foreground. Leave the foreground state unchanged and retry
 				// after another polling interval.
 				t.fgCheckFails++
-				if t.fgCheckFails >= 100 {
-					checkErr := fmt.Errorf("foreground monitor failed to query process group %d consecutive times: %v", t.fgCheckFails, err)
+				if t.fgCheckFails >= kMaxTerminalFailures {
+					checkErr := fmt.Errorf("foreground process group check failed %d consecutive times: %v", t.fgCheckFails, err)
 					t.setForegroundErrorLocked(checkErr)
 					t.mu.Unlock()
 					warning("terminal foreground monitoring stopped: %v", checkErr)
@@ -598,7 +603,7 @@ func (t *terminalController) run() {
 				t.setForegroundLocked(false)
 				t.mu.Unlock()
 
-				// No raw mode restoration was needed, so allow a future
+				// No raw mode reapplication was needed, so allow a future
 				// raw mode failure to be reported again.
 				rawModeWarned = false
 				startMonitor()
@@ -610,11 +615,20 @@ func (t *terminalController) run() {
 			if err := t.enterRawLocked(); err != nil {
 				// Do not report the process as foreground until raw mode
 				// has been successfully applied.
+				t.rawModeFails++
+				if t.rawModeFails >= kMaxTerminalFailures {
+					rawErr := fmt.Errorf("failed to reapply stdin raw mode %d consecutive times: %v", t.rawModeFails, err)
+					t.setForegroundErrorLocked(rawErr)
+					t.mu.Unlock()
+					warning("terminal foreground monitoring stopped: %v", rawErr)
+					return
+				}
+
 				t.setForegroundLocked(false)
 				t.mu.Unlock()
 
 				if !rawModeWarned {
-					warning("make stdin raw after returning to foreground failed: %v", err)
+					warning("reapply stdin raw mode after returning to foreground failed: %v", err)
 					rawModeWarned = true
 				}
 
@@ -699,7 +713,7 @@ func (t *terminalController) waitUntilForeground() (bool, error) {
 				case <-t.doneCh:
 					return waited, errors.New("terminal controller closed")
 				case <-ch:
-					// Wait for the monitor to successfully restore raw mode,
+					// Wait for the monitor to successfully reapply raw mode,
 					// then recheck the actual foreground state.
 					continue
 				}
