@@ -509,6 +509,28 @@ trzsz-ssh ( tssh ) with [tsshd](https://github.com/trzsz/tsshd) also supports in
       # Choose either ExpectSendPass? or ExpectSendText? for each interaction; if both are configured, ExpectSendPass? has higher priority
   ```
 
+- Supports configuring `ExpectRegex?` to match the raw server output with Go regular expressions and capture dynamic content for later input:
+
+  ```
+  Host bastion
+      #!! ExpectCount 3  # Configures the number of automated interactions, default is 0 which means no automated interaction
+      #!! ExpectRegex1 Opt>  # Configures the first automated interaction regular expression. Choose either ExpectRegex? or ExpectPattern?; if both are configured, ExpectRegex? takes precedence
+      #!! ExpectSendText1 ls 192.0.2.10\r  # Run the query command
+      #!! ExpectRegex2 (\d{3}):.*192\.0\.2\.10  # Match the output and capture the target server id (for example 006)
+      #!! ExpectSendText2 q\r  # Exit the query result
+      #!! ExpectRegex3 Shell\]\$  # Match the shell prompt
+      #!! ExpectSendText3 open %1\r  # Reference the first capture group of ExpectRegex2 and enter the id automatically
+  ```
+
+  - `ExpectRegex?` uses Go regular expression syntax and matches the raw output returned by the server, not the escaped output shown by `--debug`.
+  - Capture group indices increase globally across all `ExpectRegex?` matches. For example, the first match assigns `%1` to `%3` and the second match starts at `%4`; an index never changes after it is assigned.
+  - Indices greater than 9 use the `%{10}` syntax, and `%1` is equivalent to `%{1}`.
+  - Named captures remain available across all matches and can be referenced as `%{name}`, for example `(?P<id>\d{3})`. Named captures are recommended for references that span multiple steps.
+  - `ExpectRegex?` expands `%h`, `%p`, `%r`, `%n`, `%l`, `%L`, and `%j`; `%%` means a literal `%`. Expanded values are treated as literal text and their regex metacharacters are escaped, so `%n` expanding to `192.0.2.10` becomes `192\.0\.2\.10` without manual escaping.
+  - If both `ExpectRegex?` and `ExpectPattern?` are configured, `ExpectRegex?` takes precedence.
+  - If the target server IP needs to be specified on the command line, set the `Host` alias to the target IP and `HostName` to the bastion host, then use `%n` in `ExpectSendText?`.
+  - If the server output is a TUI list (using ESC cursor control instead of newlines), `.*` can match across rows; use `[^\x1b\r\n]*` to stay within one row.
+
 - Before each `ExpectPattern?` match, one or multiple optional matches can be configured as follows:
 
   ```

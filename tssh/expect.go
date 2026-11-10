@@ -41,11 +41,13 @@ const (
 )
 
 type sshExpect struct {
-	param *sshParam
-	pre   string
-	ctx   context.Context
-	out   chan []byte
-	err   chan []byte
+	param        *sshParam
+	pre          string
+	ctx          context.Context
+	out          chan []byte
+	err          chan []byte
+	captures     map[string]string
+	captureCount int
 }
 
 type expectSender struct {
@@ -90,7 +92,7 @@ func (s *expectSender) newSendText(showText, sendText string) *expectSendText {
 	est := &expectSendText{}
 
 	if enableDebugLogging {
-		if expanded, err := expandTokens(showText, s.expect.param, "%hprnLlj"); err != nil {
+		if expanded, err := expandTokensWithCaptures(showText, s.expect.param, "%hprnLlj", s.expect.captures); err != nil {
 			warning("expand send text [%s] failed: %v", showText, err)
 			est.showText = showText
 		} else {
@@ -98,7 +100,7 @@ func (s *expectSender) newSendText(showText, sendText string) *expectSendText {
 		}
 	}
 
-	if expanded, err := expandTokens(sendText, s.expect.param, "%hprnLlj"); err != nil {
+	if expanded, err := expandTokensWithCaptures(sendText, s.expect.param, "%hprnLlj", s.expect.captures); err != nil {
 		if enableWarningLogging {
 			warning("expand send text %s failed: %v", strconv.QuoteToASCII(sendText), strconv.QuoteToASCII(err.Error()))
 		}
@@ -370,14 +372,60 @@ func drainOrClosed[T any](ch <-chan T) {
 	}
 }
 
-func (e *sshExpect) waitForPattern(pattern string, caseSends *caseSendList) (string, error) {
-	expr := wildcardToRegexp(pattern)
+func isNumericKey(key string) bool {
+	for _, c := range key {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return key != ""
+}
+
+// assignCapture stores a capture value. Numeric indices are assigned once and
+// never overwritten, while named captures overwrite an existing name.
+func (e *sshExpect) assignCapture(key, value string) {
+	if _, ok := e.captures[key]; ok {
+		if isNumericKey(key) {
+			warning("expect capture index [%s] already exists, keeping the existing value", key)
+			return
+		}
+		warning("expect capture name [%s] already exists, overwriting", key)
+	}
+	e.captures[key] = value
+}
+
+func (e *sshExpect) saveCaptures(re *regexp.Regexp, output string) {
+	matches := re.FindStringSubmatch(output)
+	if len(matches) <= 1 {
+		return
+	}
+	if e.captures == nil {
+		e.captures = make(map[string]string)
+	}
+	names := re.SubexpNames()
+	begin := e.captureCount + 1
+	for i := 1; i < len(matches); i++ {
+		e.captureCount++
+		e.assignCapture(strconv.Itoa(e.captureCount), matches[i])
+		if i < len(names) && names[i] != "" {
+			e.assignCapture(names[i], matches[i])
+		}
+	}
+	debug("expect captures [%d-%d] assigned: %v", begin, e.captureCount, e.captures)
+}
+
+func (e *sshExpect) waitForPattern(pattern, regex string, caseSends *caseSendList) (string, error) {
+	expr := regex
+	if expr == "" {
+		expr = wildcardToRegexp(pattern)
+	}
 	re, err := regexp.Compile(expr)
 	if err != nil {
 		warning("compile expect expr [%s] failed: %v", expr, err)
 		return "", err
 	}
 	var builder strings.Builder
+	var rawBuilder strings.Builder
 	for {
 		var buf []byte
 		select {
@@ -390,14 +438,32 @@ func (e *sshExpect) waitForPattern(pattern string, caseSends *caseSendList) (str
 			continue
 		}
 		output := strconv.QuoteToASCII(string(buf))
-		caseSends.handleOutput(output[1 : len(output)-1])
-		builder.WriteString(output[1 : len(output)-1])
-		if pattern != "" && re.MatchString(builder.String()) {
-			debug("expect match: %s", pattern)
+		escaped := output[1 : len(output)-1]
+		caseSends.handleOutput(escaped)
+		builder.WriteString(escaped)
+		rawBuilder.Write(buf)
+		matched := false
+		if regex != "" {
+			matched = re.MatchString(rawBuilder.String())
+			if matched {
+				e.saveCaptures(re, rawBuilder.String())
+			}
+		} else {
+			matched = pattern != "" && re.MatchString(builder.String())
+		}
+		if matched {
+			if regex != "" {
+				debug("expect match regex: %s", regex)
+			} else {
+				debug("expect match: %s", pattern)
+			}
 			// cleanup for next expect
 			drainOrClosed(e.out)
 			drainOrClosed(e.err)
 			return builder.String(), nil
+		}
+		if regex != "" {
+			debug("expect not match regex: %s", regex)
 		} else {
 			debug("expect not match: %s", pattern)
 		}
@@ -450,7 +516,17 @@ func (e *sshExpect) getExpectSender(idx int, question string) *expectSender {
 func (e *sshExpect) execInteractions(writer io.Writer, expectCount int) {
 	for idx := 1; idx <= expectCount; idx++ {
 		pattern := getExOptionConfig(e.param.args, fmt.Sprintf("%sExpectPattern%d", e.pre, idx))
-		if pattern != "" {
+		regex := getExOptionConfig(e.param.args, fmt.Sprintf("%sExpectRegex%d", e.pre, idx))
+		if regex != "" {
+			if expanded, err := expandTokensForRegex(regex, e.param, "%hprnLlj"); err != nil {
+				warning("expand expect regex [%s] failed: %v", regex, err)
+			} else {
+				regex = expanded
+			}
+		}
+		if regex != "" {
+			debug("expect %d regex: %s", idx, regex)
+		} else if pattern != "" {
 			debug("expect %d pattern: %s", idx, pattern)
 		} else {
 			warning("expect %d pattern is empty, no output will be matched", idx)
@@ -466,7 +542,7 @@ func (e *sshExpect) execInteractions(writer io.Writer, expectCount int) {
 				warning("Invalid ExpectCaseSendText%d: %v", idx, err)
 			}
 		}
-		question, err := e.waitForPattern(pattern, caseSends)
+		question, err := e.waitForPattern(pattern, regex, caseSends)
 		if err != nil {
 			return
 		}
