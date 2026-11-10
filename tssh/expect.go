@@ -41,12 +41,13 @@ const (
 )
 
 type sshExpect struct {
-	param    *sshParam
-	pre      string
-	ctx      context.Context
-	out      chan []byte
-	err      chan []byte
-	captures map[string]string
+	param        *sshParam
+	pre          string
+	ctx          context.Context
+	out          chan []byte
+	err          chan []byte
+	captures     map[string]string
+	captureCount int
 }
 
 type expectSender struct {
@@ -371,6 +372,28 @@ func drainOrClosed[T any](ch <-chan T) {
 	}
 }
 
+func isNumericKey(key string) bool {
+	for _, c := range key {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return key != ""
+}
+
+// assignCapture stores a capture value. Numeric indices are assigned once and
+// never overwritten, while named captures overwrite an existing name.
+func (e *sshExpect) assignCapture(key, value string) {
+	if _, ok := e.captures[key]; ok {
+		if isNumericKey(key) {
+			warning("expect capture index [%s] already exists, keeping the existing value", key)
+			return
+		}
+		warning("expect capture name [%s] already exists, overwriting", key)
+	}
+	e.captures[key] = value
+}
+
 func (e *sshExpect) saveCaptures(re *regexp.Regexp, output string) {
 	matches := re.FindStringSubmatch(output)
 	if len(matches) <= 1 {
@@ -380,13 +403,15 @@ func (e *sshExpect) saveCaptures(re *regexp.Regexp, output string) {
 		e.captures = make(map[string]string)
 	}
 	names := re.SubexpNames()
+	begin := e.captureCount + 1
 	for i := 1; i < len(matches); i++ {
-		e.captures[strconv.Itoa(i)] = matches[i]
+		e.captureCount++
+		e.assignCapture(strconv.Itoa(e.captureCount), matches[i])
 		if i < len(names) && names[i] != "" {
-			e.captures[names[i]] = matches[i]
+			e.assignCapture(names[i], matches[i])
 		}
 	}
-	debug("expect captures: %v", e.captures)
+	debug("expect captures [%d-%d] assigned: %v", begin, e.captureCount, e.captures)
 }
 
 func (e *sshExpect) waitForPattern(pattern, regex string, caseSends *caseSendList) (string, error) {
@@ -493,7 +518,7 @@ func (e *sshExpect) execInteractions(writer io.Writer, expectCount int) {
 		pattern := getExOptionConfig(e.param.args, fmt.Sprintf("%sExpectPattern%d", e.pre, idx))
 		regex := getExOptionConfig(e.param.args, fmt.Sprintf("%sExpectRegex%d", e.pre, idx))
 		if regex != "" {
-			if expanded, err := expandTokens(regex, e.param, "%hprnLlj"); err != nil {
+			if expanded, err := expandTokensForRegex(regex, e.param, "%hprnLlj"); err != nil {
 				warning("expand expect regex [%s] failed: %v", regex, err)
 			} else {
 				regex = expanded

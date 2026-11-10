@@ -523,8 +523,10 @@ trzsz-ssh ( tssh ) with [tsshd](https://github.com/trzsz/tsshd) also supports in
   ```
 
   - `ExpectRegex?` uses Go regular expression syntax and matches the raw output returned by the server, not the escaped output shown by `--debug`.
-  - `%1` to `%9` reference the capture groups of the most recent `ExpectRegex?` match that contains capture groups, and `%{name}` references a named group such as `(?P<id>\d{3})`.
-  - `ExpectRegex?` expands `%h`, `%p`, `%r`, `%n`, `%l`, `%L`, and `%j`; `%%` means a literal `%`.
+  - Capture group indices increase globally across all `ExpectRegex?` matches. For example, the first match assigns `%1` to `%3` and the second match starts at `%4`; an index never changes after it is assigned.
+  - Indices greater than 9 use the `%{10}` syntax, and `%1` is equivalent to `%{1}`.
+  - Named captures remain available across all matches and can be referenced as `%{name}`, for example `(?P<id>\d{3})`. Named captures are recommended for references that span multiple steps.
+  - `ExpectRegex?` expands `%h`, `%p`, `%r`, `%n`, `%l`, `%L`, and `%j`; `%%` means a literal `%`. Expanded values are treated as literal text and their regex metacharacters are escaped, so `%n` expanding to `192.0.2.10` becomes `192\.0\.2\.10` without manual escaping.
   - If both `ExpectRegex?` and `ExpectPattern?` are configured, `ExpectRegex?` takes precedence.
   - If the target server IP needs to be specified on the command line, set the `Host` alias to the target IP and `HostName` to the bastion host, then use `%n` in `ExpectSendText?`.
   - If the server output is a TUI list (using ESC cursor control instead of newlines), `.*` can match across rows; use `[^\x1b\r\n]*` to stay within one row.

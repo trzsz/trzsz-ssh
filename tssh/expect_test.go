@@ -58,6 +58,122 @@ Host bastion
 	assert.Equal(t, `(\d{3}):[^\x1b\r\n]*192\.0\.2\.10[^\x1b\r\n]*ssh\s+root`, value)
 }
 
+func TestExpectCaptureGlobalNumbering(t *testing.T) {
+	assert := assert.New(t)
+
+	e := &sshExpect{}
+	e.saveCaptures(regexp.MustCompile(`(\d+)-(\d+)`), "10-20")
+	e.saveCaptures(regexp.MustCompile(`(\w+)`), "abc")
+
+	assert.Equal(map[string]string{"1": "10", "2": "20", "3": "abc"}, e.captures)
+}
+
+func TestExpectCaptureNamedGlobal(t *testing.T) {
+	assert := assert.New(t)
+
+	originalEnableWarning := enableWarningLogging
+	enableWarningLogging = false
+	defer func() { enableWarningLogging = originalEnableWarning }()
+
+	e := &sshExpect{}
+	e.saveCaptures(regexp.MustCompile(`(?P<id>\d{3})`), "006")
+	e.saveCaptures(regexp.MustCompile(`(?P<id>\d{3})`), "007")
+
+	assert.Equal("007", e.captures["id"])
+	assert.Equal("006", e.captures["1"])
+	assert.Equal("007", e.captures["2"])
+}
+
+func TestExpectCaptureNumericNameKeepsExisting(t *testing.T) {
+	assert := assert.New(t)
+
+	originalEnableWarning := enableWarningLogging
+	enableWarningLogging = false
+	defer func() { enableWarningLogging = originalEnableWarning }()
+
+	e := &sshExpect{}
+	e.saveCaptures(regexp.MustCompile(`(?P<1>\d{3})`), "006")
+	e.saveCaptures(regexp.MustCompile(`(?P<1>\d{3})`), "007")
+
+	assert.Equal("006", e.captures["1"])
+	assert.Equal("007", e.captures["2"])
+}
+
+func TestExpectCaptureBraceAndNumberEquivalence(t *testing.T) {
+	assert := assert.New(t)
+	require := require.New(t)
+
+	e := &sshExpect{
+		param:    &sshParam{args: &sshArgs{}},
+		captures: map[string]string{"1": "006"},
+	}
+	sender := newTextSender(e, "dummy")
+	require.NotNil(sender)
+
+	texts := sender.decodeText("%1 %{1}\r")
+	require.Len(texts, 1)
+	assert.Equal("006 006\r", texts[0].sendText)
+}
+
+func TestExpectCaptureIndexAboveNine(t *testing.T) {
+	assert := assert.New(t)
+	require := require.New(t)
+
+	e := &sshExpect{}
+	e.saveCaptures(regexp.MustCompile(`(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)`), "abcdefghij")
+	assert.Equal("j", e.captures["10"])
+
+	sender := newTextSender(&sshExpect{
+		param:    &sshParam{args: &sshArgs{}},
+		captures: e.captures,
+	}, "dummy")
+	require.NotNil(sender)
+
+	texts := sender.decodeText("%{10}\r")
+	require.Len(texts, 1)
+	assert.Equal("j\r", texts[0].sendText)
+}
+
+func TestExpectRegexTokenEscaping(t *testing.T) {
+	assert := assert.New(t)
+	require := require.New(t)
+
+	param := &sshParam{
+		args: &sshArgs{Destination: "192.0.2.10"},
+		host: "192.0.2.10",
+	}
+
+	expanded, err := expandTokensForRegex(`(\d{3}):.*%n`, param, "%hprnLlj")
+	require.NoError(err)
+	assert.Equal(`(\d{3}):.*192\.0\.2\.10`, expanded)
+
+	re := regexp.MustCompile(expanded)
+	assert.True(re.MatchString("006: 192.0.2.10"))
+	assert.False(re.MatchString("006: 192x0x2x10"))
+
+	raw, err := expandTokens(`(\d{3}):.*%n`, param, "%hprnLlj")
+	require.NoError(err)
+	assert.Equal(`(\d{3}):.*192.0.2.10`, raw)
+}
+
+func TestExpectSendTextDoesNotEscapeTokens(t *testing.T) {
+	assert := assert.New(t)
+	require := require.New(t)
+
+	e := &sshExpect{
+		param: &sshParam{
+			args: &sshArgs{Destination: "192.0.2.10"},
+			host: "192.0.2.10",
+		},
+	}
+	sender := newTextSender(e, "dummy")
+	require.NotNil(sender)
+
+	texts := sender.decodeText("ls %n\r")
+	require.Len(texts, 1)
+	assert.Equal("ls 192.0.2.10\r", texts[0].sendText)
+}
+
 func TestExpectWaitForPatternRawRegexCapture(t *testing.T) {
 	assert := assert.New(t)
 	require := require.New(t)
@@ -190,12 +306,12 @@ func TestExpectInteractionsRegexCapture(t *testing.T) {
 	args := &sshArgs{
 		Destination: "192.0.2.10",
 		Option: sshOption{options: map[string][]string{
-			"expectregex1":    {"Opt>"},
+			"expectregex1":    {`(Opt)>`},
 			"expectsendtext1": {`ls %n\r`},
 			"expectregex2":    {`(\d{3}):.*%n`},
 			"expectsendtext2": {`q\r`},
 			"expectregex3":    {`Shell\]\$`},
-			"expectsendtext3": {`open %1\r`},
+			"expectsendtext3": {`open %2\r`},
 		}},
 	}
 	e := &sshExpect{
