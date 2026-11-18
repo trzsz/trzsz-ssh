@@ -62,8 +62,6 @@ type sshParam struct {
 	command string
 	proxy   *proxyJump
 	udpMode udpModeType
-	ipv4    bool
-	ipv6    bool
 	// asUdpProxy indicates whether this proxy's next hop requires UDP.
 	asUdpProxy bool
 	// controlClient indicates whether the client connects to a local master through ControlPath.
@@ -72,19 +70,6 @@ type sshParam struct {
 	udpTransport bool
 	// muxMasterPath is the control socket to listen on as a native UDP control master.
 	muxMasterPath string
-}
-
-func (p *sshParam) setNetworkAddressFamily(conn net.Conn) {
-	remoteAddr := conn.RemoteAddr()
-	tcpAddr, ok := remoteAddr.(*net.TCPAddr)
-	if !ok {
-		return
-	}
-	if tcpAddr.IP.To4() != nil {
-		p.ipv4 = true
-	} else if tcpAddr.IP.To16() != nil {
-		p.ipv6 = true
-	}
 }
 
 func joinHostPort(host, port string) string {
@@ -619,7 +604,6 @@ func connectViaProxyJump(param *sshParam, config *ssh.ClientConfig) (SshClient, 
 	if err != nil {
 		return nil, fmt.Errorf("proxy jump [%s] dial [%s] [%s] failed: %v", param.proxy.name, network, param.addr, err)
 	}
-	param.setNetworkAddressFamily(conn)
 	ncc, chans, reqs, err := ssh.NewClientConn(&connWithTimeout{conn, config.Timeout, true}, param.addr, config)
 	if err != nil {
 		_ = conn.Close()
@@ -659,7 +643,6 @@ func connectDirectly(param *sshParam, config *ssh.ClientConfig) (SshClient, erro
 	if err != nil {
 		return nil, fmt.Errorf("login to [%s] dial [%s] [%s] failed: %v", param.args.Destination, network, param.addr, err)
 	}
-	param.setNetworkAddressFamily(conn)
 	ncc, chans, reqs, err := ssh.NewClientConn(&connWithTimeout{conn, config.Timeout, true}, param.addr, config)
 	if err != nil {
 		_ = conn.Close()
