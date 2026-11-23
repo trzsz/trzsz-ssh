@@ -219,13 +219,16 @@ func matchSSHFP(records []sshfpRecord, key ssh.PublicKey) bool {
 }
 
 // parseSSHFP extracts the SSHFP records from the answers of a DNS response.
-// Only answers whose owner name matches expected are accepted, so a response
-// cannot smuggle in records for a different name.
+// Only IN class answers whose owner name matches expected are accepted, so a
+// response cannot smuggle in records for a different name or class. They are
+// selected by dnssecRecords, exactly as validateSSHFPDNSSEC selects the RRset
+// it authenticates, so a host key can never match a record that is not covered
+// by the DNSSEC signature.
 func parseSSHFP(answers []dns.RR, expected string) []sshfpRecord {
 	var records []sshfpRecord
-	for _, answer := range answers {
+	for _, answer := range dnssecRecords(answers, expected, dns.TypeSSHFP) {
 		sshfp, ok := answer.(*dns.SSHFP)
-		if !ok || !strings.EqualFold(sshfp.Hdr.Name, expected) {
+		if !ok {
 			continue
 		}
 		decodedFingerprint, err := hex.DecodeString(sshfp.FingerPrint)
