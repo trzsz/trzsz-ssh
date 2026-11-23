@@ -639,7 +639,7 @@ func connectViaProxyCommand(param *sshParam, config *ssh.ClientConfig) (SshClien
 	if err != nil {
 		return nil, fmt.Errorf("proxy command [%s] exec failed: %v", cmd, err)
 	}
-	ncc, chans, reqs, err := ssh.NewClientConn(conn, param.addr, config)
+	ncc, chans, reqs, err := ssh.NewClientConn(&connWithTimeout{conn, config.Timeout, true}, param.addr, config)
 	if err != nil {
 		_ = conn.Close()
 		return nil, fmt.Errorf("proxy command [%s] new conn [%s] failed: %v", cmd, param.addr, err)
