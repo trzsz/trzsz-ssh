@@ -788,6 +788,10 @@ func sshLogin(param *sshParam, proxy *proxyJump, requiredUDP udpModeType) (SshCl
 	return udpClient, nil
 }
 
+func isServerAliveAlways(args *sshArgs) bool {
+	return strings.EqualFold(getExOptionConfig(args, "ServerAliveAlways"), "yes")
+}
+
 func keepAlive(sshConn *sshConnection) {
 	serverAliveInterval := uint32(0)
 	if c := getOptionConfig(sshConn.param.args, "ServerAliveInterval"); c != "" {
@@ -812,6 +816,11 @@ func keepAlive(sshConn *sshConnection) {
 			serverAliveCountMax = uint32(v)
 		}
 	}
+
+	alwaysKeepAlive := isServerAliveAlways(sshConn.param.args)
+
+	debug("keep alive for [%s]: interval [%d], count max [%d], always [%v]",
+		sshConn.param.args.Destination, serverAliveInterval, serverAliveCountMax, alwaysKeepAlive)
 
 	showRTT := strings.EqualFold(userConfig.setTerminalTitle, "rtt")
 
@@ -842,8 +851,44 @@ func keepAlive(sshConn *sshConnection) {
 		lastServerAliveTime.Store(time.Now().UnixMilli())
 		concurrent := make(chan struct{}, 2) // do not close to prevent writing after closing
 		aliveTimeout := int64(serverAliveInterval) * int64(serverAliveCountMax) * 1000
-		intervalTime := int64(serverAliveInterval)*1000 - 300 // send keep alive a little earlier
 
+		sendAsync := func(idx int) {
+			select {
+			case concurrent <- struct{}{}:
+				go func() {
+					sendKeepAlive(idx)
+					<-concurrent
+				}()
+			default:
+				debug("keep alive [%d] dropped (concurrent limit)", idx)
+			}
+		}
+
+		if alwaysKeepAlive {
+			// Send a keep alive every interval even when server data keeps arriving,
+			// so middleboxes that only track client-to-server traffic do not consider
+			// the connection idle.
+			ticker := time.NewTicker(time.Duration(serverAliveInterval) * time.Second)
+			defer ticker.Stop()
+
+			n := 0
+			for range ticker.C {
+				if aliveTimeout > 0 && time.Now().UnixMilli()-lastServerAliveTime.Load() > aliveTimeout {
+					sshConn.forceExit(kExitCodeKeepAlive, fmt.Sprintf(
+						"keep-alive timeout [%ds], ServerAliveInterval [%d], ServerAliveCountMax [%d]",
+						aliveTimeout/1000, serverAliveInterval, serverAliveCountMax))
+					return
+				}
+
+				n++
+				sendAsync(n)
+			}
+			return
+		}
+
+		// Same as OpenSSH: only send a keep alive when no data has been received
+		// from the server for the configured interval.
+		intervalTime := int64(serverAliveInterval)*1000 - 300 // send keep alive a little earlier
 		for {
 			sleepTime := lastServerAliveTime.Load() + intervalTime - time.Now().UnixMilli()
 			if sleepTime > 0 {
@@ -872,15 +917,7 @@ func keepAlive(sshConn *sshConnection) {
 				}
 
 				n++
-				select {
-				case concurrent <- struct{}{}:
-					go func() {
-						sendKeepAlive(n)
-						<-concurrent
-					}()
-				default:
-					debug("keep alive [%d] dropped (concurrent limit)", n)
-				}
+				sendAsync(n)
 			}
 		}
 	}()

@@ -945,6 +945,16 @@ trzsz-ssh ( tssh ) 与 [tsshd](https://github.com/trzsz/tsshd) 一起，适用�
   - 若下载 `tsshd` 的安装包失败，可以自行下载并通过 `--tsshd-bin-path /path/to/tsshd.tar.gz` 参数指定。
   - 注意：`--install-tsshd` 不支持 Windows 服务器，不支持跳板机（ 除非以 `ProxyJump` 跳过 ）。
 
+- `ServerAliveInterval` 默认与 OpenSSH 一致：只有连续指定秒数没有收到服务端数据时才发送保活。如果中间的代理、防火墙或堡垒机只统计客户端到服务端方向的活动，服务端持续输出（如 tmux 状态栏刷新、日志输出）会导致保活一直不发送。可以配置 `ServerAliveAlways yes`，让 `tssh` 每隔 `ServerAliveInterval` 固定发送一次保活：
+
+  ```
+  Host server1
+    # 如果配置在 ~/.ssh/config 中，可以加上 `#!!` 前缀，以兼容标准 ssh
+    #!! ServerAliveInterval 5
+    #!! ServerAliveCountMax 6
+    #!! ServerAliveAlways yes
+  ```
+
 - 如果在 `$XDG_CONFIG_HOME/tssh/tssh.conf` ( 或 `~/.tssh.conf` ) 中设置了 `SetTerminalTitle = rtt`，则会在终端标题中显示当前连接的 RTT（往返延迟），例如：server 12ms。非 UDP 模式要求设置 `ServerAliveInterval` 才会生效。
 
 - 关于修改终端标题，其实无需 `tssh` 就能实现，只要在服务器的 shell 配置文件中（如`~/.bashrc`）配置：

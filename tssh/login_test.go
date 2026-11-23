@@ -30,6 +30,26 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestServerAliveAlwaysOption(t *testing.T) {
+	originalUserConfig := userConfig
+	userConfig = &tsshConfig{}
+	defer func() { userConfig = originalUserConfig }()
+
+	assert.True(t, isServerAliveAlways(&sshArgs{Option: sshOption{options: map[string][]string{
+		"serveralivealways": {"yes"},
+	}}}))
+	assert.True(t, isServerAliveAlways(&sshArgs{Option: sshOption{options: map[string][]string{
+		"serveralivealways": {"YES"},
+	}}}))
+	assert.False(t, isServerAliveAlways(&sshArgs{Option: sshOption{options: map[string][]string{
+		"serveralivealways": {"no"},
+	}}}))
+	assert.False(t, isServerAliveAlways(&sshArgs{Option: sshOption{options: map[string][]string{
+		"serveralivealways": {"1"},
+	}}}))
+	assert.False(t, isServerAliveAlways(&sshArgs{}))
+}
+
 func TestParseDestination(t *testing.T) {
 	assert := assert.New(t)
 	assertDestEqual := func(dest, user, host, port string) {
