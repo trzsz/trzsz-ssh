@@ -788,13 +788,10 @@ func sshLogin(param *sshParam, proxy *proxyJump, requiredUDP udpModeType) (SshCl
 	return udpClient, nil
 }
 
-func isServerAliveAlways(args *sshArgs) bool {
-	return strings.EqualFold(getExOptionConfig(args, "ServerAliveAlways"), "yes")
-}
-
 func keepAlive(sshConn *sshConnection) {
+	args := sshConn.param.args
 	serverAliveInterval := uint32(0)
-	if c := getOptionConfig(sshConn.param.args, "ServerAliveInterval"); c != "" {
+	if c := getOptionConfig(args, "ServerAliveInterval"); c != "" {
 		v, err := strconv.ParseUint(c, 10, 32)
 		if err != nil {
 			warning("ServerAliveInterval [%s] is invalid: %v", c, err)
@@ -803,12 +800,12 @@ func keepAlive(sshConn *sshConnection) {
 		}
 	}
 	if serverAliveInterval == 0 {
-		debug("no keep alive for [%s]", sshConn.param.args.Destination)
+		debug("no keep alive for [%s]", args.Destination)
 		return
 	}
 
 	serverAliveCountMax := uint32(3)
-	if c := getOptionConfig(sshConn.param.args, "ServerAliveCountMax"); c != "" {
+	if c := getOptionConfig(args, "ServerAliveCountMax"); c != "" {
 		v, err := strconv.ParseUint(c, 10, 32)
 		if err != nil {
 			warning("ServerAliveCountMax [%s] is invalid: %v", c, err)
@@ -817,16 +814,16 @@ func keepAlive(sshConn *sshConnection) {
 		}
 	}
 
-	alwaysKeepAlive := isServerAliveAlways(sshConn.param.args)
+	alwaysKeepAlive := strings.EqualFold(getExOptionConfig(args, "ServerAliveAlways"), "yes")
 
 	debug("keep alive for [%s]: interval [%d], count max [%d], always [%v]",
-		sshConn.param.args.Destination, serverAliveInterval, serverAliveCountMax, alwaysKeepAlive)
+		args.Destination, serverAliveInterval, serverAliveCountMax, alwaysKeepAlive)
 
 	showRTT := strings.EqualFold(userConfig.setTerminalTitle, "rtt")
 
 	sendKeepAlive := func(idx int) {
 		if enableDebugLogging {
-			writeDebugLog(time.Now().UnixMilli(), sshConn.param.args.Destination, fmt.Sprintf("keep alive [%d] sending", idx))
+			writeDebugLog(time.Now().UnixMilli(), args.Destination, fmt.Sprintf("keep alive [%d] sending", idx))
 		}
 
 		beginMilli := time.Now().UnixMilli()
@@ -839,11 +836,11 @@ func keepAlive(sshConn *sshConnection) {
 		}
 
 		if showRTT {
-			setTerminalTitle(fmt.Sprintf("%s %dms", sshConn.param.args.Destination, time.Now().UnixMilli()-beginMilli))
+			setTerminalTitle(fmt.Sprintf("%s %dms", args.Destination, time.Now().UnixMilli()-beginMilli))
 		}
 
 		if enableDebugLogging {
-			writeDebugLog(time.Now().UnixMilli(), sshConn.param.args.Destination, fmt.Sprintf("keep alive [%d] success", idx))
+			writeDebugLog(time.Now().UnixMilli(), args.Destination, fmt.Sprintf("keep alive [%d] success", idx))
 		}
 	}
 
@@ -864,6 +861,17 @@ func keepAlive(sshConn *sshConnection) {
 			}
 		}
 
+		checkAliveTimeout := func() bool {
+			if aliveTimeout <= 0 || time.Now().UnixMilli()-lastServerAliveTime.Load() <= aliveTimeout {
+				return false
+			}
+
+			sshConn.forceExit(kExitCodeKeepAlive, fmt.Sprintf(
+				"keep-alive timeout [%ds], ServerAliveInterval [%d], ServerAliveCountMax [%d]",
+				aliveTimeout/1000, serverAliveInterval, serverAliveCountMax))
+			return true
+		}
+
 		if alwaysKeepAlive {
 			// Send a keep alive every interval even when server data keeps arriving,
 			// so middleboxes that only track client-to-server traffic do not consider
@@ -873,10 +881,7 @@ func keepAlive(sshConn *sshConnection) {
 
 			n := 0
 			for range ticker.C {
-				if aliveTimeout > 0 && time.Now().UnixMilli()-lastServerAliveTime.Load() > aliveTimeout {
-					sshConn.forceExit(kExitCodeKeepAlive, fmt.Sprintf(
-						"keep-alive timeout [%ds], ServerAliveInterval [%d], ServerAliveCountMax [%d]",
-						aliveTimeout/1000, serverAliveInterval, serverAliveCountMax))
+				if checkAliveTimeout() {
 					return
 				}
 
@@ -908,11 +913,8 @@ func keepAlive(sshConn *sshConnection) {
 					break
 				}
 
-				if aliveTimeout > 0 && time.Now().UnixMilli()-lastServerAliveTime.Load() > aliveTimeout {
+				if checkAliveTimeout() {
 					ticker.Stop()
-					sshConn.forceExit(kExitCodeKeepAlive, fmt.Sprintf(
-						"keep-alive timeout [%ds], ServerAliveInterval [%d], ServerAliveCountMax [%d]",
-						aliveTimeout/1000, serverAliveInterval, serverAliveCountMax))
 					return
 				}
 

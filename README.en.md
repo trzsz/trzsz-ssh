@@ -952,9 +952,9 @@ trzsz-ssh ( tssh ) with [tsshd](https://github.com/trzsz/tsshd) also supports in
 
   ```
   Host server1
+    ServerAliveInterval 5
+    ServerAliveCountMax 6
     # If configured in ~/.ssh/config, add `#!!` prefix to be compatible with openssh.
-    #!! ServerAliveInterval 5
-    #!! ServerAliveCountMax 6
     #!! ServerAliveAlways yes
   ```
 

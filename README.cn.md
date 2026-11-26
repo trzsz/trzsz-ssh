@@ -949,9 +949,9 @@ trzsz-ssh ( tssh ) 与 [tsshd](https://github.com/trzsz/tsshd) 一起，适用�
 
   ```
   Host server1
+    ServerAliveInterval 5
+    ServerAliveCountMax 6
     # 如果配置在 ~/.ssh/config 中，可以加上 `#!!` 前缀，以兼容标准 ssh
-    #!! ServerAliveInterval 5
-    #!! ServerAliveCountMax 6
     #!! ServerAliveAlways yes
   ```
 
