@@ -948,6 +948,16 @@ trzsz-ssh ( tssh ) with [tsshd](https://github.com/trzsz/tsshd) also supports in
   - If downloading the `tsshd` installation package fails, you can download and specify it through `--tsshd-bin-path /path/to/tsshd.tar.gz`.
   - Note: `--install-tsshd` does not support Windows server, and does not support jump server (unless using `ProxyJump`).
 
+- `ServerAliveInterval` works the same as OpenSSH by default: a keepalive is sent only when no data has been received from the server for the configured interval. If a proxy, firewall, or bastion only tracks client-to-server activity, continuous server output such as tmux status refreshes or log output prevents keepalives from being sent. Configure `ServerAliveAlways yes` to send a keepalive every `ServerAliveInterval` regardless of server output:
+
+  ```
+  Host server1
+    ServerAliveInterval 5
+    ServerAliveCountMax 6
+    # If configured in ~/.ssh/config, add `#!!` prefix to be compatible with openssh.
+    #!! ServerAliveAlways yes
+  ```
+
 - If `SetTerminalTitle = rtt` is set in `$XDG_CONFIG_HOME/tssh/tssh.conf` ( or `~/.tssh.conf` ), the terminal title will display the current connection RTT (round-trip time), for example: server 12ms. For non-UDP mode, `ServerAliveInterval` must also be configured for RTT to be displayed.
 
 - About changing the terminal title, it can be achieved without `tssh`. It only needs to be configured in the server's shell configuration file (such as `~/.bashrc`):
