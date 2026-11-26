@@ -308,11 +308,8 @@ func udpLogin(param *sshParam, tcpClient SshClient) (SshClient, error) {
 	intervalTime := min(globalUdpAliveTimeout/10, min(heartbeatTimeout, reconnectTimeout)/3)
 	debug("udp keep alive interval time [%v] for [%s]", intervalTime, args.Destination)
 
-	ipv4, ipv6 := param.ipv4, param.ipv6
-	if ipv4 == ipv6 { // (ipv4 && ipv6) || (!ipv4 && !ipv6)
-		// If the IP version is ambiguous from the current SSH connection (e.g., via ControlPath), fall back to user settings.
-		_, ipv4, ipv6 = getNetworkAddressFamily(args)
-	}
+	// Pass a family only if the user set one. Otherwise tsshd tries both.
+	_, ipv4, ipv6 := getNetworkAddressFamily(args)
 
 	// new udp client
 	udpClient := &sshUdpClient{

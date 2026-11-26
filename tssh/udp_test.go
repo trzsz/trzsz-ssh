@@ -61,3 +61,25 @@ func TestParseTsshdPortRanges(t *testing.T) {
 	assert.Equal([][2]uint16(nil), parseTsshdPortRanges("10 - - 11"))
 	assert.Equal([][2]uint16{{10, 11}}, parseTsshdPortRanges("10 - 11 -"))
 }
+
+func TestGetNetworkAddressFamily(t *testing.T) {
+	defer setUserConfigForTest(&tsshConfig{})()
+
+	assert := assert.New(t)
+	check := func(args *sshArgs, expectIPv4, expectIPv6 bool) {
+		t.Helper()
+		_, ipv4, ipv6 := getNetworkAddressFamily(args)
+		assert.Equal(expectIPv4, ipv4)
+		assert.Equal(expectIPv6, ipv6)
+	}
+	withFamily := func(family string) *sshArgs {
+		return &sshArgs{Option: sshOption{map[string][]string{"addressfamily": {family}}}}
+	}
+
+	check(&sshArgs{}, false, false)
+	check(&sshArgs{IPv4Only: true}, true, false)
+	check(&sshArgs{IPv6Only: true}, false, true)
+	check(withFamily("inet"), true, false)
+	check(withFamily("inet6"), false, true)
+	check(withFamily("any"), false, false)
+}
