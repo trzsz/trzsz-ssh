@@ -72,6 +72,7 @@ func TestParseSSHFP(t *testing.T) {
 	records := parseSSHFP([]dns.RR{
 		&dns.SSHFP{Hdr: dns.RR_Header{Name: "example.com.", Rrtype: dns.TypeSSHFP, Class: dns.ClassINET}, Algorithm: 4, Type: 2, FingerPrint: "aabbcc"},
 		&dns.SSHFP{Hdr: dns.RR_Header{Name: "evil.example.com.", Rrtype: dns.TypeSSHFP, Class: dns.ClassINET}, Algorithm: 4, Type: 2, FingerPrint: "aabbcc"},
+		&dns.SSHFP{Hdr: dns.RR_Header{Name: "example.com.", Rrtype: dns.TypeSSHFP, Class: dns.ClassCHAOS}, Algorithm: 4, Type: 2, FingerPrint: "ddeeff"},
 	}, "example.com.")
 	assert.Equal(t, []sshfpRecord{{algorithm: 4, fpType: 2, fingerprint: []byte{0xaa, 0xbb, 0xcc}}}, records)
 }
@@ -132,6 +133,31 @@ func TestLookupSSHFPRejectsTamperedRRSIG(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, matched)
 	assert.False(t, authenticate())
+}
+
+func TestVerifyHostKeyDNSIgnoresNonINClassSSHFP(t *testing.T) {
+	key, forgedKey := testSSHKey(t), testSSHKey(t)
+	responses, anchors := testDNSSECChain(t, "host.example.test.", key, false)
+	lookupKey := testLookupKey("host.example.test.", dns.TypeSSHFP)
+	forged := testSSHFP("host.example.test.", forgedKey)
+	forged.Hdr.Class = dns.ClassCHAOS
+	responses[lookupKey].Answer = append(responses[lookupKey].Answer, forged)
+	packed, err := responses[lookupKey].Pack()
+	assert.NoError(t, err)
+	var unpacked dns.Msg
+	assert.NoError(t, unpacked.Unpack(packed))
+	assert.Len(t, unpacked.Answer, 3)
+	responses[lookupKey] = &unpacked
+	withDNSSECTestLookup(t, responses, anchors)
+	// The signed IN RRset still validates, so the unsigned record must not match.
+	_, matched, authenticate, err := verifyHostKeyDNS("host.example.test", forgedKey)
+	assert.NoError(t, err)
+	assert.False(t, matched)
+	assert.True(t, authenticate())
+	_, matched, authenticate, err = verifyHostKeyDNS("host.example.test", key)
+	assert.NoError(t, err)
+	assert.True(t, matched)
+	assert.True(t, authenticate())
 }
 
 func TestCompressedRRSIGSignerNameValidates(t *testing.T) {
