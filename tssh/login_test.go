@@ -25,10 +25,31 @@ SOFTWARE.
 package tssh
 
 import (
+	"net"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+func TestConnWithTimeoutUpdatesLastServerAliveTime(t *testing.T) {
+	original := lastServerAliveTime.Load()
+	defer lastServerAliveTime.Store(original)
+	lastServerAliveTime.Store(0)
+
+	server, client := net.Pipe()
+	defer func() { _ = server.Close() }()
+	defer func() { _ = client.Close() }()
+
+	conn := &connWithTimeout{Conn: client, firstRead: false}
+	go func() { _, _ = server.Write([]byte("x")) }()
+
+	buf := make([]byte, 1)
+	n, err := conn.Read(buf)
+	require.NoError(t, err)
+	require.Equal(t, 1, n)
+	require.NotZero(t, lastServerAliveTime.Load())
+}
 
 func TestParseDestination(t *testing.T) {
 	assert := assert.New(t)
